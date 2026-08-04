@@ -24,6 +24,23 @@ export class JiraApiError extends Error {
   }
 }
 
+function normalizeIssueKey(value) {
+  const issueKey = String(value || "").trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(issueKey)) {
+    throw new JiraApiError("Jira Issue Key 无效。", {
+      code: "INVALID_ISSUE_KEY",
+      upstreamStatus: 400
+    });
+  }
+  return issueKey;
+}
+
+function transitionEndpoint(config, issueKey, { expand = false } = {}) {
+  const version = config.deployment === "data_center" ? "2" : "3";
+  const endpoint = `${config.baseUrl}/rest/api/${version}/issue/${encodeURIComponent(issueKey)}/transitions`;
+  return expand ? `${endpoint}?expand=transitions.fields` : endpoint;
+}
+
 export function jiraAuthenticationHeader(config) {
   if (config.deployment === "data_center") return `Bearer ${config.token}`;
   return `Basic ${Buffer.from(`${config.email}:${config.token}`, "utf8").toString("base64")}`;
@@ -61,6 +78,31 @@ function statusGroup(fields) {
   if (beforeProgramStatuses.has(statusName)) return "todo";
   if (category === "indeterminate") return "in_progress";
   return "todo";
+}
+
+function normalizeTransition(transition) {
+  const fields = transition?.fields && typeof transition.fields === "object"
+    ? transition.fields
+    : {};
+  const requiredFields = Object.entries(fields)
+    .filter(([, field]) => field?.required && !field?.hasDefaultValue)
+    .map(([id, field]) => ({
+      id,
+      name: String(field?.name || id)
+    }));
+  const target = transition?.to || {};
+  return {
+    id: String(transition?.id || ""),
+    name: String(transition?.name || target.name || "未命名流转"),
+    to: {
+      id: String(target.id || ""),
+      name: String(target.name || transition?.name || "未知状态"),
+      group: statusGroup({ status: target }),
+      category: String(target.statusCategory?.key || "")
+    },
+    requiresInput: requiredFields.length > 0,
+    requiredFields
+  };
 }
 
 function issueTypeGroup(fields) {
@@ -132,6 +174,120 @@ async function responsePayload(response) {
 }
 
 export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_000 } = {}) {
+  async function fetchTransitions(config, issueKey) {
+    const key = normalizeIssueKey(issueKey);
+    let response;
+    try {
+      response = await fetchImpl(transitionEndpoint(config, key, { expand: true }), {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          authorization: jiraAuthenticationHeader(config)
+        },
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+    } catch (error) {
+      const timeout = error.name === "TimeoutError" || error.name === "AbortError";
+      throw new JiraApiError(timeout ? "读取 Jira 状态流转超时。" : `无法读取 Jira 状态流转：${error.message}`, {
+        code: timeout ? "JIRA_TIMEOUT" : "JIRA_UNREACHABLE"
+      });
+    }
+
+    const payload = await responsePayload(response);
+    if (!response.ok) {
+      const fallback = response.status === 401
+        ? "Jira 认证失败，请检查 Token。"
+        : response.status === 403
+          ? "当前 Jira 用户无权查看该任务的状态流转。"
+          : response.status === 404
+            ? "Jira Issue 不存在或当前用户无权查看。"
+            : `Jira 返回 HTTP ${response.status}，无法读取状态流转。`;
+      throw new JiraApiError(jiraErrorMessage(payload, fallback), {
+        code: "JIRA_TRANSITIONS_HTTP_ERROR",
+        upstreamStatus: response.status,
+        details: payload?.errors || null
+      });
+    }
+
+    const transitions = Array.isArray(payload?.transitions)
+      ? payload.transitions.map(normalizeTransition).filter((transition) => transition.id)
+      : [];
+    return {
+      key,
+      transitions,
+      fetchedAt: new Date().toISOString()
+    };
+  }
+
+  async function executeTransition(config, issueKey, transitionId) {
+    const key = normalizeIssueKey(issueKey);
+    const normalizedTransitionId = String(transitionId || "").trim();
+    if (!/^\d+$/.test(normalizedTransitionId)) {
+      throw new JiraApiError("Jira 状态流转 ID 无效。", {
+        code: "INVALID_TRANSITION_ID",
+        upstreamStatus: 400
+      });
+    }
+
+    const available = await fetchTransitions(config, key);
+    const transition = available.transitions.find((candidate) => candidate.id === normalizedTransitionId);
+    if (!transition) {
+      throw new JiraApiError("该状态流转已不可用，请刷新任务后重试。", {
+        code: "JIRA_TRANSITION_NOT_AVAILABLE",
+        upstreamStatus: 400
+      });
+    }
+    if (transition.requiresInput) {
+      const fieldNames = transition.requiredFields.map((field) => field.name).join("、");
+      throw new JiraApiError(`该状态流转需要填写额外字段（${fieldNames}），请在 Jira 中完成。`, {
+        code: "JIRA_TRANSITION_REQUIRES_INPUT",
+        upstreamStatus: 400,
+        details: { requiredFields: transition.requiredFields }
+      });
+    }
+
+    let response;
+    try {
+      response = await fetchImpl(transitionEndpoint(config, key), {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          authorization: jiraAuthenticationHeader(config)
+        },
+        body: JSON.stringify({ transition: { id: normalizedTransitionId } }),
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+    } catch (error) {
+      const timeout = error.name === "TimeoutError" || error.name === "AbortError";
+      throw new JiraApiError(timeout ? "提交 Jira 状态流转超时，请刷新确认结果。" : `无法提交 Jira 状态流转：${error.message}`, {
+        code: timeout ? "JIRA_TRANSITION_TIMEOUT" : "JIRA_UNREACHABLE"
+      });
+    }
+
+    const payload = await responsePayload(response);
+    if (!response.ok) {
+      const fallback = response.status === 401
+        ? "Jira 认证失败，请检查 Token。"
+        : response.status === 403
+          ? "当前 Jira 用户无权执行该状态流转。"
+          : response.status === 404
+            ? "Jira Issue 不存在或状态流转已不可用。"
+            : `Jira 返回 HTTP ${response.status}，状态流转失败。`;
+      throw new JiraApiError(jiraErrorMessage(payload, fallback), {
+        code: "JIRA_TRANSITION_HTTP_ERROR",
+        upstreamStatus: response.status,
+        details: payload?.errors || null
+      });
+    }
+
+    return {
+      key,
+      transition,
+      transitionedAt: new Date().toISOString()
+    };
+  }
+
   async function fetchIssues(config, { maxResults = config.maxResults } = {}) {
     const cloud = config.deployment !== "data_center";
     const endpoint = cloud ? "/rest/api/3/search/jql" : "/rest/api/2/search";
@@ -301,5 +457,5 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
     };
   }
 
-  return { fetchIssues, fetchTaskBoardIssues, fetchAttachment };
+  return { fetchIssues, fetchTaskBoardIssues, fetchTransitions, executeTransition, fetchAttachment };
 }

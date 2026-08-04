@@ -34,6 +34,9 @@ const attachmentPreviewBackdrop = document.querySelector("#attachment-preview-ba
 const attachmentPreviewBody = document.querySelector("#attachment-preview-body");
 const attachmentPreviewHint = document.querySelector("#attachment-preview-hint");
 const attachmentPreviewDownload = document.querySelector("#download-preview-attachment");
+const transitionSelect = document.querySelector("#transition-select");
+const transitionAction = document.querySelector("#transition-action");
+const transitionHint = document.querySelector("#transition-hint");
 const FIXED_DEPLOYMENT = "data_center";
 const FALLBACK_MESSAGE_TEMPLATE = DEFAULT_MESSAGE_TEMPLATE;
 const MAX_TEXT_PREVIEW_CHARACTERS = 500_000;
@@ -85,6 +88,10 @@ const state = {
   sheetFilters: emptySheetFilters(),
   sheetSort: { column: "", direction: "" },
   selectedIssue: null,
+  issueTransitions: [],
+  transitionLoading: false,
+  transitioning: false,
+  transitionError: "",
   loading: false,
   fetchedAt: null,
   total: 0,
@@ -98,12 +105,14 @@ let attachmentPreviewObjectUrl = "";
 let attachmentPreviewAttachment = null;
 let attachmentPreviewBlob = null;
 let attachmentPreviewReturnFocus = null;
+let transitionRequestId = 0;
 
 class ApiError extends Error {
   constructor(message, payload = {}) {
     super(message);
     this.code = payload.code;
     this.upstreamStatus = payload.upstreamStatus;
+    this.details = payload.details;
   }
 }
 
@@ -904,6 +913,174 @@ function updateCounts() {
   summary.textContent = `${totalText} · ${formatDate(state.fetchedAt)} 同步`;
 }
 
+function transitionOptionLabel(transition) {
+  const target = transition?.to?.name || "未知状态";
+  const action = transition?.name || "";
+  return action && action !== target ? `${target}（${action}）` : target;
+}
+
+function selectedTransition() {
+  const transitionId = transitionSelect.value;
+  return state.issueTransitions.find((transition) => transition.id === transitionId) || null;
+}
+
+function updateTransitionAction() {
+  if (state.transitionLoading) {
+    transitionAction.textContent = "正在读取…";
+    transitionAction.disabled = true;
+    return;
+  }
+  if (state.transitionError) {
+    transitionAction.textContent = "重试";
+    transitionAction.disabled = false;
+    return;
+  }
+  if (state.transitioning) {
+    transitionAction.textContent = "正在流转…";
+    transitionAction.disabled = true;
+    return;
+  }
+  const transition = selectedTransition();
+  if (!transition) {
+    const hasAvailable = state.issueTransitions.some((candidate) => !candidate.requiresInput);
+    transitionAction.textContent = hasAvailable ? "确认流转" : "无可直接流转状态";
+    transitionAction.disabled = true;
+    return;
+  }
+  if (transition.requiresInput) {
+    transitionAction.textContent = "请在 Jira 中完成";
+    transitionAction.disabled = true;
+    return;
+  }
+  transitionAction.textContent = `流转到 ${transition.to?.name || transition.name}`;
+  transitionAction.disabled = false;
+}
+
+function renderTransitionControl() {
+  const previousValue = transitionSelect.value;
+  transitionSelect.replaceChildren();
+  transitionHint.className = "transition-hint";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  transitionSelect.append(placeholder);
+
+  if (!state.selectedIssue) {
+    placeholder.textContent = "未选择任务";
+    transitionSelect.disabled = true;
+    transitionHint.textContent = "";
+    updateTransitionAction();
+    return;
+  }
+  if (state.transitionLoading) {
+    placeholder.textContent = "正在读取可用流转…";
+    transitionSelect.disabled = true;
+    transitionHint.textContent = "正在从 Jira 读取当前用户可执行的工作流操作。";
+    updateTransitionAction();
+    return;
+  }
+  if (state.transitionError) {
+    placeholder.textContent = "无法读取状态流转";
+    transitionSelect.disabled = true;
+    transitionHint.classList.add("error");
+    transitionHint.textContent = state.transitionError;
+    updateTransitionAction();
+    return;
+  }
+
+  placeholder.textContent = state.issueTransitions.length ? "选择目标状态" : "当前无可用状态流转";
+  for (const transition of state.issueTransitions) {
+    const option = document.createElement("option");
+    option.value = transition.id;
+    option.disabled = Boolean(transition.requiresInput);
+    const required = (transition.requiredFields || []).map((field) => field.name).join("、");
+    option.textContent = transition.requiresInput
+      ? `${transitionOptionLabel(transition)} · 需填写 ${required || "额外字段"}`
+      : transitionOptionLabel(transition);
+    transitionSelect.append(option);
+  }
+
+  const availableCount = state.issueTransitions.filter((transition) => !transition.requiresInput).length;
+  const blockedCount = state.issueTransitions.length - availableCount;
+  transitionSelect.disabled = state.transitioning || availableCount === 0;
+  if (previousValue && state.issueTransitions.some((transition) => transition.id === previousValue && !transition.requiresInput)) {
+    transitionSelect.value = previousValue;
+  }
+  if (!state.issueTransitions.length) {
+    transitionHint.textContent = "Jira 当前没有向此用户开放下一步工作流操作。";
+  } else if (!availableCount) {
+    transitionHint.textContent = "当前流转都要求填写额外字段，请点击右上角“在 Jira 中打开”完成。";
+  } else if (blockedCount) {
+    transitionHint.textContent = `提交前会再次确认；另有 ${blockedCount} 个流转需在 Jira 中填写额外字段。`;
+  } else {
+    transitionHint.textContent = "提交前会再次确认，成功后立即写入 Jira 并刷新任务列表。";
+  }
+  updateTransitionAction();
+}
+
+async function loadIssueTransitions(issue) {
+  const requestId = ++transitionRequestId;
+  state.issueTransitions = [];
+  state.transitionLoading = true;
+  state.transitioning = false;
+  state.transitionError = "";
+  renderTransitionControl();
+  try {
+    const payload = await api(`/api/issues/${encodeURIComponent(issue.key)}/transitions`);
+    if (requestId !== transitionRequestId || state.selectedIssue?.key !== issue.key) return;
+    state.issueTransitions = Array.isArray(payload.transitions) ? payload.transitions : [];
+  } catch (error) {
+    if (requestId !== transitionRequestId || state.selectedIssue?.key !== issue.key) return;
+    state.transitionError = error.message;
+  } finally {
+    if (requestId === transitionRequestId && state.selectedIssue?.key === issue.key) {
+      state.transitionLoading = false;
+      renderTransitionControl();
+    }
+  }
+}
+
+async function refreshActiveIssueView() {
+  if (state.activeView === "sheets") await loadJxlSheetIssues();
+  else await loadIssues();
+}
+
+async function submitIssueTransition() {
+  const issue = state.selectedIssue;
+  if (!issue) return;
+  if (state.transitionError) {
+    await loadIssueTransitions(issue);
+    return;
+  }
+  const transition = selectedTransition();
+  if (!transition || transition.requiresInput || state.transitioning) return;
+  const currentStatus = issue.statusName || statusLabel(issue.status);
+  const targetStatus = transition.to?.name || transition.name;
+  const actionDetail = transition.name && transition.name !== targetStatus ? `（操作：${transition.name}）` : "";
+  const confirmed = window.confirm(
+    `确认将 ${issue.key} 从“${currentStatus}”流转到“${targetStatus}”${actionDetail}？\n\n提交后会立即写入 Jira。`
+  );
+  if (!confirmed) return;
+
+  state.transitioning = true;
+  renderTransitionControl();
+  try {
+    const payload = await api(`/api/issues/${encodeURIComponent(issue.key)}/transitions`, {
+      method: "POST",
+      body: { transitionId: transition.id }
+    });
+    const applied = payload.transition || transition;
+    closeDetails();
+    await refreshActiveIssueView();
+    showToast(`${issue.key} 已流转到“${applied.to?.name || targetStatus}”`, 4200);
+  } catch (error) {
+    if (state.selectedIssue?.key !== issue.key) return;
+    state.transitioning = false;
+    showToast(`状态流转失败：${error.message}`, 6000);
+    await loadIssueTransitions(issue);
+  }
+}
+
 function openDetails(issue) {
   state.selectedIssue = issue;
   document.querySelector("#detail-type").textContent = typeLabel(issue);
@@ -938,6 +1115,7 @@ function openDetails(issue) {
   drawer.hidden = false;
   backdrop.hidden = false;
   drawer.focus();
+  void loadIssueTransitions(issue);
 }
 
 function updatePrimaryAction(issue) {
@@ -963,9 +1141,14 @@ function updatePrimaryAction(issue) {
 function closeDetails() {
   if (!attachmentPreviewDialog.hidden) closeAttachmentPreview();
   closeRebindDialog();
+  transitionRequestId += 1;
   drawer.hidden = true;
   backdrop.hidden = true;
   state.selectedIssue = null;
+  state.issueTransitions = [];
+  state.transitionLoading = false;
+  state.transitioning = false;
+  state.transitionError = "";
 }
 
 function setRebindStatus(message, kind = "error") {
@@ -1343,6 +1526,8 @@ document.querySelector("#refresh").addEventListener("click", () => {
 document.querySelector("#open-settings").addEventListener("click", openSettings);
 noticeAction.addEventListener("click", openSettings);
 document.querySelector("#close-drawer").addEventListener("click", closeDetails);
+transitionSelect.addEventListener("change", updateTransitionAction);
+transitionAction.addEventListener("click", () => { void submitIssueTransition(); });
 backdrop.addEventListener("click", closeDetails);
 document.querySelector("#close-attachment-preview").addEventListener("click", closeAttachmentPreview);
 attachmentPreviewBackdrop.addEventListener("click", closeAttachmentPreview);

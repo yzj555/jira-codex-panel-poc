@@ -100,6 +100,16 @@
               <div><dt>项目</dt><dd id="detail-project"></dd></div>
               <div><dt>更新时间</dt><dd id="detail-updated"></dd></div>
             </dl>
+            <section class="transition-panel" aria-labelledby="transition-title">
+              <h3 id="transition-title">状态流转</h3>
+              <div class="transition-controls">
+                <select id="transition-select" aria-label="选择目标状态" disabled>
+                  <option value="">正在读取可用流转…</option>
+                </select>
+                <button id="transition-action" type="button" disabled>确认流转</button>
+              </div>
+              <p id="transition-hint" class="transition-hint" aria-live="polite">正在从 Jira 读取当前可执行的工作流操作。</p>
+            </section>
             <h3 class="labels-title">标签</h3>
             <div id="detail-labels" class="labels"></div>
           </aside>

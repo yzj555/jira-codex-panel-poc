@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = "0.16.1";
+  const VERSION = "0.17.0";
   const ENTRY_ID = "jira-codex-poc-entry";
   const PAGE_ID = "jira-codex-poc-page";
   const STYLE_ID = "jira-codex-poc-style";

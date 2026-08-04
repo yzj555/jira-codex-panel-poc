@@ -98,6 +98,21 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
         }
       }));
     }
+    if (request.method === "GET" && request.url === "/rest/api/2/issue/REAL-9/transitions?expand=transitions.fields") {
+      response.writeHead(200, { "content-type": "application/json" });
+      return response.end(JSON.stringify({
+        transitions: [{
+          id: "21",
+          name: "开始处理",
+          to: { id: "3", name: "In Progress", statusCategory: { key: "indeterminate" } },
+          fields: {}
+        }]
+      }));
+    }
+    if (request.method === "POST" && request.url === "/rest/api/2/issue/REAL-9/transitions") {
+      response.writeHead(204);
+      return response.end();
+    }
     if (request.url === "/rest/api/2/attachment/900") {
       response.writeHead(200, { "content-type": "application/json" });
       return response.end(JSON.stringify({
@@ -201,6 +216,21 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
     assert.equal(issuePayload.issues[0].collaborators[0].displayName, "协同用户");
     assert.equal(issuePayload.issues[0].attachments[0].downloadUrl, "/api/attachments/900");
 
+    const transitionsPayload = await fetch(`${baseUrl}/api/issues/REAL-9/transitions`).then((response) => response.json());
+    assert.equal(transitionsPayload.transitions.length, 1);
+    assert.equal(transitionsPayload.transitions[0].to.name, "In Progress");
+    assert.equal(transitionsPayload.transitions[0].requiresInput, false);
+
+    const transitionResponse = await fetch(`${baseUrl}/api/issues/REAL-9/transitions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transitionId: "21" })
+    });
+    const transitionedPayload = await transitionResponse.json();
+    assert.equal(transitionResponse.status, 200, JSON.stringify(transitionedPayload));
+    assert.equal(transitionedPayload.key, "REAL-9");
+    assert.equal(transitionedPayload.transition.to.name, "In Progress");
+
     const sheetDirectory = await fetch(`${baseUrl}/api/jxl/sheets`).then((response) => response.json());
     assert.equal(sheetDirectory.total, 1);
     assert.equal(sheetDirectory.sheets[0].title, "集成测试 Sheet");
@@ -231,6 +261,9 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
 
     const searchRequests = requests.filter((request) => request.url === "/rest/api/2/search");
     assert.equal(searchRequests.length, 3);
+    const transitionRequests = requests.filter((request) => request.url.includes("/rest/api/2/issue/REAL-9/transitions"));
+    assert.equal(transitionRequests.length, 3);
+    assert.deepEqual(transitionRequests[2].body, { transition: { id: "21" } });
     assert.equal(requests.every((request) => request.authorization === "Bearer dpapi-integration-token"), true);
     assert.equal(searchRequests[2].body.jql, "project = REAL ORDER BY updated DESC");
     assert.equal(searchRequests[2].body.maxResults, 20);
