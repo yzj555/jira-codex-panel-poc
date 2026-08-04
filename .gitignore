@@ -1,0 +1,14 @@
+.cdp-profile/
+.runtime/
+artifacts/
+node_modules/
+.installer-test/
+.env
+.env.*
+!.env.example
+*.log
+*.pid
+config.json
+install-metadata.json
+.DS_Store
+Thumbs.db

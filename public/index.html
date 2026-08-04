@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jira 任务面板</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">LOCAL WORKSPACE</div>
+          <div class="title-row">
+            <h1>Jira 任务</h1>
+            <span class="poc-badge">LIVE</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span id="health" class="health"><i></i><span id="health-label">正在初始化</span></span>
+          <button id="refresh" class="icon-button" type="button" aria-label="刷新 Jira 任务" title="刷新 Jira 任务">↻</button>
+          <button id="open-settings" class="icon-button" type="button" aria-label="配置 Jira" title="配置 Jira">⚙</button>
+          <button id="close-panel" class="icon-button" type="button" aria-label="关闭面板" title="返回 Codex">×</button>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="任务页面">
+        <div class="page-tabs" role="tablist" aria-label="Jira 任务视图">
+          <button class="page-tab active" data-view="inbox" type="button" role="tab" aria-selected="true">待我处理 <span id="inbox-count">0</span></button>
+          <button class="page-tab" data-view="sheets" type="button" role="tab" aria-selected="false">Jira Sheets <span id="sheets-count">0</span></button>
+          <button class="page-tab" data-view="history" type="button" role="tab" aria-selected="false">处理历史 <span id="history-count">0</span></button>
+        </div>
+        <div class="toolbar-right">
+          <label id="bug-monitor-control" class="bug-monitor-control" title="监控当前及之后出现的 Bug，并自动创建 Codex 分析对话">
+            <span class="bug-monitor-copy">
+              <strong>自动分析新 Bug</strong>
+              <small id="bug-monitor-state">已关闭</small>
+            </span>
+            <span class="switch-control">
+              <input id="bug-monitor-toggle" type="checkbox" role="switch" aria-label="自动分析新 Bug" />
+              <i aria-hidden="true"></i>
+            </span>
+          </label>
+          <span id="sync-summary" class="sync-summary"></span>
+          <label class="search">
+            <span aria-hidden="true">⌕</span>
+            <input id="search" type="search" placeholder="搜索 Issue" autocomplete="off" />
+          </label>
+        </div>
+      </section>
+
+      <div id="notice" class="notice" hidden>
+        <span id="notice-text"></span>
+        <button id="notice-action" type="button" hidden>打开配置</button>
+      </div>
+
+      <main id="board" class="board" aria-live="polite"></main>
+    </div>
+
+    <div id="backdrop" class="backdrop" hidden></div>
+    <section id="drawer" class="issue-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabindex="-1" hidden>
+      <header class="issue-modal-head">
+        <div>
+          <span id="detail-type" class="type-pill"></span>
+          <span id="detail-key" class="issue-key"></span>
+        </div>
+        <div class="issue-head-actions">
+          <a id="detail-link" class="jira-link" target="_blank" rel="noreferrer noopener">在 Jira 中打开 ↗</a>
+          <button id="close-drawer" class="icon-button" type="button" aria-label="关闭详情">×</button>
+        </div>
+      </header>
+
+      <div class="issue-modal-body">
+        <h2 id="detail-title"></h2>
+        <div class="issue-layout">
+          <div class="issue-main">
+            <section class="detail-section">
+              <h3>描述</h3>
+              <p id="detail-summary" class="detail-summary"></p>
+            </section>
+
+            <section class="detail-section">
+              <h3>协同处理人 <span id="collaborator-count" class="section-count">0</span></h3>
+              <div id="detail-collaborators" class="people-list"></div>
+            </section>
+
+            <section class="detail-section">
+              <h3>附件 <span id="attachment-count" class="section-count">0</span></h3>
+              <div id="detail-attachments" class="attachment-grid"></div>
+            </section>
+          </div>
+
+          <aside class="issue-sidebar" aria-label="任务信息">
+            <h3>任务信息</h3>
+            <dl class="metadata">
+              <div><dt>状态</dt><dd id="detail-status"></dd></div>
+              <div><dt>优先级</dt><dd id="detail-priority"></dd></div>
+              <div><dt>负责人</dt><dd id="detail-assignee"></dd></div>
+              <div><dt>类型</dt><dd id="detail-issue-type"></dd></div>
+              <div><dt>项目</dt><dd id="detail-project"></dd></div>
+              <div><dt>更新时间</dt><dd id="detail-updated"></dd></div>
+            </dl>
+            <h3 class="labels-title">标签</h3>
+            <div id="detail-labels" class="labels"></div>
+          </aside>
+        </div>
+      </div>
+
+      <footer class="issue-modal-footer">
+        <div id="binding-summary" class="binding-summary" hidden>
+          <span>当前绑定</span>
+          <strong id="binding-thread-title"></strong>
+        </div>
+        <div class="issue-action-group">
+          <button id="rebind-action" class="rebind-action" type="button" hidden>重新绑定对话</button>
+          <button id="primary-action" class="primary-action" type="button">开始处理</button>
+        </div>
+      </footer>
+    </section>
+
+    <div id="attachment-preview-backdrop" class="attachment-preview-backdrop" hidden></div>
+    <section id="attachment-preview-dialog" class="attachment-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="attachment-preview-title" tabindex="-1" hidden>
+      <header class="attachment-preview-head">
+        <div class="attachment-preview-heading">
+          <div class="eyebrow">JIRA ATTACHMENT</div>
+          <h2 id="attachment-preview-title"></h2>
+          <p id="attachment-preview-meta"></p>
+        </div>
+        <button id="close-attachment-preview" class="icon-button" type="button" aria-label="关闭附件预览">×</button>
+      </header>
+      <div id="attachment-preview-body" class="attachment-preview-body" aria-live="polite"></div>
+      <footer class="attachment-preview-footer">
+        <span id="attachment-preview-hint">预览内容来自 Jira，只读显示。</span>
+        <button id="download-preview-attachment" class="save-button" type="button" disabled>下载原文件</button>
+      </footer>
+    </section>
+
+    <div id="rebind-backdrop" class="rebind-backdrop" hidden></div>
+    <section id="rebind-dialog" class="rebind-dialog" role="dialog" aria-modal="true" aria-labelledby="rebind-title" hidden>
+      <form id="rebind-form">
+        <header class="rebind-head">
+          <div>
+            <div class="eyebrow">CODEX CONVERSATION</div>
+            <h2 id="rebind-title">重新绑定对话</h2>
+          </div>
+          <button id="close-rebind" class="icon-button" type="button" aria-label="关闭重新绑定">×</button>
+        </header>
+        <p class="rebind-description">可以改绑到已有对话，也可以新建一个任务对话。旧绑定会保留到新绑定成功为止。</p>
+        <div class="rebind-mode" role="radiogroup" aria-label="重新绑定方式">
+          <label><input type="radio" name="rebindMode" value="existing" checked />绑定已有会话</label>
+          <label><input type="radio" name="rebindMode" value="new" />新建会话</label>
+        </div>
+        <div id="rebind-existing-fields">
+          <label class="field">
+            <span>Codex 会话 ID</span>
+            <input id="rebind-thread-id" type="text" list="rebind-thread-options" placeholder="local:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false" autocomplete="off" />
+            <datalist id="rebind-thread-options"></datalist>
+            <small id="rebind-thread-preview">可从当前侧栏已有对话中选择。绑定后只跳转，不发送消息。</small>
+          </label>
+        </div>
+        <div id="rebind-new-fields" class="rebind-new-fields" hidden>
+          <strong>新建任务对话</strong>
+          <span id="rebind-new-project"></span>
+          <small>新会话创建后会自动发送首条“仅理解分析”消息，再用新会话 ID 覆盖旧绑定。</small>
+        </div>
+        <div id="rebind-status" class="settings-status" hidden></div>
+        <footer class="rebind-actions">
+          <button id="cancel-rebind" class="plain-button" type="button">取消</button>
+          <button id="confirm-rebind" class="save-button" type="submit">绑定并打开对话</button>
+        </footer>
+      </form>
+    </section>
+
+    <div id="settings-backdrop" class="settings-backdrop" hidden></div>
+    <section id="settings-dialog" class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+      <form id="settings-form">
+        <header class="settings-head">
+          <div>
+            <div class="eyebrow">PERSONAL CONNECTION</div>
+            <h2 id="settings-title">配置 Jira</h2>
+          </div>
+          <button id="close-settings" class="icon-button" type="button" aria-label="关闭配置">×</button>
+        </header>
+
+        <div class="form-grid">
+          <label class="field">
+            <span>部署类型</span>
+            <input id="deployment-label" type="text" value="Jira Data Center" readonly aria-readonly="true" />
+            <small>当前面板固定使用 Jira Data Center。</small>
+          </label>
+
+          <label class="field">
+            <span>默认 Codex 项目</span>
+            <select id="codex-project" name="codexProjectId">
+              <option value="">不绑定项目（普通对话）</option>
+            </select>
+            <small>选择项目后，新建的任务对话会归入该项目；留空则创建不带项目的普通对话。</small>
+          </label>
+
+          <label class="field field-wide">
+            <span>Jira 地址</span>
+            <input id="base-url" name="baseUrl" type="url" required placeholder="http://jira.company.com:8080" spellcheck="false" />
+          </label>
+
+          <label class="field field-wide">
+            <span id="token-label">Personal Access Token (PAT)</span>
+            <input id="token" name="token" type="password" placeholder="粘贴 Token" autocomplete="new-password" spellcheck="false" />
+            <small id="token-help">Token 会使用 Windows DPAPI 加密，仅当前 Windows 用户可解密。</small>
+          </label>
+
+          <div class="field field-wide">
+            <label for="wecom-webhook">企业微信机器人 Webhook（可选）</label>
+            <input id="wecom-webhook" name="wecomWebhook" type="password" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." autocomplete="new-password" spellcheck="false" />
+            <div class="field-help-row">
+              <small id="wecom-help">配置后，自动分析完成时会把结果推送到群机器人；留空则不推送。</small>
+              <label id="clear-wecom-wrap" class="clear-secret" hidden>
+                <input id="clear-wecom" type="checkbox" />
+                清除已保存的机器人
+              </label>
+            </div>
+          </div>
+
+          <label class="field field-wide">
+            <span>JQL</span>
+            <textarea id="jql" name="jql" rows="3" spellcheck="false"></textarea>
+            <small>活动任务跟随 CT 仪表盘筛选器 10103/10102；已完成任务按经办人或协同处理人查询，每个分区按加载上限分别获取。</small>
+          </label>
+
+          <label class="field field-wide">
+            <span>首条分析消息模板</span>
+            <textarea id="message-template" name="messageTemplate" rows="10" spellcheck="false"></textarea>
+            <small>支持 {{key}}、{{title}}、{{url}}、{{status}}、{{type}}、{{assignee}}、{{collaborators}}、{{description}}、{{attachments}}。系统会固定添加“仅允许理解分析、禁止执行修改”的约束；Bug 还会固定优先使用 ct-devops-tracer 做只读诊断。</small>
+          </label>
+
+          <label class="field">
+            <span>每个分区最多加载</span>
+            <input id="max-results" name="maxResults" type="number" min="1" max="200" step="1" />
+          </label>
+        </div>
+
+        <div id="settings-status" class="settings-status" hidden></div>
+        <footer class="settings-actions">
+          <button id="clear-settings" class="danger-button" type="button" hidden>清除配置</button>
+          <span class="action-spacer"></span>
+          <button id="cancel-settings" class="plain-button" type="button">取消</button>
+          <button id="save-settings" class="save-button" type="submit">保存并连接</button>
+        </footer>
+      </form>
+    </section>
+
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

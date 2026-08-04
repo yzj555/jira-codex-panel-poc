@@ -1,0 +1,17 @@
+{
+  "name": "jira-codex-panel-poc",
+  "version": "0.16.1",
+  "private": true,
+  "type": "module",
+  "description": "Windows Codex sidebar injection proof of concept for a local Jira task panel.",
+  "scripts": {
+    "server": "node server.mjs",
+    "inject": "node injector.mjs --watch",
+    "inject:once": "node injector.mjs --once",
+    "capture": "node scripts/capture-screenshot.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
