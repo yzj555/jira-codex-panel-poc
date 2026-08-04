@@ -105,6 +105,117 @@ test("Jira Data Center 使用 PAT Bearer 调用 REST v2 搜索", async () => {
   assert.equal(JSON.parse(request.options.body).startAt, 0);
 });
 
+test("读取 Jira 当前用户可执行的状态流转，并标记需要额外字段的操作", async () => {
+  let request;
+  const jira = createJiraClient({
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify({
+        transitions: [{
+          id: "21",
+          name: "开始处理",
+          to: { id: "3", name: "程序处理", statusCategory: { key: "indeterminate" } },
+          fields: {}
+        }, {
+          id: "31",
+          name: "完成",
+          to: { id: "6", name: "完成", statusCategory: { key: "done" } },
+          fields: {
+            resolution: { name: "解决结果", required: true, hasDefaultValue: false }
+          }
+        }]
+      }), { status: 200 });
+    }
+  });
+
+  const result = await jira.fetchTransitions({
+    deployment: "data_center",
+    baseUrl: "https://jira.example.com",
+    token: "dc-pat"
+  }, "demo-42");
+
+  assert.equal(request.url, "https://jira.example.com/rest/api/2/issue/DEMO-42/transitions?expand=transitions.fields");
+  assert.equal(request.options.method, "GET");
+  assert.equal(request.options.headers.authorization, "Bearer dc-pat");
+  assert.deepEqual(result.transitions, [{
+    id: "21",
+    name: "开始处理",
+    to: { id: "3", name: "程序处理", group: "in_progress", category: "indeterminate" },
+    requiresInput: false,
+    requiredFields: []
+  }, {
+    id: "31",
+    name: "完成",
+    to: { id: "6", name: "完成", group: "done", category: "done" },
+    requiresInput: true,
+    requiredFields: [{ id: "resolution", name: "解决结果" }]
+  }]);
+});
+
+test("执行 Jira 状态流转前重新校验可用操作，并只提交 transition ID", async () => {
+  const requests = [];
+  const jira = createJiraClient({
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      if (options.method === "GET") {
+        return new Response(JSON.stringify({
+          transitions: [{
+            id: "21",
+            name: "开始处理",
+            to: { id: "3", name: "程序处理", statusCategory: { key: "indeterminate" } },
+            fields: {}
+          }]
+        }), { status: 200 });
+      }
+      return new Response(null, { status: 204 });
+    }
+  });
+
+  const result = await jira.executeTransition({
+    deployment: "data_center",
+    baseUrl: "https://jira.example.com",
+    token: "dc-pat"
+  }, "DEMO-42", "21");
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].url, "https://jira.example.com/rest/api/2/issue/DEMO-42/transitions");
+  assert.equal(requests[1].options.method, "POST");
+  assert.equal(requests[1].options.headers.authorization, "Bearer dc-pat");
+  assert.deepEqual(JSON.parse(requests[1].options.body), { transition: { id: "21" } });
+  assert.equal(result.transition.to.name, "程序处理");
+});
+
+test("需要额外字段的 Jira 状态流转不会提交不完整请求", async () => {
+  let calls = 0;
+  const jira = createJiraClient({
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(JSON.stringify({
+        transitions: [{
+          id: "31",
+          name: "完成",
+          to: { id: "6", name: "完成", statusCategory: { key: "done" } },
+          fields: {
+            resolution: { name: "解决结果", required: true, hasDefaultValue: false }
+          }
+        }]
+      }), { status: 200 });
+    }
+  });
+
+  await assert.rejects(
+    jira.executeTransition({
+      deployment: "data_center",
+      baseUrl: "https://jira.example.com",
+      token: "dc-pat"
+    }, "DEMO-42", "31"),
+    (error) => error instanceof JiraApiError
+      && error.code === "JIRA_TRANSITION_REQUIRES_INPUT"
+      && error.message.includes("解决结果")
+  );
+  assert.equal(calls, 1);
+});
+
 test("Jira 认证错误不会把 Token 写入错误消息", async () => {
   const jira = createJiraClient({
     fetchImpl: async () => new Response("", { status: 401 })
