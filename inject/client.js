@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = "0.19.0";
+  const VERSION = "0.19.1";
   const ENTRY_ID = "jira-codex-poc-entry";
   const PAGE_ID = "jira-codex-poc-page";
   const STYLE_ID = "jira-codex-poc-style";
@@ -40,6 +40,27 @@
     "error-soft": "--color-background-status-error",
     warning: "--color-icon-warning",
     "warning-soft": "--color-background-status-warning"
+  };
+  const THEME_FALLBACK_TOKENS = {
+    light: {
+      bg: "#f6f7f8", surface: "#ffffff", "surface-under": "#fafbfc", elevated: "#ffffff",
+      control: "#ffffff", muted: "#f0f1f2", hover: "#f4f6f8", text: "#202124",
+      "text-secondary": "#5f6670", "text-muted": "#8b9198", border: "#e0e3e6",
+      "border-strong": "#cfd5dc", accent: "#315bb4", "accent-soft": "#edf3ff",
+      "on-accent": "#ffffff", button: "#202124", "on-button": "#ffffff", success: "#2f8156",
+      "success-soft": "#eaf7ef", error: "#ad4444", "error-soft": "#fff1f1",
+      warning: "#dea64d", "warning-soft": "#fff6e8"
+    },
+    dark: {
+      bg: "#18191b", surface: "#202123", "surface-under": "#1c1d1f", elevated: "#242528",
+      control: "#292a2d", muted: "#2d2f33", hover: "#34363a", text: "#f2f3f5",
+      "text-secondary": "#c0c4ca", "text-muted": "#8f969f", border: "rgba(255,255,255,.10)",
+      "border-strong": "rgba(255,255,255,.17)", accent: "#73a7ff",
+      "accent-soft": "rgba(73,124,217,.20)", "on-accent": "#ffffff", button: "#f2f3f5",
+      "on-button": "#18191b", success: "#62cf91", "success-soft": "rgba(53,170,102,.17)",
+      error: "#ff8c82", "error-soft": "rgba(210,68,68,.18)", warning: "#f1b35d",
+      "warning-soft": "rgba(205,135,42,.18)"
+    }
   };
 
   /*__JIRA_CODEX_NAVIGATION_HELPERS__*/
@@ -170,35 +191,102 @@
     return normalized && normalized.length <= 160 && !/[;{}<>]/.test(normalized) ? normalized : "";
   }
 
+  function themeTokenRgb(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (/^#[0-9a-f]{3,8}$/i.test(normalized)) {
+      const hex = normalized.slice(1);
+      const expanded = hex.length === 3 || hex.length === 4
+        ? hex.slice(0, 3).split("").map((character) => character + character).join("")
+        : hex.slice(0, 6);
+      return [0, 2, 4].map((index) => Number.parseInt(expanded.slice(index, index + 2), 16));
+    }
+    if (!/^rgba?\(/i.test(normalized)) return null;
+    const channels = normalized.match(/[\d.]+/g)?.slice(0, 3).map(Number) || [];
+    return channels.length === 3 && channels.every(Number.isFinite) ? channels : null;
+  }
+
+  function themeTokenLuminance(value) {
+    const rgb = themeTokenRgb(value);
+    if (!rgb) return null;
+    const channels = rgb.map((channel) => {
+      const normalized = Math.max(0, Math.min(255, channel)) / 255;
+      return normalized <= 0.03928
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  }
+
+  function themeTokenContrast(background, foreground) {
+    const backgroundLuminance = themeTokenLuminance(background);
+    const foregroundLuminance = themeTokenLuminance(foreground);
+    if (backgroundLuminance === null || foregroundLuminance === null) return null;
+    const high = Math.max(backgroundLuminance, foregroundLuminance);
+    const low = Math.min(backgroundLuminance, foregroundLuminance);
+    return (high + 0.05) / (low + 0.05);
+  }
+
+  function normalizeCodexThemeTokens(theme, rawTokens) {
+    const surfaceLuminance = themeTokenLuminance(rawTokens.surface || rawTokens.bg);
+    const surfaceMatchesTheme = surfaceLuminance === null
+      || (theme === "dark" ? surfaceLuminance < 0.5 : surfaceLuminance >= 0.5);
+    if (!surfaceMatchesTheme) return { tokens: {}, tokenSource: "fallback" };
+
+    const tokens = { ...rawTokens };
+    const buttonContrast = themeTokenContrast(tokens.button, tokens["on-button"]);
+    if (buttonContrast !== null && buttonContrast < 4.5) {
+      delete tokens.button;
+      delete tokens["on-button"];
+      return { tokens, tokenSource: "host-with-button-fallback" };
+    }
+    return { tokens, tokenSource: "host" };
+  }
+
   function readCodexThemeSnapshot() {
     const styles = window.getComputedStyle(document.documentElement);
-    const tokens = Object.fromEntries(Object.entries(CODEX_THEME_TOKEN_SOURCES).flatMap(([key, source]) => {
+    const rawTokens = Object.fromEntries(Object.entries(CODEX_THEME_TOKEN_SOURCES).flatMap(([key, source]) => {
       const value = safeThemeToken(styles.getPropertyValue(source));
       return value ? [[key, value]] : [];
     }));
-    return { theme: codexThemeName(), tokens };
+    const theme = codexThemeName();
+    return { theme, ...normalizeCodexThemeTokens(theme, rawTokens) };
   }
 
   function applyThemeSnapshotToFrame(snapshot) {
     if (!frame) return;
+    const fallbackBackground = snapshot.theme === "dark" ? "#202123" : "#ffffff";
     frame.style.colorScheme = snapshot.theme;
-    frame.style.background = snapshot.tokens.surface || snapshot.tokens.bg || "transparent";
+    frame.style.background = snapshot.tokens.surface || snapshot.tokens.bg || fallbackBackground;
+    if (page) page.style.background = frame.style.background;
     try {
       const root = frame.contentDocument?.documentElement;
       if (!root) return;
       root.dataset.theme = snapshot.theme;
       root.style.colorScheme = snapshot.theme;
+      Object.keys(CODEX_THEME_TOKEN_SOURCES).forEach((key) => {
+        root.style.removeProperty(`--codex-theme-${key}`);
+      });
       Object.entries(snapshot.tokens).forEach(([key, value]) => {
         root.style.setProperty(`--codex-theme-${key}`, value);
       });
     } catch {}
   }
 
+  function applyThemeSnapshotToConversationFloat(snapshot) {
+    if (!conversationFloat) return;
+    conversationFloat.dataset.theme = snapshot.theme;
+    conversationFloat.dataset.themeSource = snapshot.tokenSource;
+    const fallbackTokens = THEME_FALLBACK_TOKENS[snapshot.theme] || THEME_FALLBACK_TOKENS.light;
+    Object.entries(CODEX_THEME_TOKEN_SOURCES).forEach(([key, source]) => {
+      conversationFloat.style.setProperty(source, snapshot.tokens[key] || fallbackTokens[key]);
+    });
+  }
+
   function syncCodexTheme(force = false) {
     const snapshot = readCodexThemeSnapshot();
     const fingerprint = JSON.stringify(snapshot);
     page?.setAttribute("data-theme", snapshot.theme);
-    conversationFloat?.setAttribute("data-theme", snapshot.theme);
+    applyThemeSnapshotToConversationFloat(snapshot);
     applyThemeSnapshotToFrame(snapshot);
     if (force || fingerprint !== currentThemeFingerprint) {
       currentThemeFingerprint = fingerprint;
@@ -619,10 +707,12 @@
 
   function createPage() {
     const themeSnapshot = readCodexThemeSnapshot();
+    const fallbackBackground = themeSnapshot.theme === "dark" ? "#202123" : "#ffffff";
     const element = document.createElement("section");
     element.id = PAGE_ID;
     element.hidden = true;
     element.dataset.theme = themeSnapshot.theme;
+    element.style.background = themeSnapshot.tokens.surface || themeSnapshot.tokens.bg || fallbackBackground;
     element.setAttribute(OWNED_ATTRIBUTE, "true");
     frame = document.createElement("iframe");
     if (EMBEDDED_PANEL) {
@@ -632,7 +722,7 @@
     frame.title = "Jira 任务面板 POC";
     frame.referrerPolicy = "no-referrer";
     frame.style.colorScheme = themeSnapshot.theme;
-    frame.style.background = themeSnapshot.tokens.surface || themeSnapshot.tokens.bg || "transparent";
+    frame.style.background = themeSnapshot.tokens.surface || themeSnapshot.tokens.bg || fallbackBackground;
     frame.addEventListener("load", () => {
       sendBindings();
       syncCodexTheme(true);
@@ -829,7 +919,7 @@
       document.body.appendChild(conversationFloat);
     }
     conversationFloat.hidden = active;
-    conversationFloat.dataset.theme = readCodexThemeSnapshot().theme;
+    applyThemeSnapshotToConversationFloat(readCodexThemeSnapshot());
     conversationFloat.dataset.issueKey = state.issueKey;
     conversationFloat.dataset.threadId = state.threadId;
     conversationFloat.replaceChildren();

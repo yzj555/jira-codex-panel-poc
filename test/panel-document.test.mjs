@@ -80,9 +80,43 @@ test("完整面板和会话浮窗跟随 Codex 深浅主题", async () => {
   assert.match(clientSource, /--color-token-main-surface-primary/);
   assert.match(clientSource, /sendPanelMessage\("theme", snapshot\)/);
   assert.match(clientSource, /attributeFilter: \["class", "style"\]/);
+  assert.match(clientSource, /normalizeCodexThemeTokens/);
+  assert.match(clientSource, /surfaceMatchesTheme/);
+  assert.match(clientSource, /buttonContrast < 4\.5/);
+  assert.match(clientSource, /tokenSource: "fallback"/);
   assert.match(appSource, /message\.type === "theme"/);
   assert.match(appSource, /--codex-theme-\$\{key\}/);
   assert.match(styles, /:root\[data-theme="dark"\]/);
   assert.match(styles, /--panel-bg: var\(--codex-theme-bg/);
   assert.match(styles, /Codex host theme bridge/);
+});
+
+test("主题桥接拒绝与深浅模式冲突或低对比度的宿主令牌", async () => {
+  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
+  const helperStart = clientSource.indexOf("  function themeTokenRgb");
+  const helperEnd = clientSource.indexOf("  function readCodexThemeSnapshot");
+  const helperSource = clientSource.slice(helperStart, helperEnd);
+  const normalize = new Function(`${helperSource}\nreturn normalizeCodexThemeTokens;`)();
+
+  assert.deepEqual(
+    normalize("dark", { surface: "#ffffff", text: "#1a1c1f", button: "#1a1c1f", "on-button": "#ffffff" }),
+    { tokens: {}, tokenSource: "fallback" }
+  );
+
+  const lowContrast = normalize("dark", {
+    surface: "#202123",
+    text: "#f2f3f5",
+    button: "rgb(242, 243, 245)",
+    "on-button": "#ffffff"
+  });
+  assert.equal(lowContrast.tokenSource, "host-with-button-fallback");
+  assert.equal(lowContrast.tokens.text, "#f2f3f5");
+  assert.equal(lowContrast.tokens.button, undefined);
+  assert.equal(lowContrast.tokens["on-button"], undefined);
+
+  assert.equal(normalize("light", {
+    surface: "#ffffff",
+    button: "#1a1c1f",
+    "on-button": "#ffffff"
+  }).tokenSource, "host");
 });

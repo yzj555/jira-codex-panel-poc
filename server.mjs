@@ -18,7 +18,7 @@ import { materializeAttachment } from "./lib/attachment-cache.mjs";
 import { createAutomationManager } from "./lib/automation-manager.mjs";
 import { createCodexSessionReader } from "./lib/codex-session-reader.mjs";
 
-const VERSION = "0.19.0";
+const VERSION = "0.19.1";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
