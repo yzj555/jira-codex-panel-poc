@@ -28,6 +28,7 @@ const cloudIssue = {
       thumbnail: "https://demo.atlassian.net/secure/thumbnail/900"
     }],
     labels: ["codex"],
+    fixVersions: [{ name: "DevelopV4" }],
     project: { key: "DEMO", name: "演示项目" },
     created: "2026-08-01T00:00:00.000+0000",
     updated: "2026-08-04T00:00:00.000+0000"
@@ -62,6 +63,7 @@ test("Jira Cloud 使用邮箱和 API Token 调用 REST v3 增强搜索", async (
   assert.equal(result.issues[0].status, "in_progress");
   assert.equal(result.issues[0].summary, "来自 ADF 的描述");
   assert.equal(result.issues[0].url, "https://demo.atlassian.net/browse/DEMO-7");
+  assert.deepEqual(result.issues[0].fixVersions, ["DevelopV4"]);
   assert.deepEqual(result.issues[0].collaborators, [{
     displayName: "协同用户",
     name: "collaborator",
@@ -80,6 +82,7 @@ test("Jira Cloud 使用邮箱和 API Token 调用 REST v3 增强搜索", async (
   const requestedFields = JSON.parse(request.options.body).fields;
   assert.equal(requestedFields.includes("attachment"), true);
   assert.equal(requestedFields.includes("customfield_10600"), true);
+  assert.equal(requestedFields.includes("fixVersions"), true);
 });
 
 test("Jira Data Center 使用 PAT Bearer 调用 REST v2 搜索", async () => {

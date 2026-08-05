@@ -64,6 +64,26 @@ test("Codex 宿主注入脚本包含会话 Jira 浮窗并可编译", async () =>
 
   assert.doesNotThrow(() => new Function(compiled));
   assert.match(clientSource, /jira-codex-conversation-float/);
+  assert.match(clientSource, /jira-codex-svn-modal/);
+  assert.match(clientSource, /\/api\/svn\/reviews/);
+  assert.match(clientSource, /确认提交到 SVN/);
+  assert.match(clientSource, /我已人工查看文件改动和审核报告/);
+  assert.match(clientSource, /本次提交方式/);
+  assert.match(clientSource, /人工审核（默认）/);
+  assert.match(clientSource, /Codex 辅助审查/);
+  assert.match(clientSource, /可能耗时较长/);
+  assert.match(clientSource, /必须等待审查完成，或主动取消并降级为人工审核/);
+  assert.match(clientSource, /jira-codex-svn-mode-options/);
+  assert.match(clientSource, /codexReviewEnabled: false/);
+  assert.match(clientSource, /const preserveBodyScroll = state\.renderedViewKey === nextViewKey/);
+  assert.match(clientSource, /state\.bodyScrollTop = body\.scrollTop/);
+  assert.match(clientSource, /nextTree\.scrollTop = treeScrollTop/);
+  assert.match(clientSource, /nextPreview\.scrollLeft = previewScrollLeft/);
+  assert.match(clientSource, /function reconcileIssueBinding/);
+  assert.match(clientSource, /uiThreadId: provisionalThreadId/);
+  assert.match(clientSource, /resolveCodexThreadId\(provisionalThreadId/);
+  assert.match(clientSource, /bindingMatchesThread\(binding, row\.getAttribute/);
+  assert.match(clientSource, /manual_review/);
   assert.match(clientSource, /conversationBindingForThread/);
   assert.match(clientSource, /\/api\/issues\/\$\{encodeURIComponent\(state\.issueKey\)\}/);
   assert.match(injectorSource, /new Set\(\["GET", "POST", "PUT", "DELETE"\]\)/);
@@ -89,6 +109,48 @@ test("完整面板和会话浮窗跟随 Codex 深浅主题", async () => {
   assert.match(styles, /:root\[data-theme="dark"\]/);
   assert.match(styles, /--panel-bg: var\(--codex-theme-bg/);
   assert.match(styles, /Codex host theme bridge/);
+});
+
+test("SVN 选择器按项目构建文件树、分类变更并加载单文件差异", async () => {
+  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
+  const helperStart = clientSource.indexOf("  function svnChangeSelectable");
+  const helperEnd = clientSource.indexOf("  function svnVerdictLabel");
+  const helperSource = clientSource.slice(helperStart, helperEnd);
+  const helpers = new Function(`${helperSource}\nreturn { svnChangeSelectable, svnChangeCategory, buildSvnChangeTree };`)();
+  const context = { workingCopy: { scopePath: "server/project", scopeName: "project" } };
+  const changes = [
+    { path: "server/project/src/player.go", item: "modified", kind: "file", recommended: true },
+    { path: "server/project/conf/club.json", item: "modified", kind: "file", preExisting: true },
+    { path: "server/project/tmp/output.log", item: "unversioned", kind: "unknown" }
+  ];
+  const tree = helpers.buildSvnChangeTree(changes, context);
+
+  assert.equal(helpers.svnChangeSelectable(changes[0]), true);
+  assert.equal(helpers.svnChangeCategory(changes[0]), "reviewable");
+  assert.equal(helpers.svnChangeCategory(changes[1]), "blocked");
+  assert.equal(helpers.svnChangeCategory(changes[2]), "unmanaged");
+  assert.equal(tree.name, "project");
+  assert.deepEqual(tree.children.map((node) => node.name), ["conf", "src", "tmp"]);
+  assert.deepEqual(tree.selectablePaths, ["server/project/src/player.go"]);
+  assert.match(clientSource, /\/api\/svn\/diff\?threadId=/);
+  assert.match(clientSource, /系统已推荐并初选/);
+  assert.match(clientSource, /jira-codex-svn-change-browser/);
+});
+
+test("SVN 语义审查在当前绑定会话启动真实 turn 并支持人工取消降级", async () => {
+  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
+  assert.match(clientSource, /function dispatchCurrentConversationSvnReview/);
+  assert.match(clientSource, /\/api\/svn\/reviews\/\$\{encodeURIComponent\(review\.id\)\}\/dispatch/);
+  assert.match(clientSource, /startCodexThreadTurn/);
+  assert.match(clientSource, /attachments: \(review\.artifacts \|\| \[\]\)/);
+  assert.match(clientSource, /interruptCodexThreadTurn/);
+  assert.match(clientSource, /auditTurnId/);
+  assert.match(clientSource, /function cancelSvnCodexReview/);
+  assert.match(clientSource, /返回文件选择并重新扫描/);
+  assert.match(clientSource, /function restartSvnReviewFromLatest/);
+  assert.match(clientSource, /resetSvnSelectionForReload/);
+  assert.doesNotMatch(clientSource, /function dispatchIndependentSvnAudit/);
+  assert.doesNotMatch(clientSource, /attachLocalFilesToComposer\(composerInput, artifacts\)/);
 });
 
 test("主题桥接拒绝与深浅模式冲突或低对比度的宿主令牌", async () => {

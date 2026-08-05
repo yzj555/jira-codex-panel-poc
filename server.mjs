@@ -17,8 +17,13 @@ import { createJxlClient } from "./jxl-client.mjs";
 import { materializeAttachment } from "./lib/attachment-cache.mjs";
 import { createAutomationManager } from "./lib/automation-manager.mjs";
 import { createCodexSessionReader } from "./lib/codex-session-reader.mjs";
+import {
+  buildSvnCommitMessage,
+  createSvnReviewManager,
+  SvnReviewError
+} from "./lib/svn-review-manager.mjs";
 
-const VERSION = "0.19.1";
+const VERSION = "0.24.6";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -29,10 +34,20 @@ const jira = createJiraClient();
 const jxl = createJxlClient();
 const sessionsRoot = process.env.CODEX_SESSIONS_DIR
   || join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions");
+const sessionReader = createCodexSessionReader({ sessionsRoot });
 const automation = createAutomationManager({
   stateFile: process.env.JIRA_CODEX_AUTOMATION_FILE || join(dirname(configStore.configFile), "automation.json"),
   configStore,
-  sessionReader: createCodexSessionReader({ sessionsRoot })
+  sessionReader
+});
+const svnReviews = createSvnReviewManager({
+  sessionReader,
+  baselineFile: process.env.JIRA_CODEX_SVN_BASELINES_FILE
+    || join(dirname(configStore.configFile), "svn-baselines.json"),
+  reviewStateFile: process.env.JIRA_CODEX_SVN_REVIEWS_FILE
+    || join(dirname(configStore.configFile), "svn-reviews.json"),
+  reviewArtifactsRoot: process.env.JIRA_CODEX_SVN_REVIEW_ARTIFACTS_DIR
+    || join(attachmentCacheRoot, "svn-reviews")
 });
 
 const staticFiles = new Map([
@@ -152,6 +167,191 @@ async function handleApi(request, response, url) {
       })
       : await jira.fetchIssues(config);
     return json(response, 200, result);
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/svn/context") {
+    const config = await configStore.load();
+    if (!config.configured || !config.token) {
+      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
+        code: "JIRA_NOT_CONFIGURED",
+        statusCode: 428
+      });
+    }
+    const issueKey = url.searchParams.get("issueKey");
+    const threadId = url.searchParams.get("threadId");
+    const issue = await jira.fetchIssue(config, issueKey);
+    return json(response, 200, {
+      context: await svnReviews.inspect({ threadId, issue }),
+      message: buildSvnCommitMessage(issue),
+      history: svnReviews.listCommitHistory({ threadId, issueKey }),
+      review: url.searchParams.get("includeReview") === "0"
+        ? null
+        : svnReviews.findLatestReview({ threadId, issueKey })
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/svn/reviews/latest") {
+    await svnReviews.poll();
+    return json(response, 200, {
+      review: svnReviews.findLatestReview({
+        threadId: url.searchParams.get("threadId"),
+        issueKey: url.searchParams.get("issueKey")
+      })
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/svn/diff") {
+    return json(response, 200, {
+      preview: await svnReviews.previewDiff({
+        threadId: url.searchParams.get("threadId"),
+        path: url.searchParams.get("path")
+      })
+    });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/svn/diff/open") {
+    const input = await readJson(request);
+    return json(response, 200, {
+      result: await svnReviews.openExternalDiff({
+        threadId: input.threadId,
+        path: input.path
+      })
+    });
+  }
+
+  if (request.method === "PUT" && url.pathname === "/api/svn/baselines") {
+    const input = await readJson(request);
+    return json(response, 200, {
+      baseline: await svnReviews.recordBaseline({
+        threadId: input.threadId,
+        issueKey: input.issueKey,
+        boundAt: input.boundAt
+      })
+    });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/svn/reviews") {
+    const input = await readJson(request);
+    const config = await configStore.load();
+    if (!config.configured || !config.token) {
+      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
+        code: "JIRA_NOT_CONFIGURED",
+        statusCode: 428
+      });
+    }
+    const issue = await jira.fetchIssue(config, input.issueKey);
+    return json(response, 201, await svnReviews.createReview({
+      threadId: input.threadId,
+      activeThreadId: input.activeThreadId,
+      issue,
+      selectedPaths: input.selectedPaths,
+      summary: input.summary,
+      codexReviewEnabled: input.codexReviewEnabled === true
+    }));
+  }
+
+  const svnReviewMatch = request.method === "GET"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})$/i)
+    : null;
+  if (svnReviewMatch) {
+    await svnReviews.poll();
+    return json(response, 200, { review: svnReviews.getReview(svnReviewMatch[1]) });
+  }
+
+  const svnCancelMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/cancel$/i)
+    : null;
+  if (svnCancelMatch) {
+    const input = await readJson(request);
+    return json(response, 200, {
+      review: await svnReviews.cancel(svnCancelMatch[1], input.message)
+    });
+  }
+
+  const svnDispatchMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/dispatch$/i)
+    : null;
+  if (svnDispatchMatch) {
+    const input = await readJson(request);
+    return json(response, 200, {
+      review: await svnReviews.beginDispatch(svnDispatchMatch[1], {
+        auditThreadId: input.auditThreadId,
+        auditTurnId: input.auditTurnId
+      })
+    });
+  }
+
+  const svnDispatchFailedMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/dispatch-failed$/i)
+    : null;
+  if (svnDispatchFailedMatch) {
+    const input = await readJson(request);
+    return json(response, 200, {
+      review: await svnReviews.failDispatch(svnDispatchFailedMatch[1], input.message)
+    });
+  }
+
+  const svnRetryMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/retry$/i)
+    : null;
+  if (svnRetryMatch) {
+    const input = await readJson(request);
+    const config = await configStore.load();
+    const issue = await jira.fetchIssue(config, input.issueKey);
+    return json(response, 200, await svnReviews.retryDispatch(svnRetryMatch[1], issue));
+  }
+
+  const svnConfirmMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/confirm$/i)
+    : null;
+  if (svnConfirmMatch) {
+    const input = await readJson(request);
+    const config = await configStore.load();
+    const issue = await jira.fetchIssue(config, input.issueKey);
+    return json(response, 200, await svnReviews.confirm(svnConfirmMatch[1], {
+      issue,
+      issueKey: input.issueKey,
+      reviewed: input.reviewed,
+      riskAcknowledged: input.riskAcknowledged,
+      overlapAcknowledged: input.overlapAcknowledged
+    }));
+  }
+
+  const svnCommitMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/commit$/i)
+    : null;
+  if (svnCommitMatch) {
+    const input = await readJson(request);
+    const config = await configStore.load();
+    const issue = await jira.fetchIssue(config, input.issueKey);
+    return json(response, 200, {
+      review: await svnReviews.commit(svnCommitMatch[1], {
+        issue,
+        confirmationToken: input.confirmationToken
+      })
+    });
+  }
+
+  const svnReconcileMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/reconcile$/i)
+    : null;
+  if (svnReconcileMatch) {
+    return json(response, 200, {
+      review: await svnReviews.reconcileCommit(svnReconcileMatch[1])
+    });
+  }
+
+  const svnAbandonMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/abandon$/i)
+    : null;
+  if (svnAbandonMatch) {
+    const input = await readJson(request);
+    return json(response, 200, {
+      review: await svnReviews.abandon(svnAbandonMatch[1], {
+        acknowledged: input.acknowledged,
+        message: input.message
+      })
+    });
   }
 
   const issueMatch = request.method === "GET"
@@ -315,7 +515,9 @@ async function handleRequest(request, response) {
 
 const server = createServer((request, response) => {
   handleRequest(request, response).catch((error) => {
-    const known = error instanceof ConfigurationError || error instanceof JiraApiError;
+    const known = error instanceof ConfigurationError
+      || error instanceof JiraApiError
+      || error instanceof SvnReviewError;
     const statusCode = known ? error.statusCode : 500;
     console.error(`[jira-poc] ${request.method} ${request.url}: ${error.code || error.name}: ${error.message}`);
     if (response.headersSent) return response.destroy(error);
@@ -328,16 +530,20 @@ const server = createServer((request, response) => {
   });
 });
 
+await svnReviews.initialize();
+
 server.listen(port, host, () => {
   automation.start();
+  svnReviews.start();
   console.log(`[jira-poc] panel server: http://${host}:${port}`);
   console.log(`[jira-poc] credential store: ${configStore.configFile}`);
 });
 
-function shutdown() {
+async function shutdown() {
   automation.stop();
+  await svnReviews.stop();
   server.close(() => process.exit(0));
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());

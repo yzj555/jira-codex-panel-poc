@@ -219,8 +219,11 @@ if ($ordinaryCodexRunning) {
 }
 
 if ($LaunchAfterInstall) {
-  $launchProcess = Start-Process -FilePath $powerShellPath -ArgumentList $launcherArguments -Wait -PassThru
-  if ($launchProcess.ExitCode -ne 0) {
+  $launchProcess = Start-Process -FilePath $powerShellPath -ArgumentList $launcherArguments -PassThru
+  $launcherExited = $launchProcess.WaitForExit(30000)
+  if (-not $launcherExited) {
+    Write-Warning '安装已经完成，启动器仍在后台准备 Codex。可稍后从“Codex”快捷方式查看；安装器不再等待其派生的长期运行服务。'
+  } elseif ($launchProcess.ExitCode -ne 0) {
     Write-Warning "安装已经完成，但 Codex 尚未切换到 Jira 面板启动模式。请打开安装器创建的“Codex”快捷方式。启动器退出码：$($launchProcess.ExitCode)"
   }
 }

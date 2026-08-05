@@ -9,6 +9,7 @@ const ISSUE_FIELDS = [
   "customfield_10600",
   "labels",
   "project",
+  "fixVersions",
   "created",
   "updated"
 ];
@@ -155,6 +156,9 @@ function normalizeIssue(issue, baseUrl) {
     attachments,
     labels: Array.isArray(fields.labels) ? fields.labels.map(String) : [],
     projectName: fields.project?.name || fields.project?.key || "",
+    fixVersions: Array.isArray(fields.fixVersions)
+      ? fields.fixVersions.map((version) => String(version?.name || "").trim()).filter(Boolean)
+      : [],
     created: fields.created || null,
     updated: fields.updated || null,
     url: `${baseUrl}/browse/${encodeURIComponent(issue.key || "")}`
