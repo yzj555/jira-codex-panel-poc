@@ -7,6 +7,43 @@ import {
   summarizeIssueViews
 } from "/issue-views.js";
 
+const HOST_THEME_TOKEN_KEYS = [
+  "bg", "surface", "surface-under", "elevated", "control", "muted", "hover",
+  "text", "text-secondary", "text-muted", "border", "border-strong", "accent",
+  "accent-soft", "on-accent", "button", "on-button", "success", "success-soft",
+  "error", "error-soft", "warning", "warning-soft"
+];
+
+function safeHostThemeToken(value) {
+  const normalized = String(value || "").trim();
+  return normalized && normalized.length <= 160 && !/[;{}<>]/.test(normalized) ? normalized : "";
+}
+
+function applyHostTheme({ theme, tokens } = {}) {
+  const root = document.documentElement;
+  const resolvedTheme = theme === "dark" || theme === "light"
+    ? theme
+    : root.dataset.theme === "dark" || root.dataset.theme === "light"
+      ? root.dataset.theme
+      : window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+  root.dataset.theme = resolvedTheme;
+  root.style.colorScheme = resolvedTheme;
+  if (tokens && typeof tokens === "object") {
+    HOST_THEME_TOKEN_KEYS.forEach((key) => {
+      const value = safeHostThemeToken(tokens[key]);
+      if (value) root.style.setProperty(`--codex-theme-${key}`, value);
+      else root.style.removeProperty(`--codex-theme-${key}`);
+    });
+  }
+}
+
+applyHostTheme();
+if (window.parent === window) {
+  window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", (event) => {
+    applyHostTheme({ theme: event.matches ? "dark" : "light" });
+  });
+}
+
 const board = document.querySelector("#board");
 const drawer = document.querySelector("#drawer");
 const backdrop = document.querySelector("#backdrop");
@@ -1609,6 +1646,7 @@ window.addEventListener("message", (event) => {
   if (event.source !== window.parent) return;
   const message = event.data;
   if (!message || message.source !== "jira-codex-panel-host") return;
+  if (message.type === "theme") applyHostTheme(message);
   if (message.type === "bindings") {
     state.bindings = message.bindings && typeof message.bindings === "object" ? message.bindings : {};
     state.threads = Array.isArray(message.threads) ? message.threads : [];

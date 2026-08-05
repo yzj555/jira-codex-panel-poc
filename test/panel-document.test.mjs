@@ -68,3 +68,21 @@ test("Codex 宿主注入脚本包含会话 Jira 浮窗并可编译", async () =>
   assert.match(clientSource, /\/api\/issues\/\$\{encodeURIComponent\(state\.issueKey\)\}/);
   assert.match(injectorSource, /new Set\(\["GET", "POST", "PUT", "DELETE"\]\)/);
 });
+
+test("完整面板和会话浮窗跟随 Codex 深浅主题", async () => {
+  const [clientSource, appSource, styles] = await Promise.all([
+    readFile(new URL("../inject/client.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/styles.css", import.meta.url), "utf8")
+  ]);
+
+  assert.match(clientSource, /electron-dark/);
+  assert.match(clientSource, /--color-token-main-surface-primary/);
+  assert.match(clientSource, /sendPanelMessage\("theme", snapshot\)/);
+  assert.match(clientSource, /attributeFilter: \["class", "style"\]/);
+  assert.match(appSource, /message\.type === "theme"/);
+  assert.match(appSource, /--codex-theme-\$\{key\}/);
+  assert.match(styles, /:root\[data-theme="dark"\]/);
+  assert.match(styles, /--panel-bg: var\(--codex-theme-bg/);
+  assert.match(styles, /Codex host theme bridge/);
+});

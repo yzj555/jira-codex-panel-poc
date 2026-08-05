@@ -1,6 +1,6 @@
 # Jira Codex 任务面板
 
-> 当前版本：`0.18.0`<br>
+> 当前版本：`0.19.0`<br>
 > 运行环境：Windows Codex Desktop + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 
@@ -38,6 +38,10 @@ powershell -ExecutionPolicy Bypass -File .\installer\install.ps1
 > 安装器创建的“Codex”快捷方式已经包含面板需要的启动参数。Microsoft Store 原始入口无法被安全修改；从原始入口启动的普通 Codex 不会加载 Jira 面板。
 
 ## 页面说明
+
+### 主题适配
+
+完整 Jira 面板和会话右侧 Jira 浮窗都会实时跟随 Codex 的浅色/深色主题。主题切换时无需刷新面板或重启 Codex；面板会复用 Codex 当前的背景、文字、边框、强调色和状态色。仅在浏览器中单独打开本地面板时，才会按系统主题作为回退。
 
 工作台顶部包含三个页面级页签。
 

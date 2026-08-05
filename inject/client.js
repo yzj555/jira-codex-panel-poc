@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = "0.18.0";
+  const VERSION = "0.19.0";
   const ENTRY_ID = "jira-codex-poc-entry";
   const PAGE_ID = "jira-codex-poc-page";
   const STYLE_ID = "jira-codex-poc-style";
@@ -16,6 +16,31 @@
   const PANEL_DOCUMENT = window.__JIRA_CODEX_POC_PANEL_DOCUMENT__ || "";
   const EMBEDDED_PANEL = Boolean(PANEL_DOCUMENT);
   const BRIDGE_BINDING_NAME = window.__JIRA_CODEX_BRIDGE_BINDING__ || "__jiraCodexNodeRequest";
+  const CODEX_THEME_TOKEN_SOURCES = {
+    bg: "--color-token-bg-primary",
+    surface: "--color-token-main-surface-primary",
+    "surface-under": "--color-background-surface-under",
+    elevated: "--color-background-elevated-primary-opaque",
+    control: "--color-background-control-opaque",
+    muted: "--color-background-button-secondary",
+    hover: "--color-background-button-secondary-hover",
+    text: "--color-text-foreground",
+    "text-secondary": "--color-text-foreground-secondary",
+    "text-muted": "--color-text-foreground-tertiary",
+    border: "--color-border",
+    "border-strong": "--color-border-heavy",
+    accent: "--color-text-accent",
+    "accent-soft": "--color-background-accent",
+    "on-accent": "--color-text-on-accent",
+    button: "--color-background-button-primary",
+    "on-button": "--color-text-button-primary",
+    success: "--color-accent-green",
+    "success-soft": "--color-background-status-success",
+    error: "--color-decoration-deleted",
+    "error-soft": "--color-background-status-error",
+    warning: "--color-icon-warning",
+    "warning-soft": "--color-background-status-warning"
+  };
 
   /*__JIRA_CODEX_NAVIGATION_HELPERS__*/
   /*__JIRA_CODEX_PROMPT_HELPERS__*/
@@ -31,6 +56,8 @@
   let page = null;
   let frame = null;
   let observer = null;
+  let themeObserver = null;
+  let currentThemeFingerprint = "";
   let bindingTimer = null;
   let bugMonitorTimer = null;
   let bugMonitorRunning = false;
@@ -129,6 +156,57 @@
     }, EMBEDDED_PANEL ? "*" : PANEL_ORIGIN);
   }
 
+  function codexThemeName() {
+    const root = document.documentElement;
+    if (root.classList.contains("electron-dark")) return "dark";
+    if (root.classList.contains("electron-light")) return "light";
+    const colorScheme = window.getComputedStyle(root).colorScheme || "";
+    if (/\bdark\b/i.test(colorScheme) && !/\blight\b/i.test(colorScheme)) return "dark";
+    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+  }
+
+  function safeThemeToken(value) {
+    const normalized = String(value || "").trim();
+    return normalized && normalized.length <= 160 && !/[;{}<>]/.test(normalized) ? normalized : "";
+  }
+
+  function readCodexThemeSnapshot() {
+    const styles = window.getComputedStyle(document.documentElement);
+    const tokens = Object.fromEntries(Object.entries(CODEX_THEME_TOKEN_SOURCES).flatMap(([key, source]) => {
+      const value = safeThemeToken(styles.getPropertyValue(source));
+      return value ? [[key, value]] : [];
+    }));
+    return { theme: codexThemeName(), tokens };
+  }
+
+  function applyThemeSnapshotToFrame(snapshot) {
+    if (!frame) return;
+    frame.style.colorScheme = snapshot.theme;
+    frame.style.background = snapshot.tokens.surface || snapshot.tokens.bg || "transparent";
+    try {
+      const root = frame.contentDocument?.documentElement;
+      if (!root) return;
+      root.dataset.theme = snapshot.theme;
+      root.style.colorScheme = snapshot.theme;
+      Object.entries(snapshot.tokens).forEach(([key, value]) => {
+        root.style.setProperty(`--codex-theme-${key}`, value);
+      });
+    } catch {}
+  }
+
+  function syncCodexTheme(force = false) {
+    const snapshot = readCodexThemeSnapshot();
+    const fingerprint = JSON.stringify(snapshot);
+    page?.setAttribute("data-theme", snapshot.theme);
+    conversationFloat?.setAttribute("data-theme", snapshot.theme);
+    applyThemeSnapshotToFrame(snapshot);
+    if (force || fingerprint !== currentThemeFingerprint) {
+      currentThemeFingerprint = fingerprint;
+      sendPanelMessage("theme", snapshot);
+    }
+    return snapshot;
+  }
+
   function resolveHostFetch(response) {
     const pending = bridgeRequests.get(String(response?.id || ""));
     if (!pending) return;
@@ -222,6 +300,7 @@
       threads: availableThreads(),
       projects: availableProjects()
     });
+    syncCodexTheme(true);
   }
 
   function tryBindPendingIssue() {
@@ -266,9 +345,9 @@
         overflow: hidden !important;
         pointer-events: none !important;
       }
-      #${PAGE_ID} { position: absolute; inset: 0; z-index: 1; background: #f7f7f5; pointer-events: auto; }
+      #${PAGE_ID} { position: absolute; inset: 0; z-index: 1; background: var(--color-token-main-surface-primary, #f7f7f5); pointer-events: auto; }
       #${PAGE_ID}[hidden] { display: none !important; }
-      #${PAGE_ID} iframe { display: block; width: 100%; height: 100%; border: 0; background: #f7f7f5; }
+      #${PAGE_ID} iframe { display: block; width: 100%; height: 100%; border: 0; background: var(--color-token-main-surface-primary, #f7f7f5); }
       #${ENTRY_ID}[aria-current="page"] { background: var(--color-token-sidebar-surface-secondary, rgba(0,0,0,.06)); }
       #${CONVERSATION_FLOAT_ID} {
         position: fixed;
@@ -277,7 +356,7 @@
         z-index: 30;
         width: min(370px, calc(100vw - 32px));
         max-height: calc(100vh - 148px);
-        color: #202124;
+        color: var(--color-text-foreground, #202124);
         font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         pointer-events: auto;
       }
@@ -288,10 +367,10 @@
         flex-direction: column;
         max-height: calc(100vh - 148px);
         overflow: hidden;
-        border: 1px solid rgba(25, 28, 33, .14);
+        border: 1px solid var(--color-border-heavy, rgba(25, 28, 33, .14));
         border-radius: 14px;
-        background: rgba(255, 255, 255, .97);
-        box-shadow: 0 16px 44px rgba(18, 22, 29, .18), 0 2px 8px rgba(18, 22, 29, .08);
+        background: var(--color-background-elevated-primary-opaque, rgba(255, 255, 255, .97));
+        box-shadow: 0 16px 44px rgba(0, 0, 0, .24), 0 2px 8px rgba(0, 0, 0, .12);
         backdrop-filter: blur(16px);
       }
       .jira-codex-float-header,
@@ -307,26 +386,26 @@
         min-height: 50px;
         gap: 9px;
         padding: 9px 10px 9px 12px;
-        border-bottom: 1px solid rgba(25, 28, 33, .09);
+        border-bottom: 1px solid var(--color-border, rgba(25, 28, 33, .09));
       }
       .jira-codex-float-type {
         flex: 0 0 auto;
         padding: 2px 6px;
         border-radius: 6px;
-        color: #3157b7;
-        background: #edf2ff;
+        color: var(--color-text-accent, #3157b7);
+        background: var(--color-background-accent, #edf2ff);
         font-size: 11px;
         font-weight: 700;
       }
-      .jira-codex-float-type[data-type="bug"] { color: #b33b32; background: #fff0ed; }
-      .jira-codex-float-key { min-width: 0; color: #687080; font-size: 12px; font-weight: 700; }
+      .jira-codex-float-type[data-type="bug"] { color: var(--color-decoration-deleted, #b33b32); background: var(--color-background-status-error, #fff0ed); }
+      .jira-codex-float-key { min-width: 0; color: var(--color-text-foreground-secondary, #687080); font-size: 12px; font-weight: 700; }
       .jira-codex-float-actions { margin-left: auto; gap: 4px; }
       .jira-codex-float-icon-button,
       .jira-codex-float-button,
       .jira-codex-float-collapsed-button {
-        border: 1px solid rgba(25, 28, 33, .13);
-        color: #34383f;
-        background: #fff;
+        border: 1px solid var(--color-border-heavy, rgba(25, 28, 33, .13));
+        color: var(--color-text-foreground, #34383f);
+        background: var(--color-background-control-opaque, #fff);
         cursor: pointer;
       }
       .jira-codex-float-icon-button {
@@ -340,7 +419,7 @@
       }
       .jira-codex-float-icon-button:hover,
       .jira-codex-float-button:hover,
-      .jira-codex-float-collapsed-button:hover { background: #f3f4f6; }
+      .jira-codex-float-collapsed-button:hover { background: var(--color-background-button-secondary-hover, #f3f4f6); }
       .jira-codex-float-body { min-height: 0; padding: 14px; overflow: auto; overscroll-behavior: contain; }
       .jira-codex-float-title { margin: 0 0 10px; font-size: 16px; line-height: 1.4; font-weight: 700; }
       .jira-codex-float-status {
@@ -350,54 +429,54 @@
         padding: 3px 8px;
         overflow: hidden;
         border-radius: 999px;
-        color: #3157b7;
-        background: #edf2ff;
+        color: var(--color-text-accent, #3157b7);
+        background: var(--color-background-accent, #edf2ff);
         font-size: 12px;
         font-weight: 650;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
       .jira-codex-float-section { margin-top: 14px; }
-      .jira-codex-float-section-title { margin: 0 0 6px; color: #737b89; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+      .jira-codex-float-section-title { margin: 0 0 6px; color: var(--color-text-foreground-secondary, #737b89); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
       .jira-codex-float-description {
         max-height: 142px;
         margin: 0;
         padding: 10px;
         overflow: auto;
         border-radius: 9px;
-        color: #41464e;
-        background: #f6f7f8;
+        color: var(--color-text-foreground-secondary, #41464e);
+        background: var(--color-background-button-secondary, #f6f7f8);
         white-space: pre-wrap;
       }
       .jira-codex-float-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; }
       .jira-codex-float-meta-row { min-width: 0; align-items: flex-start; gap: 6px; }
-      .jira-codex-float-meta-label { flex: 0 0 auto; color: #878e99; }
-      .jira-codex-float-meta-value { min-width: 0; overflow: hidden; color: #41464e; text-overflow: ellipsis; white-space: nowrap; }
+      .jira-codex-float-meta-label { flex: 0 0 auto; color: var(--color-text-foreground-tertiary, #878e99); }
+      .jira-codex-float-meta-value { min-width: 0; overflow: hidden; color: var(--color-text-foreground-secondary, #41464e); text-overflow: ellipsis; white-space: nowrap; }
       .jira-codex-float-chip-list { display: flex; flex-wrap: wrap; gap: 5px; }
-      .jira-codex-float-chip { padding: 2px 7px; border: 1px solid #e2e5e9; border-radius: 999px; color: #4d5560; background: #fafafa; font-size: 12px; }
+      .jira-codex-float-chip { padding: 2px 7px; border: 1px solid var(--color-border, #e2e5e9); border-radius: 999px; color: var(--color-text-foreground-secondary, #4d5560); background: var(--color-background-surface-under, #fafafa); font-size: 12px; }
       .jira-codex-float-attachments { display: grid; gap: 6px; }
       .jira-codex-float-attachment {
         min-width: 0;
         gap: 8px;
         padding: 7px 9px;
-        border: 1px solid #e5e7ea;
+        border: 1px solid var(--color-border, #e5e7ea);
         border-radius: 8px;
-        color: #3a4452;
+        color: var(--color-text-foreground-secondary, #3a4452);
         text-decoration: none;
       }
-      .jira-codex-float-attachment:hover { background: #f7f8fa; }
+      .jira-codex-float-attachment:hover { background: var(--color-background-button-secondary-hover, #f7f8fa); }
       .jira-codex-float-attachment-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .jira-codex-float-attachment-size { flex: 0 0 auto; margin-left: auto; color: #949aa4; font-size: 11px; }
+      .jira-codex-float-attachment-size { flex: 0 0 auto; margin-left: auto; color: var(--color-text-foreground-tertiary, #949aa4); font-size: 11px; }
       .jira-codex-float-transition-row { align-items: stretch; gap: 7px; }
       .jira-codex-float-select {
         min-width: 0;
         flex: 1;
         height: 34px;
         padding: 0 8px;
-        border: 1px solid #d9dde3;
+        border: 1px solid var(--color-border-heavy, #d9dde3);
         border-radius: 8px;
-        color: #34383f;
-        background: #fff;
+        color: var(--color-text-foreground, #34383f);
+        background: var(--color-background-control-opaque, #fff);
       }
       .jira-codex-float-button {
         flex: 0 0 auto;
@@ -414,17 +493,17 @@
         align-items: center;
         gap: 8px;
         padding: 8px 12px;
-        border-top: 1px solid rgba(25, 28, 33, .09);
+        border-top: 1px solid var(--color-border, rgba(25, 28, 33, .09));
       }
-      .jira-codex-float-thread { min-width: 0; flex: 1; overflow: hidden; color: #878e99; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-      .jira-codex-float-link { flex: 0 0 auto; color: #3157b7; font-size: 12px; font-weight: 650; text-decoration: none; }
+      .jira-codex-float-thread { min-width: 0; flex: 1; overflow: hidden; color: var(--color-text-foreground-tertiary, #878e99); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+      .jira-codex-float-link { flex: 0 0 auto; color: var(--color-text-accent, #3157b7); font-size: 12px; font-weight: 650; text-decoration: none; }
       .jira-codex-float-link:hover { text-decoration: underline; }
       .jira-codex-float-loading,
       .jira-codex-float-error,
-      .jira-codex-float-empty { padding: 20px 4px; color: #717985; text-align: center; }
-      .jira-codex-float-error { color: #a33a32; }
-      .jira-codex-float-notice { margin: 0 0 10px; padding: 7px 9px; border-radius: 8px; color: #236943; background: #edf8f1; font-size: 12px; }
-      .jira-codex-float-hint { margin: 7px 0 0; color: #8b929d; font-size: 11px; }
+      .jira-codex-float-empty { padding: 20px 4px; color: var(--color-text-foreground-secondary, #717985); text-align: center; }
+      .jira-codex-float-error { color: var(--color-decoration-deleted, #a33a32); }
+      .jira-codex-float-notice { margin: 0 0 10px; padding: 7px 9px; border-radius: 8px; color: var(--color-accent-green, #236943); background: var(--color-background-status-success, #edf8f1); font-size: 12px; }
+      .jira-codex-float-hint { margin: 7px 0 0; color: var(--color-text-foreground-tertiary, #8b929d); font-size: 11px; }
       .jira-codex-float-collapsed-button {
         min-width: 178px;
         max-width: min(280px, calc(100vw - 32px));
@@ -435,7 +514,7 @@
         box-shadow: 0 8px 24px rgba(18, 22, 29, .16);
       }
       .jira-codex-float-collapsed-key { flex: 0 0 auto; font-weight: 750; }
-      .jira-codex-float-collapsed-status { min-width: 0; flex: 1; overflow: hidden; color: #747c88; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      .jira-codex-float-collapsed-status { min-width: 0; flex: 1; overflow: hidden; color: var(--color-text-foreground-secondary, #747c88); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
       @media (max-width: 760px) {
         #${CONVERSATION_FLOAT_ID} { top: 58px; right: 10px; width: min(330px, calc(100vw - 20px)); max-height: calc(100vh - 126px); }
         .jira-codex-float-card { max-height: calc(100vh - 126px); }
@@ -539,16 +618,25 @@
   }
 
   function createPage() {
+    const themeSnapshot = readCodexThemeSnapshot();
     const element = document.createElement("section");
     element.id = PAGE_ID;
     element.hidden = true;
+    element.dataset.theme = themeSnapshot.theme;
     element.setAttribute(OWNED_ATTRIBUTE, "true");
     frame = document.createElement("iframe");
-    if (EMBEDDED_PANEL) frame.srcdoc = PANEL_DOCUMENT;
+    if (EMBEDDED_PANEL) {
+      frame.srcdoc = PANEL_DOCUMENT.replace(/<html\b/i, `<html data-theme="${themeSnapshot.theme}"`);
+    }
     else frame.src = PANEL_URL;
     frame.title = "Jira 任务面板 POC";
     frame.referrerPolicy = "no-referrer";
-    frame.addEventListener("load", sendBindings);
+    frame.style.colorScheme = themeSnapshot.theme;
+    frame.style.background = themeSnapshot.tokens.surface || themeSnapshot.tokens.bg || "transparent";
+    frame.addEventListener("load", () => {
+      sendBindings();
+      syncCodexTheme(true);
+    });
     element.appendChild(frame);
     return element;
   }
@@ -741,6 +829,7 @@
       document.body.appendChild(conversationFloat);
     }
     conversationFloat.hidden = active;
+    conversationFloat.dataset.theme = readCodexThemeSnapshot().theme;
     conversationFloat.dataset.issueKey = state.issueKey;
     conversationFloat.dataset.threadId = state.threadId;
     conversationFloat.replaceChildren();
@@ -1573,7 +1662,7 @@
     const message = event.data;
     if (!message || message.source !== "jira-codex-panel-poc") return;
     if (message.type === "close") closePanel();
-    if (message.type === "get-bindings") sendBindings();
+    if (message.type === "get-bindings" || message.type === "ready") sendBindings();
     if (message.type === "open-task" && message.issue) {
       openIssueConversation(message.issue, message.prompt, message.projectId);
     }
@@ -1643,6 +1732,7 @@
       ensureEntry();
       if (active) mountActivePage();
       ensureConversationIssueFloat();
+      syncCodexTheme();
     });
   }
 
@@ -1656,12 +1746,14 @@
       conversationHintIssueKey: conversationThreadHint?.issueKey || "",
       conversationHintObserved: Boolean(conversationThreadHint?.observedThreadId),
       conversationAliasCount: conversationThreadAliases.size,
+      theme: codexThemeName(),
       active
     };
   }
 
   function destroy() {
     observer?.disconnect();
+    themeObserver?.disconnect();
     if (bindingTimer) window.clearInterval(bindingTimer);
     if (bugMonitorTimer) window.clearInterval(bugMonitorTimer);
     window.removeEventListener("message", onMessage);
@@ -1691,6 +1783,11 @@
     subtree: true,
     attributes: true,
     attributeFilter: ["data-app-action-sidebar-thread-active"]
+  });
+  themeObserver = new MutationObserver(() => syncCodexTheme());
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class", "style"]
   });
   bindingTimer = window.setInterval(() => {
     tryBindPendingIssue();
