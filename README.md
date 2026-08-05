@@ -1,6 +1,6 @@
 # Jira Codex 任务面板
 
-> 当前版本：`0.17.0`<br>
+> 当前版本：`0.18.0`<br>
 > 运行环境：Windows Codex Desktop + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 
@@ -134,6 +134,19 @@ Issue 详情包括：
 - 如果目标会话已经显示在侧栏，直接点击对应会话。
 - 如果目标会话不在当前侧栏，通过 Codex 原生任务导航按会话 ID 打开。
 - 不会再次发送首条消息。
+
+### 会话右侧 Jira 浮窗
+
+进入已绑定的 Codex 会话后，消息区右侧会自动显示当前 Issue 的轻量浮窗：
+
+- 浮窗固定在宿主层，不改变或挤压 Codex 消息区宽度。
+- 展示 Jira 原始状态、标题、负责人、优先级、项目、描述、协同处理人和附件入口。
+- 可刷新详情、打开 Jira 原页面，并执行当前用户可用且不要求额外字段的状态流转。
+- 可收起为 Issue Key 状态胶囊；同一 Codex 运行周期内再次进入该会话时保持收起状态。
+- 切换到未绑定会话、新对话或其他原生页面时会自动移除，不会残留上一张单子。
+- 打开完整“Jira 任务”工作台时暂时隐藏，返回绑定会话后恢复。
+
+浮窗按 Issue Key 直接读取 Jira 最新详情，不依赖该任务是否仍存在于当前看板筛选结果中。附件入口仍通过本机代理读取，Jira PAT 不会进入 Codex 页面。
 
 ### 重新绑定
 
@@ -306,7 +319,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-poc.ps1
 npm test
 ~~~
 
-测试覆盖 Jira 认证与字段映射、任务分类、Sheets 排序筛选、JXL 权限、附件缓存、内嵌文档、会话导航、配置加密以及自动分析结果推送。
+测试覆盖 Jira 认证与字段映射、单 Issue 详情、任务分类、Sheets 排序筛选、JXL 权限、附件缓存、内嵌文档、会话浮窗注入、会话导航、配置加密以及自动分析结果推送。
 
 ### 截图
 
@@ -325,7 +338,9 @@ flowchart LR
     Shortcut["安装器创建的 Codex 快捷方式"] --> Codex["Windows Codex Desktop<br/>CDP :47824"]
     Injector["injector.mjs"] <--> Codex
     Injector --> Panel["Codex 内嵌 Jira 面板<br/>srcdoc"]
+    Injector --> Float["对话右侧 Jira 浮窗"]
     Panel <-->|受限请求桥接| Injector
+    Float <-->|受限请求桥接| Injector
     Injector <-->|127.0.0.1| Server["本地服务<br/>server.mjs :47823"]
     Server --> Jira["Jira Data Center / JXL"]
     Server --> UserData["DPAPI 配置<br/>附件缓存 / 自动任务状态"]
@@ -341,10 +356,10 @@ Codex 的内容安全策略不允许主页面直接加载本机 HTTP iframe，�
 | --- | --- |
 | `server.mjs` | 本地静态页面和 API，仅监听 `127.0.0.1` |
 | `config-store.mjs` | 配置校验和 Windows DPAPI 密钥存储 |
-| `jira-client.mjs` | Jira REST 请求、Issue 字段和状态映射 |
+| `jira-client.mjs` | Jira REST 请求、单 Issue 详情、Issue 字段和状态映射 |
 | `jxl-client.mjs` | JXL Directory、分块数据及访问权限解析 |
 | `injector.mjs` | CDP 注入、内嵌文档组装和受限请求桥接 |
-| `inject/client.js` | Codex 侧栏入口、页面切换、会话绑定、附件挂载和自动 Bug 监控 |
+| `inject/client.js` | Codex 侧栏入口、页面切换、会话绑定、右侧 Jira 浮窗、附件挂载和自动 Bug 监控 |
 | `public/` | Jira 工作台界面、详情、Sheets 和消息模板 |
 | `lib/codex-navigation.mjs` | 按会话 ID 调用 Codex 原生任务导航 |
 | `lib/codex-session-reader.mjs` | 从 Codex 会话日志读取自动分析完成结果 |
@@ -390,7 +405,7 @@ Codex 的内容安全策略不允许主页面直接加载本机 HTTP iframe，�
 
 ## 安全与已知限制
 
-- Jira 写操作仅限用户在 Issue 详情中二次确认的状态流转；没有修改摘要、描述、评论或附件的接口。
+- Jira 写操作仅限用户在 Issue 详情或会话浮窗中二次确认的状态流转；没有修改摘要、描述、评论或附件的接口。
 - 状态流转提交前会重新校验 Jira 当前可用 transitions；要求额外字段的操作只能在 Jira 原页面完成。
 - 企业微信推送是另一项可选外部写操作，只有配置 Webhook 并启用自动分析后才会发生。
 - 这是非官方 Codex 注入方案，依赖客户端内部 DOM 和 RPC 资源；Codex 升级后可能需要更新适配。

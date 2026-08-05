@@ -41,6 +41,12 @@ function transitionEndpoint(config, issueKey, { expand = false } = {}) {
   return expand ? `${endpoint}?expand=transitions.fields` : endpoint;
 }
 
+function issueEndpoint(config, issueKey) {
+  const version = config.deployment === "data_center" ? "2" : "3";
+  return `${config.baseUrl}/rest/api/${version}/issue/${encodeURIComponent(issueKey)}`
+    + `?fields=${encodeURIComponent(ISSUE_FIELDS.join(","))}`;
+}
+
 export function jiraAuthenticationHeader(config) {
   if (config.deployment === "data_center") return `Bearer ${config.token}`;
   return `Basic ${Buffer.from(`${config.email}:${config.token}`, "utf8").toString("base64")}`;
@@ -174,6 +180,44 @@ async function responsePayload(response) {
 }
 
 export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_000 } = {}) {
+  async function fetchIssue(config, issueKey) {
+    const key = normalizeIssueKey(issueKey);
+    let response;
+    try {
+      response = await fetchImpl(issueEndpoint(config, key), {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          authorization: jiraAuthenticationHeader(config)
+        },
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+    } catch (error) {
+      const timeout = error.name === "TimeoutError" || error.name === "AbortError";
+      throw new JiraApiError(timeout ? "读取 Jira 任务详情超时。" : `无法读取 Jira 任务详情：${error.message}`, {
+        code: timeout ? "JIRA_TIMEOUT" : "JIRA_UNREACHABLE"
+      });
+    }
+
+    const payload = await responsePayload(response);
+    if (!response.ok) {
+      const fallback = response.status === 401
+        ? "Jira 认证失败，请检查 Token。"
+        : response.status === 403
+          ? "当前 Jira 用户无权查看该任务。"
+          : response.status === 404
+            ? "Jira Issue 不存在或当前用户无权查看。"
+            : `Jira 返回 HTTP ${response.status}，无法读取任务详情。`;
+      throw new JiraApiError(jiraErrorMessage(payload, fallback), {
+        code: "JIRA_ISSUE_HTTP_ERROR",
+        upstreamStatus: response.status,
+        details: payload?.errors || null
+      });
+    }
+
+    return normalizeIssue(payload, config.baseUrl);
+  }
+
   async function fetchTransitions(config, issueKey) {
     const key = normalizeIssueKey(issueKey);
     let response;
@@ -457,5 +501,5 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
     };
   }
 
-  return { fetchIssues, fetchTaskBoardIssues, fetchTransitions, executeTransition, fetchAttachment };
+  return { fetchIssue, fetchIssues, fetchTaskBoardIssues, fetchTransitions, executeTransition, fetchAttachment };
 }

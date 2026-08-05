@@ -1,8 +1,9 @@
 (() => {
-  const VERSION = "0.17.0";
+  const VERSION = "0.18.0";
   const ENTRY_ID = "jira-codex-poc-entry";
   const PAGE_ID = "jira-codex-poc-page";
   const STYLE_ID = "jira-codex-poc-style";
+  const CONVERSATION_FLOAT_ID = "jira-codex-conversation-float";
   const HIDDEN_ATTRIBUTE = "data-jira-codex-poc-hidden";
   const HOST_ATTRIBUTE = "data-jira-codex-poc-host";
   const OWNED_ATTRIBUTE = "data-jira-codex-poc-owned";
@@ -33,9 +34,15 @@
   let bindingTimer = null;
   let bugMonitorTimer = null;
   let bugMonitorRunning = false;
+  let conversationFloat = null;
+  let conversationFloatRequestId = 0;
+  let conversationFloatState = null;
+  let conversationThreadHint = null;
   let scheduled = false;
   let bridgeSequence = 0;
   const bridgeRequests = new Map();
+  const collapsedConversationThreads = new Set();
+  const conversationThreadAliases = new Map();
 
   const normalizedLabel = (value) => String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
   const pluginLabels = ["插件", "plugins", "plugin"];
@@ -241,7 +248,9 @@
     if (!writeStoredObject(BINDINGS_KEY, bindings)) return false;
     window.localStorage.removeItem(PENDING_BINDING_KEY);
     if (pending.automated) void registerAutomatedBinding(pending, bindings[pending.issueKey]);
+    setConversationThreadHint(pending.issueKey, bindings[pending.issueKey], knownIds.size ? Array.from(knownIds) : []);
     sendBindings();
+    ensureConversationIssueFloat();
     return true;
   }
 
@@ -261,6 +270,176 @@
       #${PAGE_ID}[hidden] { display: none !important; }
       #${PAGE_ID} iframe { display: block; width: 100%; height: 100%; border: 0; background: #f7f7f5; }
       #${ENTRY_ID}[aria-current="page"] { background: var(--color-token-sidebar-surface-secondary, rgba(0,0,0,.06)); }
+      #${CONVERSATION_FLOAT_ID} {
+        position: fixed;
+        top: 66px;
+        right: 16px;
+        z-index: 30;
+        width: min(370px, calc(100vw - 32px));
+        max-height: calc(100vh - 148px);
+        color: #202124;
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        pointer-events: auto;
+      }
+      #${CONVERSATION_FLOAT_ID}[hidden] { display: none !important; }
+      #${CONVERSATION_FLOAT_ID} * { box-sizing: border-box; }
+      .jira-codex-float-card {
+        display: flex;
+        flex-direction: column;
+        max-height: calc(100vh - 148px);
+        overflow: hidden;
+        border: 1px solid rgba(25, 28, 33, .14);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, .97);
+        box-shadow: 0 16px 44px rgba(18, 22, 29, .18), 0 2px 8px rgba(18, 22, 29, .08);
+        backdrop-filter: blur(16px);
+      }
+      .jira-codex-float-header,
+      .jira-codex-float-actions,
+      .jira-codex-float-meta-row,
+      .jira-codex-float-transition-row,
+      .jira-codex-float-attachment,
+      .jira-codex-float-collapsed-button {
+        display: flex;
+        align-items: center;
+      }
+      .jira-codex-float-header {
+        min-height: 50px;
+        gap: 9px;
+        padding: 9px 10px 9px 12px;
+        border-bottom: 1px solid rgba(25, 28, 33, .09);
+      }
+      .jira-codex-float-type {
+        flex: 0 0 auto;
+        padding: 2px 6px;
+        border-radius: 6px;
+        color: #3157b7;
+        background: #edf2ff;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .jira-codex-float-type[data-type="bug"] { color: #b33b32; background: #fff0ed; }
+      .jira-codex-float-key { min-width: 0; color: #687080; font-size: 12px; font-weight: 700; }
+      .jira-codex-float-actions { margin-left: auto; gap: 4px; }
+      .jira-codex-float-icon-button,
+      .jira-codex-float-button,
+      .jira-codex-float-collapsed-button {
+        border: 1px solid rgba(25, 28, 33, .13);
+        color: #34383f;
+        background: #fff;
+        cursor: pointer;
+      }
+      .jira-codex-float-icon-button {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        place-items: center;
+        border-radius: 8px;
+        font-size: 15px;
+      }
+      .jira-codex-float-icon-button:hover,
+      .jira-codex-float-button:hover,
+      .jira-codex-float-collapsed-button:hover { background: #f3f4f6; }
+      .jira-codex-float-body { min-height: 0; padding: 14px; overflow: auto; overscroll-behavior: contain; }
+      .jira-codex-float-title { margin: 0 0 10px; font-size: 16px; line-height: 1.4; font-weight: 700; }
+      .jira-codex-float-status {
+        display: inline-flex;
+        max-width: 100%;
+        margin-bottom: 12px;
+        padding: 3px 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        color: #3157b7;
+        background: #edf2ff;
+        font-size: 12px;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .jira-codex-float-section { margin-top: 14px; }
+      .jira-codex-float-section-title { margin: 0 0 6px; color: #737b89; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+      .jira-codex-float-description {
+        max-height: 142px;
+        margin: 0;
+        padding: 10px;
+        overflow: auto;
+        border-radius: 9px;
+        color: #41464e;
+        background: #f6f7f8;
+        white-space: pre-wrap;
+      }
+      .jira-codex-float-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; }
+      .jira-codex-float-meta-row { min-width: 0; align-items: flex-start; gap: 6px; }
+      .jira-codex-float-meta-label { flex: 0 0 auto; color: #878e99; }
+      .jira-codex-float-meta-value { min-width: 0; overflow: hidden; color: #41464e; text-overflow: ellipsis; white-space: nowrap; }
+      .jira-codex-float-chip-list { display: flex; flex-wrap: wrap; gap: 5px; }
+      .jira-codex-float-chip { padding: 2px 7px; border: 1px solid #e2e5e9; border-radius: 999px; color: #4d5560; background: #fafafa; font-size: 12px; }
+      .jira-codex-float-attachments { display: grid; gap: 6px; }
+      .jira-codex-float-attachment {
+        min-width: 0;
+        gap: 8px;
+        padding: 7px 9px;
+        border: 1px solid #e5e7ea;
+        border-radius: 8px;
+        color: #3a4452;
+        text-decoration: none;
+      }
+      .jira-codex-float-attachment:hover { background: #f7f8fa; }
+      .jira-codex-float-attachment-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .jira-codex-float-attachment-size { flex: 0 0 auto; margin-left: auto; color: #949aa4; font-size: 11px; }
+      .jira-codex-float-transition-row { align-items: stretch; gap: 7px; }
+      .jira-codex-float-select {
+        min-width: 0;
+        flex: 1;
+        height: 34px;
+        padding: 0 8px;
+        border: 1px solid #d9dde3;
+        border-radius: 8px;
+        color: #34383f;
+        background: #fff;
+      }
+      .jira-codex-float-button {
+        flex: 0 0 auto;
+        min-height: 34px;
+        padding: 0 11px;
+        border-radius: 8px;
+        font-weight: 650;
+      }
+      .jira-codex-float-button:disabled,
+      .jira-codex-float-icon-button:disabled { cursor: default; opacity: .5; }
+      .jira-codex-float-footer {
+        display: flex;
+        min-height: 45px;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-top: 1px solid rgba(25, 28, 33, .09);
+      }
+      .jira-codex-float-thread { min-width: 0; flex: 1; overflow: hidden; color: #878e99; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+      .jira-codex-float-link { flex: 0 0 auto; color: #3157b7; font-size: 12px; font-weight: 650; text-decoration: none; }
+      .jira-codex-float-link:hover { text-decoration: underline; }
+      .jira-codex-float-loading,
+      .jira-codex-float-error,
+      .jira-codex-float-empty { padding: 20px 4px; color: #717985; text-align: center; }
+      .jira-codex-float-error { color: #a33a32; }
+      .jira-codex-float-notice { margin: 0 0 10px; padding: 7px 9px; border-radius: 8px; color: #236943; background: #edf8f1; font-size: 12px; }
+      .jira-codex-float-hint { margin: 7px 0 0; color: #8b929d; font-size: 11px; }
+      .jira-codex-float-collapsed-button {
+        min-width: 178px;
+        max-width: min(280px, calc(100vw - 32px));
+        margin-left: auto;
+        gap: 8px;
+        padding: 9px 11px;
+        border-radius: 999px;
+        box-shadow: 0 8px 24px rgba(18, 22, 29, .16);
+      }
+      .jira-codex-float-collapsed-key { flex: 0 0 auto; font-weight: 750; }
+      .jira-codex-float-collapsed-status { min-width: 0; flex: 1; overflow: hidden; color: #747c88; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      @media (max-width: 760px) {
+        #${CONVERSATION_FLOAT_ID} { top: 58px; right: 10px; width: min(330px, calc(100vw - 20px)); max-height: calc(100vh - 126px); }
+        .jira-codex-float-card { max-height: calc(100vh - 126px); }
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -415,6 +594,7 @@
 
   function openPanel() {
     active = true;
+    if (conversationFloat) conversationFloat.hidden = true;
     ensureEntry();
     mountActivePage();
     entry?.setAttribute("aria-current", "page");
@@ -426,6 +606,7 @@
     if (page) page.hidden = true;
     restoreNativeContent();
     entry?.removeAttribute("aria-current");
+    ensureConversationIssueFloat();
   }
 
   function setNativeInputValue(input, value) {
@@ -456,6 +637,406 @@
       .filter((row) => row.getAttribute("data-app-action-sidebar-thread-active") === "true")
       .map((row) => row.getAttribute("data-app-action-sidebar-thread-id"))
       .filter(Boolean);
+  }
+
+  function conversationBindingForThread(threadId) {
+    const normalizedThreadId = normalizeCodexThreadId(threadId);
+    if (!normalizedThreadId) return null;
+    const bindings = readBindings();
+    const direct = Object.entries(bindings)
+      .filter(([, binding]) => normalizeCodexThreadId(binding?.threadId) === normalizedThreadId)
+      .sort((left, right) => String(right[1]?.boundAt || "").localeCompare(String(left[1]?.boundAt || "")))
+      .map(([issueKey, binding]) => ({ issueKey: String(issueKey).toUpperCase(), binding }))[0] || null;
+    if (direct) return direct;
+    const aliasedIssueKey = conversationThreadAliases.get(normalizedThreadId);
+    const aliasedBinding = aliasedIssueKey ? bindings[aliasedIssueKey] : null;
+    return aliasedBinding ? { issueKey: aliasedIssueKey, binding: aliasedBinding } : null;
+  }
+
+  function setConversationThreadHint(issueKey, binding, previousThreadIds = activeThreadIds()) {
+    const normalizedIssueKey = String(issueKey || "").trim().toUpperCase();
+    if (!normalizedIssueKey || !binding?.threadId) return;
+    for (const [threadId, aliasIssueKey] of conversationThreadAliases) {
+      if (aliasIssueKey === normalizedIssueKey) conversationThreadAliases.delete(threadId);
+    }
+    conversationThreadHint = {
+      issueKey: normalizedIssueKey,
+      threadId: String(binding.threadId),
+      binding,
+      previousThreadIds: previousThreadIds.map(normalizeCodexThreadId).filter(Boolean),
+      observedThreadId: "",
+      createdAt: Date.now()
+    };
+  }
+
+  function clearConversationThreadHint() {
+    conversationThreadHint = null;
+  }
+
+  function conversationBindingFromHint(activeThreadId) {
+    const hint = conversationThreadHint;
+    const normalizedActiveThreadId = normalizeCodexThreadId(activeThreadId);
+    if (!hint || !normalizedActiveThreadId) return null;
+    if (!hint.observedThreadId && Date.now() - hint.createdAt > 15_000) {
+      clearConversationThreadHint();
+      return null;
+    }
+    if (hint.observedThreadId && hint.observedThreadId !== normalizedActiveThreadId) {
+      clearConversationThreadHint();
+      return null;
+    }
+    if (!hint.observedThreadId) {
+      if (hint.previousThreadIds.includes(normalizedActiveThreadId)) return null;
+      hint.observedThreadId = normalizedActiveThreadId;
+      conversationThreadAliases.set(normalizedActiveThreadId, hint.issueKey);
+    }
+    const binding = readBindings()[hint.issueKey] || hint.binding;
+    return binding ? { issueKey: hint.issueKey, binding } : null;
+  }
+
+  function conversationFloatElement(tagName, className, textContent) {
+    const element = document.createElement(tagName);
+    if (className) element.className = className;
+    if (textContent !== undefined) element.textContent = String(textContent);
+    return element;
+  }
+
+  function formatAttachmentSize(value) {
+    const bytes = Number(value || 0);
+    if (!Number.isFinite(bytes) || bytes <= 0) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 102.4) / 10} KB`;
+    return `${Math.round(bytes / 1024 / 102.4) / 10} MB`;
+  }
+
+  function removeConversationIssueFloat() {
+    if (!conversationFloatState && !conversationFloat) return;
+    conversationFloatRequestId += 1;
+    conversationFloatState = null;
+    conversationFloat?.remove();
+    conversationFloat = null;
+  }
+
+  function collapseConversationIssueFloat() {
+    if (!conversationFloatState?.threadId) return;
+    collapsedConversationThreads.add(conversationFloatState.threadId);
+    renderConversationIssueFloat();
+  }
+
+  function expandConversationIssueFloat() {
+    if (!conversationFloatState?.threadId) return;
+    collapsedConversationThreads.delete(conversationFloatState.threadId);
+    renderConversationIssueFloat();
+  }
+
+  function renderConversationIssueFloat() {
+    const state = conversationFloatState;
+    if (!state || !document.body) return;
+    conversationFloat = document.getElementById(CONVERSATION_FLOAT_ID) || conversationFloat;
+    if (!conversationFloat) {
+      conversationFloat = conversationFloatElement("aside");
+      conversationFloat.id = CONVERSATION_FLOAT_ID;
+      conversationFloat.setAttribute(OWNED_ATTRIBUTE, "true");
+      conversationFloat.setAttribute("aria-label", "当前会话关联的 Jira 任务");
+      document.body.appendChild(conversationFloat);
+    }
+    conversationFloat.hidden = active;
+    conversationFloat.dataset.issueKey = state.issueKey;
+    conversationFloat.dataset.threadId = state.threadId;
+    conversationFloat.replaceChildren();
+
+    const issue = state.issue;
+    const isCollapsed = collapsedConversationThreads.has(state.threadId);
+    if (isCollapsed) {
+      const button = conversationFloatElement("button", "jira-codex-float-collapsed-button");
+      button.type = "button";
+      button.title = `展开 ${state.issueKey} 的 Jira 信息`;
+      const type = conversationFloatElement(
+        "span",
+        "jira-codex-float-type",
+        issue?.type === "bug" ? "B" : "R"
+      );
+      type.dataset.type = issue?.type || "requirement";
+      button.append(
+        type,
+        conversationFloatElement("span", "jira-codex-float-collapsed-key", state.issueKey),
+        conversationFloatElement(
+          "span",
+          "jira-codex-float-collapsed-status",
+          issue?.statusName || (state.loading ? "正在读取…" : "Jira 任务")
+        ),
+        conversationFloatElement("span", "", "‹")
+      );
+      button.addEventListener("click", expandConversationIssueFloat);
+      conversationFloat.appendChild(button);
+      return;
+    }
+
+    const card = conversationFloatElement("section", "jira-codex-float-card");
+    const header = conversationFloatElement("header", "jira-codex-float-header");
+    const type = conversationFloatElement(
+      "span",
+      "jira-codex-float-type",
+      issue?.type === "bug" ? "Bug" : "需求"
+    );
+    type.dataset.type = issue?.type || "requirement";
+    header.append(type, conversationFloatElement("span", "jira-codex-float-key", state.issueKey));
+    const headerActions = conversationFloatElement("div", "jira-codex-float-actions");
+    const refresh = conversationFloatElement("button", "jira-codex-float-icon-button", "↻");
+    refresh.type = "button";
+    refresh.title = "刷新 Jira 信息";
+    refresh.disabled = state.refreshing || state.transitioning;
+    refresh.addEventListener("click", () => void refreshConversationIssueFloat());
+    const collapse = conversationFloatElement("button", "jira-codex-float-icon-button", "−");
+    collapse.type = "button";
+    collapse.title = "收起 Jira 浮窗";
+    collapse.addEventListener("click", collapseConversationIssueFloat);
+    headerActions.append(refresh, collapse);
+    header.appendChild(headerActions);
+    card.appendChild(header);
+
+    const body = conversationFloatElement("div", "jira-codex-float-body");
+    body.setAttribute("aria-live", "polite");
+    if (state.loading && !issue) {
+      body.appendChild(conversationFloatElement("div", "jira-codex-float-loading", "正在读取 Jira 任务信息…"));
+    } else if (state.error && !issue) {
+      body.appendChild(conversationFloatElement("div", "jira-codex-float-error", state.error));
+      const retry = conversationFloatElement("button", "jira-codex-float-button", "重新读取");
+      retry.type = "button";
+      retry.addEventListener("click", () => void refreshConversationIssueFloat());
+      body.appendChild(retry);
+    } else if (issue) {
+      if (state.notice) body.appendChild(conversationFloatElement("p", "jira-codex-float-notice", state.notice));
+      if (state.error) body.appendChild(conversationFloatElement("p", "jira-codex-float-error", state.error));
+      body.append(
+        conversationFloatElement("h2", "jira-codex-float-title", issue.title || state.binding?.issueTitle || state.issueKey),
+        conversationFloatElement("span", "jira-codex-float-status", issue.statusName || issue.status || "未知状态")
+      );
+
+      const meta = conversationFloatElement("div", "jira-codex-float-meta");
+      [
+        ["负责人", issue.assignee || "未分配"],
+        ["优先级", issue.priority || "未设置"],
+        ["项目", issue.projectName || "未提供"],
+        ["类型", issue.typeName || (issue.type === "bug" ? "Bug" : "需求")]
+      ].forEach(([label, value]) => {
+        const row = conversationFloatElement("div", "jira-codex-float-meta-row");
+        row.append(
+          conversationFloatElement("span", "jira-codex-float-meta-label", label),
+          conversationFloatElement("span", "jira-codex-float-meta-value", value)
+        );
+        meta.appendChild(row);
+      });
+      body.appendChild(meta);
+
+      const description = conversationFloatElement("section", "jira-codex-float-section");
+      description.append(
+        conversationFloatElement("h3", "jira-codex-float-section-title", "描述"),
+        conversationFloatElement("p", "jira-codex-float-description", issue.summary || "Jira 中未填写描述。")
+      );
+      body.appendChild(description);
+
+      const collaborators = Array.isArray(issue.collaborators) ? issue.collaborators : [];
+      if (collaborators.length) {
+        const section = conversationFloatElement("section", "jira-codex-float-section");
+        section.appendChild(conversationFloatElement("h3", "jira-codex-float-section-title", `协同处理人 · ${collaborators.length}`));
+        const chips = conversationFloatElement("div", "jira-codex-float-chip-list");
+        collaborators.forEach((collaborator) => {
+          chips.appendChild(conversationFloatElement("span", "jira-codex-float-chip", collaborator.displayName || collaborator.name || "未知用户"));
+        });
+        section.appendChild(chips);
+        body.appendChild(section);
+      }
+
+      const attachments = Array.isArray(issue.attachments) ? issue.attachments : [];
+      if (attachments.length) {
+        const section = conversationFloatElement("section", "jira-codex-float-section");
+        section.appendChild(conversationFloatElement("h3", "jira-codex-float-section-title", `附件 · ${attachments.length}`));
+        const list = conversationFloatElement("div", "jira-codex-float-attachments");
+        attachments.slice(0, 4).forEach((attachment) => {
+          const link = conversationFloatElement("a", "jira-codex-float-attachment");
+          link.href = new URL(attachment.downloadUrl || `/api/attachments/${encodeURIComponent(attachment.id || "")}`, PANEL_URL).href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.title = `预览或下载 ${attachment.filename || "附件"}`;
+          link.append(
+            conversationFloatElement("span", "", "↗"),
+            conversationFloatElement("span", "jira-codex-float-attachment-name", attachment.filename || "未命名附件"),
+            conversationFloatElement("span", "jira-codex-float-attachment-size", formatAttachmentSize(attachment.size))
+          );
+          list.appendChild(link);
+        });
+        section.appendChild(list);
+        if (attachments.length > 4) {
+          section.appendChild(conversationFloatElement("p", "jira-codex-float-hint", `另有 ${attachments.length - 4} 个附件，可在 Jira 中查看。`));
+        }
+        body.appendChild(section);
+      }
+
+      const transitionSection = conversationFloatElement("section", "jira-codex-float-section");
+      transitionSection.appendChild(conversationFloatElement("h3", "jira-codex-float-section-title", "状态流转"));
+      const transitions = Array.isArray(state.transitions) ? state.transitions : [];
+      if (state.transitionError) {
+        transitionSection.appendChild(conversationFloatElement("p", "jira-codex-float-hint", state.transitionError));
+      } else if (state.refreshing && !transitions.length) {
+        transitionSection.appendChild(conversationFloatElement("p", "jira-codex-float-hint", "正在读取可用流转…"));
+      } else if (!transitions.length) {
+        transitionSection.appendChild(conversationFloatElement("p", "jira-codex-float-hint", "当前没有可直接执行的状态流转。"));
+      } else {
+        const row = conversationFloatElement("div", "jira-codex-float-transition-row");
+        const select = conversationFloatElement("select", "jira-codex-float-select");
+        select.setAttribute("aria-label", "选择 Jira 状态流转");
+        const placeholder = conversationFloatElement("option", "", "选择目标状态");
+        placeholder.value = "";
+        select.appendChild(placeholder);
+        transitions.forEach((transition) => {
+          const option = conversationFloatElement(
+            "option",
+            "",
+            `${transition.name || transition.to?.name || "未命名流转"}${transition.requiresInput ? "（需在 Jira 填写字段）" : ""}`
+          );
+          option.value = transition.id;
+          option.disabled = Boolean(transition.requiresInput);
+          select.appendChild(option);
+        });
+        select.value = state.selectedTransitionId || "";
+        select.disabled = state.transitioning;
+        select.addEventListener("change", () => {
+          if (conversationFloatState === state) state.selectedTransitionId = select.value;
+        });
+        const submit = conversationFloatElement(
+          "button",
+          "jira-codex-float-button",
+          state.transitioning ? "流转中…" : "执行"
+        );
+        submit.type = "button";
+        submit.disabled = state.transitioning;
+        submit.addEventListener("click", () => void executeConversationIssueTransition(select.value));
+        row.append(select, submit);
+        transitionSection.appendChild(row);
+        if (transitions.some((transition) => transition.requiresInput)) {
+          transitionSection.appendChild(conversationFloatElement("p", "jira-codex-float-hint", "需要额外字段的流转请在 Jira 中完成。"));
+        }
+      }
+      body.appendChild(transitionSection);
+    } else {
+      body.appendChild(conversationFloatElement("div", "jira-codex-float-empty", "暂无 Jira 任务信息。"));
+    }
+    card.appendChild(body);
+
+    const footer = conversationFloatElement("footer", "jira-codex-float-footer");
+    footer.appendChild(conversationFloatElement(
+      "span",
+      "jira-codex-float-thread",
+      `绑定会话：${state.binding?.threadTitle || state.threadId}`
+    ));
+    const jiraLink = conversationFloatElement("a", "jira-codex-float-link", "在 Jira 中打开 ↗");
+    jiraLink.href = issue?.url || `${PANEL_URL}`;
+    jiraLink.target = "_blank";
+    jiraLink.rel = "noopener noreferrer";
+    footer.appendChild(jiraLink);
+    card.appendChild(footer);
+    conversationFloat.appendChild(card);
+  }
+
+  async function refreshConversationIssueFloat() {
+    const state = conversationFloatState;
+    if (!state) return;
+    const requestId = ++conversationFloatRequestId;
+    state.loading = !state.issue;
+    state.refreshing = true;
+    state.error = "";
+    state.transitionError = "";
+    renderConversationIssueFloat();
+    const [issueResult, transitionsResult] = await Promise.allSettled([
+      panelJson(`/api/issues/${encodeURIComponent(state.issueKey)}`),
+      panelJson(`/api/issues/${encodeURIComponent(state.issueKey)}/transitions`)
+    ]);
+    if (requestId !== conversationFloatRequestId || conversationFloatState !== state) return;
+    state.loading = false;
+    state.refreshing = false;
+    if (issueResult.status === "fulfilled" && issueResult.value?.issue) {
+      state.issue = issueResult.value.issue;
+    } else {
+      state.error = `无法读取 ${state.issueKey}：${issueResult.reason?.message || "未知错误"}`;
+    }
+    if (transitionsResult.status === "fulfilled") {
+      state.transitions = Array.isArray(transitionsResult.value?.transitions)
+        ? transitionsResult.value.transitions
+        : [];
+      if (!state.transitions.some((transition) => transition.id === state.selectedTransitionId)) {
+        state.selectedTransitionId = "";
+      }
+    } else {
+      state.transitionError = `暂时无法读取状态流转：${transitionsResult.reason?.message || "未知错误"}`;
+    }
+    renderConversationIssueFloat();
+  }
+
+  async function executeConversationIssueTransition(transitionId) {
+    const state = conversationFloatState;
+    const transition = state?.transitions?.find((candidate) => candidate.id === String(transitionId || ""));
+    if (!state || !transition || transition.requiresInput || state.transitioning) return;
+    const targetName = transition.to?.name || transition.name || "目标状态";
+    if (!window.confirm(`确定将 ${state.issueKey} 流转为“${targetName}”吗？`)) return;
+    state.transitioning = true;
+    state.transitionError = "";
+    renderConversationIssueFloat();
+    try {
+      await panelJson(`/api/issues/${encodeURIComponent(state.issueKey)}/transitions`, {
+        method: "POST",
+        body: { transitionId: transition.id }
+      });
+      if (conversationFloatState !== state) return;
+      state.transitioning = false;
+      state.notice = `已提交状态流转：${targetName}`;
+      state.selectedTransitionId = "";
+      await refreshConversationIssueFloat();
+    } catch (error) {
+      if (conversationFloatState !== state) return;
+      state.transitioning = false;
+      state.transitionError = `状态流转失败：${error.message || error}`;
+      renderConversationIssueFloat();
+    }
+  }
+
+  function ensureConversationIssueFloat() {
+    if (active) {
+      if (conversationFloat) conversationFloat.hidden = true;
+      return false;
+    }
+    const activeThreadId = activeThreadIds()[0] || "";
+    const match = conversationBindingForThread(activeThreadId)
+      || conversationBindingFromHint(activeThreadId);
+    if (!activeThreadId || !match) {
+      removeConversationIssueFloat();
+      return false;
+    }
+    const threadId = String(match.binding?.threadId || activeThreadId);
+    if (conversationFloatState?.threadId === threadId
+      && conversationFloatState?.issueKey === match.issueKey) {
+      conversationFloatState.binding = match.binding;
+      if (conversationFloat) conversationFloat.hidden = false;
+      return true;
+    }
+    conversationFloatRequestId += 1;
+    conversationFloatState = {
+      threadId,
+      issueKey: match.issueKey,
+      binding: match.binding,
+      issue: null,
+      transitions: [],
+      selectedTransitionId: "",
+      loading: true,
+      refreshing: false,
+      transitioning: false,
+      error: "",
+      transitionError: "",
+      notice: ""
+    };
+    renderConversationIssueFloat();
+    void refreshConversationIssueFloat();
+    return true;
   }
 
   function isNewConversationHeaderVisible() {
@@ -806,6 +1387,7 @@
     const thread = threadRows().find((row) => (
       row.getAttribute("data-app-action-sidebar-thread-id") === binding.threadId
     ));
+    setConversationThreadHint(issue.key, binding);
     if (thread) {
       closePanel();
       thread.click();
@@ -815,6 +1397,7 @@
     try {
       await navigateCodexThread(binding.threadId);
     } catch (error) {
+      clearConversationThreadHint();
       openPanel();
       sendPanelMessage("binding-error", {
         message: `无法按会话 ID 打开已绑定的 Codex 对话“${binding.threadTitle || issue.key}”：${error.message || error}。可以点击“重新绑定对话”修正绑定。`
@@ -842,9 +1425,11 @@
       sendPanelMessage("binding-error", { message: "无法保存新的会话绑定，旧绑定未被修改。" });
       return;
     }
+    setConversationThreadHint(issue.key, bindings[issue.key]);
     sendBindings();
     closePanel();
     thread.click();
+    window.setTimeout(ensureConversationIssueFloat, 0);
   }
 
   function readBugMonitorState() {
@@ -1025,8 +1610,19 @@
       openPanel();
       return;
     }
-    if (!active || !isNativeSidebarNavigation(event.target)) return;
-    closePanel();
+    if (!isNativeSidebarNavigation(event.target)) return;
+    const clickedThreadId = event.target?.closest?.("[data-app-action-sidebar-thread-id]")
+      ?.getAttribute("data-app-action-sidebar-thread-id");
+    const keepsDirectHint = conversationThreadHint
+      && clickedThreadId
+      && normalizeCodexThreadId(clickedThreadId) === normalizeCodexThreadId(conversationThreadHint.threadId);
+    const keepsObservedHint = !keepsDirectHint && clickedThreadId
+      ? Boolean(conversationBindingFromHint(clickedThreadId))
+      : false;
+    const keepsHint = keepsDirectHint || keepsObservedHint;
+    if (!keepsHint) clearConversationThreadHint();
+    if (active) closePanel();
+    window.setTimeout(ensureConversationIssueFloat, 0);
   }
 
   function onDocumentPointerDown(event) {
@@ -1046,6 +1642,7 @@
       tryBindPendingIssue();
       ensureEntry();
       if (active) mountActivePage();
+      ensureConversationIssueFloat();
     });
   }
 
@@ -1054,6 +1651,11 @@
       version: VERSION,
       entryMounted: Boolean(document.getElementById(ENTRY_ID)),
       panelMounted: Boolean(document.getElementById(PAGE_ID)),
+      conversationFloatMounted: Boolean(document.getElementById(CONVERSATION_FLOAT_ID)),
+      conversationIssueKey: conversationFloatState?.issueKey || "",
+      conversationHintIssueKey: conversationThreadHint?.issueKey || "",
+      conversationHintObserved: Boolean(conversationThreadHint?.observedThreadId),
+      conversationAliasCount: conversationThreadAliases.size,
       active
     };
   }
@@ -1066,6 +1668,7 @@
     document.removeEventListener("pointerdown", onDocumentPointerDown, true);
     document.removeEventListener("click", onDocumentClick, true);
     closePanel();
+    removeConversationIssueFloat();
     document.getElementById(ENTRY_ID)?.remove();
     document.getElementById(PAGE_ID)?.remove();
     document.getElementById(STYLE_ID)?.remove();
@@ -1083,8 +1686,16 @@
   document.addEventListener("pointerdown", onDocumentPointerDown, true);
   document.addEventListener("click", onDocumentClick, true);
   observer = new MutationObserver(ensure);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  bindingTimer = window.setInterval(tryBindPendingIssue, 500);
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["data-app-action-sidebar-thread-active"]
+  });
+  bindingTimer = window.setInterval(() => {
+    tryBindPendingIssue();
+    ensureConversationIssueFloat();
+  }, 500);
   bugMonitorTimer = window.setInterval(() => void runBugMonitor(), BUG_MONITOR_INTERVAL_MS);
   window.__jiraCodexPoc = { version: VERSION, ensure, open: openPanel, close: closePanel, state, destroy };
   ensure();

@@ -46,3 +46,25 @@ test("实际内嵌面板脚本可以在同一作用域中编译", async () => {
   assert.equal(scripts.length, 2);
   scripts.forEach((script) => assert.doesNotThrow(() => new Function(script)));
 });
+
+test("Codex 宿主注入脚本包含会话 Jira 浮窗并可编译", async () => {
+  const [clientSource, navigationSource, promptBuilderSource, injectorSource] = await Promise.all([
+    readFile(new URL("../inject/client.js", import.meta.url), "utf8"),
+    readFile(new URL("../lib/codex-navigation.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../public/prompt-builder.js", import.meta.url), "utf8"),
+    readFile(new URL("../injector.mjs", import.meta.url), "utf8")
+  ]);
+  const stripExports = (source) => source.replace(
+    /\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g,
+    ""
+  );
+  const compiled = clientSource
+    .replace("/*__JIRA_CODEX_NAVIGATION_HELPERS__*/", stripExports(navigationSource))
+    .replace("/*__JIRA_CODEX_PROMPT_HELPERS__*/", stripExports(promptBuilderSource));
+
+  assert.doesNotThrow(() => new Function(compiled));
+  assert.match(clientSource, /jira-codex-conversation-float/);
+  assert.match(clientSource, /conversationBindingForThread/);
+  assert.match(clientSource, /\/api\/issues\/\$\{encodeURIComponent\(state\.issueKey\)\}/);
+  assert.match(injectorSource, /new Set\(\["GET", "POST", "PUT", "DELETE"\]\)/);
+});

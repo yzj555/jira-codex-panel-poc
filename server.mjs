@@ -18,7 +18,7 @@ import { materializeAttachment } from "./lib/attachment-cache.mjs";
 import { createAutomationManager } from "./lib/automation-manager.mjs";
 import { createCodexSessionReader } from "./lib/codex-session-reader.mjs";
 
-const VERSION = "0.17.0";
+const VERSION = "0.18.0";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -152,6 +152,23 @@ async function handleApi(request, response, url) {
       })
       : await jira.fetchIssues(config);
     return json(response, 200, result);
+  }
+
+  const issueMatch = request.method === "GET"
+    ? url.pathname.match(/^\/api\/issues\/([A-Za-z][A-Za-z0-9_]*-\d+)$/)
+    : null;
+  if (issueMatch) {
+    const config = await configStore.load();
+    if (!config.configured || !config.token) {
+      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
+        code: "JIRA_NOT_CONFIGURED",
+        statusCode: 428
+      });
+    }
+    return json(response, 200, {
+      issue: await jira.fetchIssue(config, issueMatch[1]),
+      fetchedAt: new Date().toISOString()
+    });
   }
 
   const issueTransitionsMatch = ["GET", "POST"].includes(request.method)

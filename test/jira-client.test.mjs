@@ -105,6 +105,31 @@ test("Jira Data Center 使用 PAT Bearer 调用 REST v2 搜索", async () => {
   assert.equal(JSON.parse(request.options.body).startAt, 0);
 });
 
+test("可按 Issue Key 直接读取会话浮窗所需的完整 Jira 详情", async () => {
+  let request;
+  const jira = createJiraClient({
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify(cloudIssue), { status: 200 });
+    }
+  });
+
+  const issue = await jira.fetchIssue({
+    deployment: "data_center",
+    baseUrl: "https://jira.example.com/jira",
+    token: "dc-pat"
+  }, "demo-7");
+
+  assert.match(request.url, /^https:\/\/jira\.example\.com\/jira\/rest\/api\/2\/issue\/DEMO-7\?fields=/);
+  assert.match(decodeURIComponent(request.url), /customfield_10600/);
+  assert.match(decodeURIComponent(request.url), /attachment/);
+  assert.equal(request.options.method, "GET");
+  assert.equal(request.options.headers.authorization, "Bearer dc-pat");
+  assert.equal(issue.key, "DEMO-7");
+  assert.equal(issue.title, "真实 Jira 任务");
+  assert.equal(issue.attachments[0].filename, "design.png");
+});
+
 test("读取 Jira 当前用户可执行的状态流转，并标记需要额外字段的操作", async () => {
   let request;
   const jira = createJiraClient({
