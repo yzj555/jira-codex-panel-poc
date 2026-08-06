@@ -85,6 +85,10 @@ test("Codex 宿主注入脚本包含会话 Jira 浮窗并可编译", async () =>
   assert.match(clientSource, /bindingMatchesThread\(binding, row\.getAttribute/);
   assert.match(clientSource, /manual_review/);
   assert.match(clientSource, /conversationBindingForThread/);
+  assert.match(clientSource, /async function bindIssueToThread/);
+  assert.match(clientSource, /readCodexThreadState\(normalizedThreadId/);
+  assert.match(clientSource, /function retryIssuePrompt/);
+  assert.match(clientSource, /firstMessageStatus: "pending"/);
   assert.match(clientSource, /\/api\/issues\/\$\{encodeURIComponent\(state\.issueKey\)\}/);
   assert.match(injectorSource, /new Set\(\["GET", "POST", "PUT", "DELETE"\]\)/);
 });
@@ -109,6 +113,7 @@ test("完整面板和会话浮窗跟随 Codex 深浅主题", async () => {
   assert.match(styles, /:root\[data-theme="dark"\]/);
   assert.match(styles, /--panel-bg: var\(--codex-theme-bg/);
   assert.match(styles, /Codex host theme bridge/);
+  assert.match(styles, /\.issue-action-group \{[^}]*margin-left: auto;/);
 });
 
 test("SVN 选择器按项目构建文件树、分类变更并加载单文件差异", async () => {

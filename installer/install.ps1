@@ -119,7 +119,7 @@ if (-not $codexPackage) {
 }
 
 $requiredFiles = @('package.json', 'server.mjs', 'injector.mjs', 'jira-client.mjs', 'jxl-client.mjs', 'config-store.mjs', 'README.md')
-$requiredDirectories = @('public', 'inject', 'lib', 'scripts', 'installer')
+$requiredDirectories = @('public', 'inject', 'lib', 'scripts', 'installer', 'skills')
 foreach ($relativePath in @($requiredFiles + $requiredDirectories)) {
   if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot $relativePath))) {
     throw "安装源缺少必要文件：$relativePath"

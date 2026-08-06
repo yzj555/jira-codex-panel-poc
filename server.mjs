@@ -23,7 +23,7 @@ import {
   SvnReviewError
 } from "./lib/svn-review-manager.mjs";
 
-const VERSION = "0.24.6";
+const VERSION = "0.26.3";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -98,6 +98,16 @@ async function handleApi(request, response, url) {
 
   if (request.method === "GET" && url.pathname === "/api/config") {
     return json(response, 200, { config: await configStore.getPublic() });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/codex/runtime") {
+    return json(response, 200, {
+      analysisSkill: {
+        name: "jira-first-turn-analysis",
+        path: join(root, "skills", "jira-first-turn-analysis", "SKILL.md"),
+        scope: "app"
+      }
+    });
   }
 
   if (request.method === "PUT" && url.pathname === "/api/config") {

@@ -1,4 +1,9 @@
-import { buildIssuePrompt, DEFAULT_MESSAGE_TEMPLATE } from "/prompt-builder.js";
+import {
+  buildIssuePrompt,
+  DEFAULT_BUG_MESSAGE_TEMPLATE,
+  DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE,
+  isBugIssue
+} from "/prompt-builder.js";
 import {
   attachmentPreviewKind,
   filterAndSortSheetIssues,
@@ -59,6 +64,12 @@ const settingsDialog = document.querySelector("#settings-dialog");
 const settingsBackdrop = document.querySelector("#settings-backdrop");
 const settingsForm = document.querySelector("#settings-form");
 const settingsStatus = document.querySelector("#settings-status");
+const templateEditorDialog = document.querySelector("#template-editor-dialog");
+const templateEditorBackdrop = document.querySelector("#template-editor-backdrop");
+const templateEditorForm = document.querySelector("#template-editor-form");
+const templateEditorContent = document.querySelector("#template-editor-content");
+const templateEditorSkill = document.querySelector("#template-editor-skill");
+const templateEditorStatus = document.querySelector("#template-editor-status");
 const bugMonitorControl = document.querySelector("#bug-monitor-control");
 const bugMonitorToggle = document.querySelector("#bug-monitor-toggle");
 const bugMonitorState = document.querySelector("#bug-monitor-state");
@@ -75,9 +86,13 @@ const transitionSelect = document.querySelector("#transition-select");
 const transitionAction = document.querySelector("#transition-action");
 const transitionHint = document.querySelector("#transition-hint");
 const FIXED_DEPLOYMENT = "data_center";
-const FALLBACK_MESSAGE_TEMPLATE = DEFAULT_MESSAGE_TEMPLATE;
+const DEFAULT_TEMPLATE_SKILLS = Object.freeze({
+  requirement: null,
+  bug: Object.freeze({ name: "ct-devops-tracer", path: "", scope: "user" })
+});
 const MAX_TEXT_PREVIEW_CHARACTERS = 500_000;
 const LAST_JXL_SHEET_STORAGE_KEY = "jira-codex-panel:last-jxl-sheet:v1";
+const ASSOCIATION_DRAFT_STORAGE_KEY = "jira-codex-panel:association-drafts:v1";
 const SHEET_COLUMNS = [
   { key: "issue", label: "Issue", filter: "text", placeholder: "筛选 Key" },
   { key: "type", label: "类型", filter: "type" },
@@ -105,6 +120,8 @@ const state = {
   bindings: {},
   threads: [],
   projects: [],
+  skills: [],
+  skillsError: "",
   config: null,
   automation: null,
   automationUpdating: false,
@@ -143,6 +160,9 @@ let attachmentPreviewAttachment = null;
 let attachmentPreviewBlob = null;
 let attachmentPreviewReturnFocus = null;
 let transitionRequestId = 0;
+let editingTemplateKind = "";
+let templateDrafts = defaultTemplateDrafts();
+let associationPendingIssueKey = "";
 
 class ApiError extends Error {
   constructor(message, payload = {}) {
@@ -235,12 +255,69 @@ function typeLabel(issue) {
   return issue.typeName || (issue.type === "bug" ? "Bug" : "需求");
 }
 
-function renderIssuePrompt(issue) {
+function defaultTemplateContent(kind) {
+  return kind === "bug" ? DEFAULT_BUG_MESSAGE_TEMPLATE : DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE;
+}
+
+function normalizedSkillReference(skill) {
+  if (!skill || typeof skill !== "object" || !String(skill.name || "").trim()) return null;
+  return {
+    name: String(skill.name).trim(),
+    path: String(skill.path || "").trim(),
+    scope: String(skill.scope || "").trim()
+  };
+}
+
+function defaultTemplateDrafts() {
+  return Object.fromEntries(["requirement", "bug"].map((kind) => [kind, {
+    customized: false,
+    content: defaultTemplateContent(kind),
+    skill: normalizedSkillReference(DEFAULT_TEMPLATE_SKILLS[kind])
+  }]));
+}
+
+function templateDraftsFromConfig(config) {
+  const defaults = defaultTemplateDrafts();
+  const configured = config?.promptTemplates;
+  if (!configured || typeof configured !== "object") {
+    const legacy = String(config?.messageTemplate || "").trim();
+    if (legacy && legacy !== DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE.trim()) {
+      defaults.requirement = { ...defaults.requirement, customized: true, content: legacy };
+      defaults.bug = { ...defaults.bug, customized: true, content: legacy };
+    }
+    return defaults;
+  }
+  for (const kind of ["requirement", "bug"]) {
+    const entry = configured[kind];
+    if (!entry || typeof entry !== "object") continue;
+    defaults[kind] = {
+      customized: Boolean(entry.customized),
+      content: String(entry.content || defaultTemplateContent(kind)).trim() || defaultTemplateContent(kind),
+      skill: normalizedSkillReference(entry.skill)
+    };
+  }
+  return defaults;
+}
+
+function templateEntryForIssue(issue) {
+  const kind = isBugIssue(issue) ? "bug" : "requirement";
+  return state.config?.promptTemplates?.[kind] || templateDraftsFromConfig(state.config)[kind];
+}
+
+function renderIssuePrompt(issue, { automated = false, supplementalDescription = "" } = {}) {
+  const entry = templateEntryForIssue(issue);
   return buildIssuePrompt(issue, {
-    messageTemplate: state.config?.messageTemplate || FALLBACK_MESSAGE_TEMPLATE,
-    projectId: state.config?.codexProjectId || "",
-    projectLabel: state.config?.codexProjectLabel || ""
+    messageTemplate: entry?.content || defaultTemplateContent(isBugIssue(issue) ? "bug" : "requirement"),
+    supplementalDescription,
+    automated
   });
+}
+
+function issueActionMessage(issue, { automated = false, supplementalDescription = "" } = {}) {
+  return {
+    prompt: renderIssuePrompt(issue, { automated, supplementalDescription }),
+    skill: normalizedSkillReference(templateEntryForIssue(issue)?.skill)
+  };
 }
 
 function formatDate(value) {
@@ -1166,12 +1243,18 @@ function updatePrimaryAction(issue) {
   bindingThreadTitle.textContent = binding?.threadTitle || "Codex 对话";
   bindingThreadTitle.title = binding?.threadTitle || "";
   rebindAction.hidden = !(canProcess && binding);
+  const firstMessageFailed = binding?.firstMessageStatus === "failed";
+  const firstMessagePending = binding?.firstMessageStatus === "pending";
   action.textContent = !canProcess
     ? "已完成任务仅查看"
     : binding
-      ? "打开已绑定的 Codex 对话"
-      : "开始分析并绑定 Codex 对话";
-  action.disabled = !canProcess;
+      ? firstMessageFailed
+        ? "重试发送首条分析消息"
+        : firstMessagePending
+          ? "正在发送首条分析消息…"
+          : "打开已绑定的 Codex 对话"
+      : "关联 Codex 会话";
+  action.disabled = !canProcess || firstMessagePending;
   action.classList.toggle("secondary", !canProcess);
 }
 
@@ -1194,15 +1277,66 @@ function setRebindStatus(message, kind = "error") {
   rebindStatus.hidden = !message;
 }
 
+function readAssociationDrafts() {
+  try {
+    const value = JSON.parse(localStorage.getItem(ASSOCIATION_DRAFT_STORAGE_KEY) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function associationDraftFor(issueKey) {
+  return String(readAssociationDrafts()[String(issueKey || "").toUpperCase()] || "");
+}
+
+function saveAssociationDraft(issueKey, content) {
+  const normalizedIssueKey = String(issueKey || "").trim().toUpperCase();
+  if (!normalizedIssueKey) return;
+  const drafts = readAssociationDrafts();
+  const normalizedContent = String(content || "");
+  if (normalizedContent) drafts[normalizedIssueKey] = normalizedContent;
+  else delete drafts[normalizedIssueKey];
+  try {
+    localStorage.setItem(ASSOCIATION_DRAFT_STORAGE_KEY, JSON.stringify(drafts));
+  } catch {
+    // The prompt still uses the current textarea value when local storage is unavailable.
+  }
+}
+
+function comparableThreadId(value) {
+  return String(value || "").trim().replace(/^local:/, "");
+}
+
+function bindingConflictForThread(threadId, issueKey) {
+  const normalizedThreadId = comparableThreadId(threadId);
+  const normalizedIssueKey = String(issueKey || "").trim().toUpperCase();
+  if (!normalizedThreadId) return null;
+  return Object.entries(state.bindings).find(([candidateIssueKey, binding]) => (
+    candidateIssueKey !== normalizedIssueKey
+    && [binding?.threadId, binding?.uiThreadId].some((candidate) => comparableThreadId(candidate) === normalizedThreadId)
+  )) || null;
+}
+
 function updateRebindThreadPreview() {
   const threadId = document.querySelector("#rebind-thread-id").value.trim();
-  const thread = state.threads.find((candidate) => candidate.threadId === threadId);
+  const thread = state.threads.find((candidate) => comparableThreadId(candidate.threadId) === comparableThreadId(threadId));
+  const conflict = bindingConflictForThread(threadId, state.selectedIssue?.key);
+  const conflictConfirm = document.querySelector("#rebind-conflict-confirm");
+  const conflictCheckbox = document.querySelector("#rebind-conflict-checkbox");
+  const conflictIssueKey = conflict?.[0] || "";
+  if (conflictConfirm.dataset.issueKey !== conflictIssueKey) conflictCheckbox.checked = false;
+  conflictConfirm.dataset.issueKey = conflictIssueKey;
+  conflictConfirm.hidden = !conflict;
+  if (conflict) {
+    document.querySelector("#rebind-conflict-label").textContent = `该会话当前关联 ${conflict[0]}。确认后将改为关联 ${state.selectedIssue?.key}，原单子会变为未绑定。`;
+  }
   document.querySelector("#rebind-thread-preview").textContent = thread
-    ? `将绑定到：${thread.threadTitle || thread.threadId}`
+    ? `将关联：${thread.threadTitle || thread.threadId}。绑定后只跳转，不发送消息。`
     : threadId
-      ? "当前 Codex 侧栏中未找到该会话 ID。"
-      : "可从当前侧栏已有对话中选择。";
-  return thread;
+      ? "当前侧栏未显示该会话，将在绑定前按会话 ID 验证。"
+      : "可以搜索当前侧栏会话，也可以直接输入会话 ID。";
+  return { threadId: thread?.threadId || threadId, thread, conflict };
 }
 
 function updateRebindMode() {
@@ -1217,32 +1351,169 @@ function updateRebindMode() {
     ? `将创建在项目：${state.config.codexProjectLabel || state.config.codexProjectId}`
     : "将创建不带项目的普通对话";
   document.querySelector("#rebind-new-project").textContent = projectLabel;
+  if (!isNew) updateRebindThreadPreview();
   setRebindStatus("");
   return mode;
 }
 
-function openRebindDialog() {
+function openRebindDialog({ preferredMode = "" } = {}) {
   if (!state.selectedIssue) return;
+  const binding = state.bindings[state.selectedIssue.key];
   const options = document.querySelector("#rebind-thread-options");
   options.replaceChildren(...state.threads.map((thread) => {
     const option = document.createElement("option");
     option.value = thread.threadId;
-    option.label = thread.threadTitle || thread.threadId;
+    const prefix = thread.active ? "当前 · " : thread.pinned ? "置顶 · " : "";
+    option.label = `${prefix}${thread.threadTitle || thread.threadId}`;
     return option;
   }));
-  document.querySelector("#rebind-thread-id").value = state.bindings[state.selectedIssue.key]?.threadId || "";
-  document.querySelector('input[name="rebindMode"][value="existing"]').checked = true;
+  const currentThread = state.threads.find((thread) => thread.active);
+  const currentButton = document.querySelector("#bind-current-thread");
+  currentButton.disabled = !currentThread;
+  currentButton.textContent = currentThread
+    ? `使用当前会话：${currentThread.threadTitle || currentThread.threadId}`
+    : "当前没有可绑定的会话";
+  document.querySelector("#rebind-thread-id").value = binding?.threadId || currentThread?.threadId || "";
+  document.querySelector("#rebind-supplement").value = associationDraftFor(state.selectedIssue.key);
+  document.querySelector("#rebind-title").textContent = binding ? "更改关联会话" : "关联 Codex 会话";
+  document.querySelector("#rebind-description").textContent = binding
+    ? "可以改绑到已有会话，也可以新建任务会话。旧绑定会保留到新关联成功为止。"
+    : "可以新建任务会话，也可以关联当前或已有 Codex 会话。";
+  const mode = preferredMode || (binding ? "existing" : "new");
+  const modeInput = document.querySelector(`input[name="rebindMode"][value="${mode}"]`);
+  if (modeInput) modeInput.checked = true;
   setRebindStatus("");
   updateRebindThreadPreview();
   updateRebindMode();
   rebindBackdrop.hidden = false;
   rebindDialog.hidden = false;
-  window.setTimeout(() => document.querySelector("#rebind-thread-id").select(), 0);
+  window.setTimeout(() => {
+    if (mode === "new") document.querySelector("#rebind-supplement").focus();
+    else document.querySelector("#rebind-thread-id").select();
+  }, 0);
 }
 
 function closeRebindDialog() {
   rebindBackdrop.hidden = true;
   rebindDialog.hidden = true;
+}
+
+function compactTemplatePreview(content) {
+  return String(content || "").replace(/\s+/g, " ").trim() || "未设置消息正文";
+}
+
+function matchingAvailableSkill(reference) {
+  const skill = normalizedSkillReference(reference);
+  if (!skill) return null;
+  if (skill.path) {
+    const exactPath = state.skills.find((candidate) => candidate.path === skill.path && candidate.enabled !== false);
+    if (exactPath) return exactPath;
+  }
+  const exactNames = state.skills.filter((candidate) => candidate.name === skill.name && candidate.enabled !== false);
+  return exactNames.length === 1 ? exactNames[0] : null;
+}
+
+function renderTemplateCards() {
+  for (const kind of ["requirement", "bug"]) {
+    const entry = templateDrafts[kind] || defaultTemplateDrafts()[kind];
+    document.querySelector(`#${kind}-template-preview`).textContent = compactTemplatePreview(entry.content);
+    document.querySelector(`#${kind}-template-mode`).textContent = entry.customized ? "自定义" : "系统默认";
+    const badge = document.querySelector(`#${kind}-template-skill`);
+    const skill = normalizedSkillReference(entry.skill);
+    badge.classList.toggle("none", !skill);
+    if (!skill) {
+      badge.textContent = "无";
+      badge.title = "未绑定额外技能";
+      continue;
+    }
+    const available = matchingAvailableSkill(skill);
+    const unavailableLabel = state.skillsError
+      ? "（技能列表读取失败）"
+      : state.skills.length && !available ? "（当前不可用）" : "";
+    badge.textContent = `${skill.name}${unavailableLabel}`;
+    badge.title = available?.path || skill.path || "保存时按技能名称解析";
+  }
+}
+
+function selectedSkillFromEditor() {
+  const option = templateEditorSkill.selectedOptions[0];
+  if (!option?.value) return null;
+  return normalizedSkillReference({
+    name: option.dataset.skillName,
+    path: option.dataset.skillPath,
+    scope: option.dataset.skillScope
+  });
+}
+
+function populateTemplateSkillOptions(selectedReference = null) {
+  const selected = normalizedSkillReference(selectedReference);
+  const options = [];
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "不绑定额外技能";
+  options.push(none);
+
+  const availableSkills = state.skills
+    .filter((skill) => skill?.enabled !== false && skill?.name && skill?.path)
+    .sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
+  let selectedValue = "";
+  availableSkills.forEach((skill, index) => {
+    const option = document.createElement("option");
+    option.value = `available:${index}`;
+    option.textContent = `${skill.name}${skill.scope ? ` · ${skill.scope}` : ""}`;
+    option.dataset.skillName = skill.name;
+    option.dataset.skillPath = skill.path;
+    option.dataset.skillScope = skill.scope || "";
+    options.push(option);
+    if (selected && (selected.path ? selected.path === skill.path : selected.name === skill.name) && !selectedValue) {
+      selectedValue = option.value;
+    }
+  });
+  if (selected && !selectedValue) {
+    const unavailable = document.createElement("option");
+    unavailable.value = "configured";
+    unavailable.textContent = `${selected.name}（当前不可用，运行时自动降级）`;
+    unavailable.dataset.skillName = selected.name;
+    unavailable.dataset.skillPath = selected.path;
+    unavailable.dataset.skillScope = selected.scope;
+    options.push(unavailable);
+    selectedValue = unavailable.value;
+  }
+  templateEditorSkill.replaceChildren(...options);
+  templateEditorSkill.value = selectedValue;
+  document.querySelector("#template-editor-skill-help").textContent = state.skillsError
+    ? `Codex 技能列表读取失败：${state.skillsError}。绑定 Skill 可用时仍优先遵循其相关规则；运行时不可用会降级到模板和内置 Jira Skill。`
+    : "绑定 Skill 后优先遵循其工具、流程、证据、安全边界和输出格式；本模板与内置 Jira Skill 仅补充未覆盖内容。Skill 不可用时自动降级。";
+}
+
+function setTemplateEditorStatus(message, kind = "error") {
+  templateEditorStatus.className = `settings-status ${kind}`;
+  templateEditorStatus.textContent = message;
+  templateEditorStatus.hidden = !message;
+}
+
+function openTemplateEditor(kind) {
+  if (!templateDrafts[kind]) return;
+  editingTemplateKind = kind;
+  document.querySelector("#template-editor-title").textContent = kind === "bug"
+    ? "编辑 Bug 分析模板"
+    : "编辑需求分析模板";
+  templateEditorContent.value = templateDrafts[kind].content;
+  populateTemplateSkillOptions(templateDrafts[kind].skill);
+  setTemplateEditorStatus("");
+  templateEditorBackdrop.hidden = false;
+  templateEditorDialog.hidden = false;
+  window.setTimeout(() => {
+    templateEditorContent.focus();
+    templateEditorContent.setSelectionRange(0, 0);
+    templateEditorContent.scrollTop = 0;
+  }, 0);
+}
+
+function closeTemplateEditor() {
+  templateEditorBackdrop.hidden = true;
+  templateEditorDialog.hidden = true;
+  editingTemplateKind = "";
 }
 
 function populateSettings(config) {
@@ -1260,7 +1531,8 @@ function populateSettings(config) {
   document.querySelector("#clear-wecom-wrap").hidden = !config?.wecomConfigured;
   document.querySelector("#jql").value = config?.jql
     || '((filter = 10103 OR filter = 10102) OR (project = CT AND statusCategory = Done AND (assignee = currentUser() OR "协同处理人" = currentUser()))) ORDER BY updated DESC';
-  document.querySelector("#message-template").value = config?.messageTemplate || FALLBACK_MESSAGE_TEMPLATE;
+  templateDrafts = templateDraftsFromConfig(config);
+  renderTemplateCards();
   populateCodexProjectOptions(config?.codexProjectId || "", config?.codexProjectLabel || "");
   document.querySelector("#max-results").value = config?.maxResults || 100;
   document.querySelector("#clear-settings").hidden = !config?.configured;
@@ -1297,10 +1569,12 @@ function openSettings() {
   setSettingsStatus("");
   settingsBackdrop.hidden = false;
   settingsDialog.hidden = false;
+  window.parent.postMessage({ source: "jira-codex-panel-poc", type: "get-skills" }, "*");
   window.setTimeout(() => document.querySelector("#base-url").focus(), 0);
 }
 
 function closeSettings() {
+  if (!templateEditorDialog.hidden) closeTemplateEditor();
   settingsBackdrop.hidden = true;
   settingsDialog.hidden = true;
 }
@@ -1465,7 +1739,18 @@ async function saveSettings(event) {
         wecomWebhook: document.querySelector("#wecom-webhook").value,
         clearWecomWebhook: document.querySelector("#clear-wecom").checked,
         jql: document.querySelector("#jql").value,
-        messageTemplate: document.querySelector("#message-template").value,
+        promptTemplates: {
+          requirement: {
+            customized: Boolean(templateDrafts.requirement.customized),
+            content: templateDrafts.requirement.content,
+            skill: normalizedSkillReference(templateDrafts.requirement.skill)
+          },
+          bug: {
+            customized: Boolean(templateDrafts.bug.customized),
+            content: templateDrafts.bug.content,
+            skill: normalizedSkillReference(templateDrafts.bug.skill)
+          }
+        },
         maxResults: Number(document.querySelector("#max-results").value)
       }
     });
@@ -1582,11 +1867,21 @@ attachmentPreviewDownload.addEventListener("click", async () => {
 });
 document.querySelector("#primary-action").addEventListener("click", () => {
   if (!state.selectedIssue || !["todo", "in_progress"].includes(state.selectedIssue.status)) return;
+  const binding = state.bindings[state.selectedIssue.key];
+  if (!binding) {
+    openRebindDialog();
+    return;
+  }
+  const actionMessage = issueActionMessage(state.selectedIssue, {
+    supplementalDescription: binding.firstMessageStatus === "failed"
+      ? associationDraftFor(state.selectedIssue.key)
+      : ""
+  });
   window.parent.postMessage({
     source: "jira-codex-panel-poc",
-    type: "open-task",
+    type: binding.firstMessageStatus === "failed" ? "retry-task-message" : "open-task",
     issue: state.selectedIssue,
-    prompt: renderIssuePrompt(state.selectedIssue),
+    ...actionMessage,
     projectId: state.config?.codexProjectId || ""
   }, "*");
 });
@@ -1596,6 +1891,16 @@ document.querySelector("#rebind-action").addEventListener("click", () => {
   openRebindDialog();
 });
 document.querySelector("#rebind-thread-id").addEventListener("input", updateRebindThreadPreview);
+document.querySelector("#bind-current-thread").addEventListener("click", () => {
+  const currentThread = state.threads.find((thread) => thread.active);
+  if (!currentThread) return;
+  document.querySelector("#rebind-thread-id").value = currentThread.threadId;
+  updateRebindThreadPreview();
+});
+document.querySelector("#rebind-supplement").addEventListener("input", (event) => {
+  if (!state.selectedIssue) return;
+  saveAssociationDraft(state.selectedIssue.key, event.currentTarget.value);
+});
 document.querySelectorAll('input[name="rebindMode"]').forEach((input) => input.addEventListener("change", updateRebindMode));
 document.querySelector("#close-rebind").addEventListener("click", closeRebindDialog);
 document.querySelector("#cancel-rebind").addEventListener("click", closeRebindDialog);
@@ -1606,27 +1911,37 @@ rebindForm.addEventListener("submit", (event) => {
   const mode = updateRebindMode();
   const issue = state.selectedIssue;
   if (mode === "new") {
+    const supplementalDescription = document.querySelector("#rebind-supplement").value.trim();
+    saveAssociationDraft(issue.key, supplementalDescription);
+    const actionMessage = issueActionMessage(issue, { supplementalDescription });
+    associationPendingIssueKey = issue.key;
     closeRebindDialog();
     window.parent.postMessage({
       source: "jira-codex-panel-poc",
-      type: "rebind-new-task",
+      type: "associate-new-task",
       issue,
-      prompt: renderIssuePrompt(issue),
+      ...actionMessage,
       projectId: state.config?.codexProjectId || ""
     }, "*");
     return;
   }
-  const thread = updateRebindThreadPreview();
-  if (!thread) {
-    setRebindStatus("请选择当前 Codex 侧栏中存在的会话 ID。");
+  const target = updateRebindThreadPreview();
+  if (!target.threadId) {
+    setRebindStatus("请选择已有会话，或直接输入 Codex 会话 ID。");
     return;
   }
+  if (target.conflict && !document.querySelector("#rebind-conflict-checkbox").checked) {
+    setRebindStatus(`该会话已经关联 ${target.conflict[0]}，请先勾选人工确认。`);
+    return;
+  }
+  associationPendingIssueKey = issue.key;
   closeRebindDialog();
   window.parent.postMessage({
     source: "jira-codex-panel-poc",
     type: "bind-task",
     issue,
-    threadId: thread.threadId
+    threadId: target.threadId,
+    confirmConflict: Boolean(target.conflict)
   }, "*");
 });
 document.querySelector("#close-settings").addEventListener("click", closeSettings);
@@ -1634,9 +1949,38 @@ document.querySelector("#cancel-settings").addEventListener("click", closeSettin
 settingsBackdrop.addEventListener("click", closeSettings);
 settingsForm.addEventListener("submit", saveSettings);
 document.querySelector("#clear-settings").addEventListener("click", clearSettings);
+document.querySelectorAll(".edit-template").forEach((button) => {
+  button.addEventListener("click", () => openTemplateEditor(button.dataset.templateKind));
+});
+document.querySelector("#close-template-editor").addEventListener("click", closeTemplateEditor);
+document.querySelector("#cancel-template-editor").addEventListener("click", closeTemplateEditor);
+templateEditorBackdrop.addEventListener("click", closeTemplateEditor);
+document.querySelector("#restore-template-default").addEventListener("click", () => {
+  if (!editingTemplateKind) return;
+  templateEditorContent.value = defaultTemplateContent(editingTemplateKind);
+  setTemplateEditorStatus("已恢复系统默认正文；点击“应用”后生效。", "info");
+});
+templateEditorForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!editingTemplateKind) return;
+  const content = templateEditorContent.value.trim();
+  if (!content) {
+    setTemplateEditorStatus("消息正文不能为空。");
+    return;
+  }
+  const defaultContent = defaultTemplateContent(editingTemplateKind);
+  templateDrafts[editingTemplateKind] = {
+    customized: content !== defaultContent.trim(),
+    content,
+    skill: selectedSkillFromEditor()
+  };
+  renderTemplateCards();
+  closeTemplateEditor();
+});
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  if (!attachmentPreviewDialog.hidden) closeAttachmentPreview();
+  if (!templateEditorDialog.hidden) closeTemplateEditor();
+  else if (!attachmentPreviewDialog.hidden) closeAttachmentPreview();
   else if (!rebindDialog.hidden) closeRebindDialog();
   else if (!settingsDialog.hidden) closeSettings();
   else if (!drawer.hidden) closeDetails();
@@ -1651,15 +1995,38 @@ window.addEventListener("message", (event) => {
     state.bindings = message.bindings && typeof message.bindings === "object" ? message.bindings : {};
     state.threads = Array.isArray(message.threads) ? message.threads : [];
     state.projects = Array.isArray(message.projects) ? message.projects : [];
+    if (Array.isArray(message.skills)) state.skills = message.skills;
+    state.skillsError = String(message.skillsError || "");
     if (!settingsDialog.hidden) {
       populateCodexProjectOptions(state.config?.codexProjectId || "", state.config?.codexProjectLabel || "");
+      renderTemplateCards();
     }
     render();
     if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
   }
+  if (message.type === "skills") {
+    const selected = templateEditorDialog.hidden ? null : selectedSkillFromEditor();
+    state.skills = Array.isArray(message.skills) ? message.skills : [];
+    state.skillsError = String(message.message || "");
+    renderTemplateCards();
+    if (!templateEditorDialog.hidden) populateTemplateSkillOptions(selected || templateDrafts[editingTemplateKind]?.skill);
+  }
   if (message.type === "binding-error" && message.message) {
-    if (!rebindDialog.hidden) setRebindStatus(message.message);
+    const issueKey = String(message.issueKey || associationPendingIssueKey || "").toUpperCase();
+    if (!message.bindingRetained && state.selectedIssue?.key === issueKey) {
+      openRebindDialog({ preferredMode: "new" });
+      setRebindStatus(message.message);
+    } else if (!rebindDialog.hidden) setRebindStatus(message.message);
     else showToast(message.message, 5000);
+    associationPendingIssueKey = "";
+  }
+  if (message.type === "binding-success") {
+    associationPendingIssueKey = "";
+    if (message.message) showToast(message.message, 3600);
+  }
+  if (message.type === "issue-prompt-sent" && message.issueKey) {
+    saveAssociationDraft(message.issueKey, "");
+    associationPendingIssueKey = "";
   }
   if (message.type === "automation-status") {
     if (message.automation) state.automation = message.automation;

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Jira 首轮降级约束"
+  short_description: "在绑定 Skill 未覆盖时补充 Jira 首轮只读分析规则"
+  default_prompt: "使用 $jira-first-turn-analysis 补充当前 Jira 单子尚未被其他 Skill 覆盖的首轮分析约束。"
+policy:
+  allow_implicit_invocation: false

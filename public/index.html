@@ -122,7 +122,7 @@
           <strong id="binding-thread-title"></strong>
         </div>
         <div class="issue-action-group">
-          <button id="rebind-action" class="rebind-action" type="button" hidden>重新绑定对话</button>
+          <button id="rebind-action" class="rebind-action" type="button" hidden>更改关联</button>
           <button id="primary-action" class="primary-action" type="button">开始处理</button>
         </div>
       </footer>
@@ -151,27 +151,37 @@
         <header class="rebind-head">
           <div>
             <div class="eyebrow">CODEX CONVERSATION</div>
-            <h2 id="rebind-title">重新绑定对话</h2>
+            <h2 id="rebind-title">关联 Codex 会话</h2>
           </div>
           <button id="close-rebind" class="icon-button" type="button" aria-label="关闭重新绑定">×</button>
         </header>
-        <p class="rebind-description">可以改绑到已有对话，也可以新建一个任务对话。旧绑定会保留到新绑定成功为止。</p>
-        <div class="rebind-mode" role="radiogroup" aria-label="重新绑定方式">
-          <label><input type="radio" name="rebindMode" value="existing" checked />绑定已有会话</label>
-          <label><input type="radio" name="rebindMode" value="new" />新建会话</label>
+        <p id="rebind-description" class="rebind-description">可以新建任务会话，也可以关联当前或已有 Codex 会话。</p>
+        <div class="rebind-mode" role="radiogroup" aria-label="会话关联方式">
+          <label><input type="radio" name="rebindMode" value="new" checked />新建并绑定</label>
+          <label><input type="radio" name="rebindMode" value="existing" />绑定已有会话</label>
         </div>
         <div id="rebind-existing-fields">
           <label class="field">
             <span>Codex 会话 ID</span>
             <input id="rebind-thread-id" type="text" list="rebind-thread-options" placeholder="local:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false" autocomplete="off" />
             <datalist id="rebind-thread-options"></datalist>
-            <small id="rebind-thread-preview">可从当前侧栏已有对话中选择。绑定后只跳转，不发送消息。</small>
+            <small id="rebind-thread-preview">可以搜索当前侧栏会话，也可以直接输入会话 ID。</small>
+          </label>
+          <button id="bind-current-thread" class="plain-button bind-current-thread" type="button">使用当前会话</button>
+          <label id="rebind-conflict-confirm" class="rebind-conflict-confirm" hidden>
+            <input id="rebind-conflict-checkbox" type="checkbox" />
+            <span id="rebind-conflict-label"></span>
           </label>
         </div>
         <div id="rebind-new-fields" class="rebind-new-fields" hidden>
           <strong>新建任务对话</strong>
           <span id="rebind-new-project"></span>
-          <small>新会话创建后会自动发送首条“仅理解分析”消息，再用新会话 ID 覆盖旧绑定。</small>
+          <label class="field rebind-supplement-field">
+            <span>补充说明（可选）</span>
+            <textarea id="rebind-supplement" rows="5" maxlength="6000" placeholder="补充 Jira 中缺失的背景、业务规则、环境或复现信息。"></textarea>
+            <small>补充内容会作为“用户补充说明”随首条消息发送，不会覆盖或回写 Jira 描述。</small>
+          </label>
+          <small>新会话会携带完整 Jira 上下文、真实附件、精简分析模板及已绑定 Skill。</small>
         </div>
         <div id="rebind-status" class="settings-status" hidden></div>
         <footer class="rebind-actions">
@@ -236,11 +246,34 @@
             <small>活动任务跟随 CT 仪表盘筛选器 10103/10102；已完成任务按经办人或协同处理人查询，每个分区按加载上限分别获取。</small>
           </label>
 
-          <label class="field field-wide">
-            <span>首条分析消息模板</span>
-            <textarea id="message-template" name="messageTemplate" rows="10" spellcheck="false"></textarea>
-            <small>支持 {{key}}、{{title}}、{{url}}、{{status}}、{{type}}、{{assignee}}、{{collaborators}}、{{description}}、{{attachments}}。系统会固定添加“仅允许理解分析、禁止执行修改”的约束；Bug 还会固定优先使用 ct-devops-tracer 做只读诊断。</small>
-          </label>
+          <div class="field field-wide template-settings">
+            <span>首条分析消息</span>
+            <div class="template-card-grid">
+              <article class="template-card" data-template-card="requirement">
+                <div class="template-card-head">
+                  <div>
+                    <strong>需求分析模板</strong>
+                    <span id="requirement-template-mode" class="template-mode">系统默认</span>
+                  </div>
+                  <button class="plain-button edit-template" data-template-kind="requirement" type="button">编辑</button>
+                </div>
+                <p id="requirement-template-preview" class="template-preview"></p>
+                <div class="template-skill-row">绑定技能 <span id="requirement-template-skill" class="template-skill">无</span></div>
+              </article>
+              <article class="template-card" data-template-card="bug">
+                <div class="template-card-head">
+                  <div>
+                    <strong>Bug 分析模板</strong>
+                    <span id="bug-template-mode" class="template-mode">系统默认</span>
+                  </div>
+                  <button class="plain-button edit-template" data-template-kind="bug" type="button">编辑</button>
+                </div>
+                <p id="bug-template-preview" class="template-preview"></p>
+                <div class="template-skill-row">绑定技能 <span id="bug-template-skill" class="template-skill">ct-devops-tracer</span></div>
+              </article>
+            </div>
+            <small>需求与 Bug 使用独立模板和技能。绑定 Skill 的相关规则优先；模板和内置 Jira Skill 只补充未覆盖部分。</small>
+          </div>
 
           <label class="field">
             <span>每个分区最多加载</span>
@@ -254,6 +287,38 @@
           <span class="action-spacer"></span>
           <button id="cancel-settings" class="plain-button" type="button">取消</button>
           <button id="save-settings" class="save-button" type="submit">保存并连接</button>
+        </footer>
+      </form>
+    </section>
+
+    <div id="template-editor-backdrop" class="template-editor-backdrop" hidden></div>
+    <section id="template-editor-dialog" class="template-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="template-editor-title" hidden>
+      <form id="template-editor-form">
+        <header class="template-editor-head">
+          <div>
+            <div class="eyebrow">FIRST MESSAGE</div>
+            <h2 id="template-editor-title">编辑分析模板</h2>
+          </div>
+          <button id="close-template-editor" class="icon-button" type="button" aria-label="关闭模板编辑器">×</button>
+        </header>
+        <label class="field">
+          <span>消息正文</span>
+          <textarea id="template-editor-content" rows="14" maxlength="12000" spellcheck="false" required></textarea>
+          <small>模板只负责分析要求，Jira 上下文由系统自动附加。可选变量：{{key}}、{{title}}、{{url}}、{{status}}、{{type}}、{{priority}}、{{project}}、{{fixVersions}}、{{assignee}}、{{collaborators}}、{{description}}、{{attachments}}</small>
+        </label>
+        <label class="field template-skill-field">
+          <span>分析技能（可选）</span>
+          <select id="template-editor-skill">
+            <option value="">不绑定额外技能</option>
+          </select>
+          <small id="template-editor-skill-help">绑定 Skill 后优先遵循其工具、流程、证据、安全边界和输出格式；本模板与内置 Jira Skill 仅补充未覆盖内容。Skill 不可用时自动降级。</small>
+        </label>
+        <div id="template-editor-status" class="settings-status" hidden></div>
+        <footer class="template-editor-actions">
+          <button id="restore-template-default" class="plain-button" type="button">恢复系统默认</button>
+          <span class="action-spacer"></span>
+          <button id="cancel-template-editor" class="plain-button" type="button">取消</button>
+          <button class="save-button" type="submit">应用</button>
         </footer>
       </form>
     </section>

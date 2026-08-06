@@ -286,7 +286,7 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 .issue-modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px; border-top: 1px solid #e8eaed; background: #fafbfc; }
 .binding-summary { display: grid; min-width: 0; gap: 2px; color: #90969e; font-size: 9px; }
 .binding-summary strong { overflow: hidden; max-width: 320px; color: #505762; font-size: 11px; font-weight: 650; white-space: nowrap; text-overflow: ellipsis; }
-.issue-action-group { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.issue-action-group { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
 .rebind-action { padding: 9px 13px; border: 1px solid #cfd5dc; border-radius: 9px; background: #fff; color: #535d69; font-size: 11px; font-weight: 650; cursor: pointer; }
 .rebind-action:hover { border-color: #aeb8c4; background: #f7f8fa; }
 .primary-action { min-width: 210px; padding: 10px 14px; border: 0; border-radius: 9px; background: #202124; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -330,6 +330,12 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 .rebind-new-fields strong { font-size: 12px; }
 .rebind-new-fields span { color: #4e6587; font-size: 11px; }
 .rebind-new-fields small { color: #89909a; font-size: 10px; line-height: 1.5; }
+.bind-current-thread { margin-top: 9px; }
+.bind-current-thread:disabled { opacity: .5; cursor: default; }
+.rebind-conflict-confirm { display: flex; align-items: flex-start; gap: 8px; margin-top: 11px; padding: 10px; border: 1px solid #efcf9a; border-radius: 9px; color: #8a5a0a; background: #fff8e8; font-size: 10px; line-height: 1.5; }
+.rebind-conflict-confirm input { flex: none; margin: 2px 0 0; accent-color: #b67812; }
+.rebind-supplement-field { margin-top: 6px; }
+.rebind-supplement-field textarea { min-height: 96px; background: #fff; }
 .rebind-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 15px; border-top: 1px solid #eceef0; }
 
 .settings-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(25, 28, 32, .38); backdrop-filter: blur(2px); }
@@ -359,6 +365,27 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 .danger-button { border: 1px solid #efcccc; background: #fff7f7; color: #ad4444; }
 .save-button { border: 1px solid #202124; background: #202124; color: #fff; }
 .save-button:disabled { opacity: .55; cursor: wait; }
+
+.template-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.template-card { min-width: 0; padding: 12px; border: 1px solid #dfe3e7; border-radius: 10px; background: #f8f9fa; }
+.template-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.template-card-head > div { display: grid; min-width: 0; gap: 3px; }
+.template-card-head strong { color: #2a2d31; font-size: 12px; }
+.template-card-head .plain-button { flex: none; padding: 5px 9px; }
+.template-mode { color: #8a919a; font-size: 9px; font-weight: 500; }
+.template-preview { display: -webkit-box; min-height: 36px; margin: 10px 0; overflow: hidden; color: #6e757e; font: 10px/1.75 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.template-skill-row { display: flex; align-items: center; gap: 6px; min-width: 0; padding-top: 8px; border-top: 1px solid #e4e7ea; color: #949aa2; font-size: 9px; font-weight: 500; }
+.template-skill { max-width: 100%; overflow: hidden; padding: 2px 6px; border-radius: 999px; background: #edf2fc; color: #3f67ad; text-overflow: ellipsis; white-space: nowrap; }
+.template-skill.none { background: #eceeef; color: #7c838c; }
+
+.template-editor-backdrop { position: fixed; inset: 0; z-index: 110; background: rgba(25, 28, 32, .44); backdrop-filter: blur(2px); }
+.template-editor-dialog { position: fixed; z-index: 120; top: 50%; left: 50%; width: min(660px, calc(100vw - 36px)); max-height: calc(100vh - 36px); transform: translate(-50%, -50%); border: 1px solid #dfe2e5; border-radius: 14px; background: #fff; box-shadow: 0 24px 80px rgba(24, 28, 33, .28); overflow: auto; }
+.template-editor-dialog form { padding: 22px; }
+.template-editor-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+.template-editor-head h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+.template-editor-dialog .field + .field { margin-top: 15px; }
+.template-editor-dialog textarea { min-height: 250px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.template-editor-actions { display: flex; align-items: center; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eceef0; }
 
 .toast { position: fixed; z-index: 160; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 9px 13px; border-radius: 8px; background: #25272a; color: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, .18); font-size: 12px; }
 
@@ -490,7 +517,8 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 :root[data-theme] .issue-modal,
 :root[data-theme] .attachment-preview-dialog,
 :root[data-theme] .rebind-dialog,
-:root[data-theme] .settings-dialog { border-color: var(--panel-border-strong); background: var(--panel-elevated); box-shadow: 0 24px 80px rgba(0, 0, 0, .42); }
+:root[data-theme] .settings-dialog,
+:root[data-theme] .template-editor-dialog { border-color: var(--panel-border-strong); background: var(--panel-elevated); box-shadow: 0 24px 80px rgba(0, 0, 0, .42); }
 :root[data-theme] .issue-modal-head,
 :root[data-theme] .attachment-preview-head { border-color: var(--panel-border); background: var(--panel-elevated); }
 :root[data-theme] .detail-section h3,
@@ -499,10 +527,12 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 :root[data-theme] .binding-summary strong,
 :root[data-theme] .rebind-description,
 :root[data-theme] .rebind-mode label,
-:root[data-theme] .field { color: var(--panel-text-secondary); }
+:root[data-theme] .field,
+:root[data-theme] .template-card-head strong { color: var(--panel-text-secondary); }
 :root[data-theme] .detail-summary,
 :root[data-theme] .issue-sidebar,
 :root[data-theme] .rebind-new-fields { border-color: var(--panel-border); background: var(--panel-surface-under); color: var(--panel-text-secondary); }
+:root[data-theme] .rebind-conflict-confirm { border-color: var(--panel-warning); color: var(--panel-warning); background: var(--panel-warning-soft); }
 :root[data-theme] .metadata { border-color: var(--panel-border); background: var(--panel-surface); }
 :root[data-theme] .metadata div,
 :root[data-theme] .issue-modal-footer,
@@ -530,6 +560,14 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 :root[data-theme] .rebind-mode input,
 :root[data-theme] .clear-secret input { accent-color: var(--panel-accent); }
 :root[data-theme] .rebind-new-fields span { color: var(--panel-accent); }
+:root[data-theme] .template-card { border-color: var(--panel-border); background: var(--panel-surface-under); }
+:root[data-theme] .template-preview,
+:root[data-theme] .template-mode,
+:root[data-theme] .template-skill-row { color: var(--panel-text-muted); }
+:root[data-theme] .template-skill-row,
+:root[data-theme] .template-editor-actions { border-color: var(--panel-border); }
+:root[data-theme] .template-skill { color: var(--panel-accent); background: var(--panel-accent-soft); }
+:root[data-theme] .template-skill.none { color: var(--panel-text-muted); background: var(--panel-muted); }
 
 :root[data-theme] .field input,
 :root[data-theme] .field select,
@@ -583,6 +621,7 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
   .topbar { padding-inline: 14px; }
   .form-grid { grid-template-columns: 1fr; }
   .field-wide { grid-column: auto; }
+  .template-card-grid { grid-template-columns: 1fr; }
   .issue-modal-footer { align-items: stretch; flex-wrap: wrap; }
   .binding-summary { flex-basis: 100%; }
   .issue-action-group { width: 100%; }

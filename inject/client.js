@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = "0.24.6";
+  const VERSION = "0.26.3";
   const ENTRY_ID = "jira-codex-poc-entry";
   const PAGE_ID = "jira-codex-poc-page";
   const STYLE_ID = "jira-codex-poc-style";
@@ -93,6 +93,10 @@
   let svnFloatReviewPollTimer = null;
   let svnFloatReviewPollId = "";
   let svnAuditDispatching = false;
+  let availableSkillsCache = [];
+  let availableSkillsError = "";
+  let skillsRefreshPromise = null;
+  let runtimeAnalysisSkillPromise = null;
   let scheduled = false;
   let bridgeSequence = 0;
   const bridgeRequests = new Map();
@@ -168,7 +172,8 @@
       return [{
         threadId,
         threadTitle: row.getAttribute("data-app-action-sidebar-thread-title") || threadId,
-        pinned: row.getAttribute("data-app-action-sidebar-thread-pinned") === "true"
+        pinned: row.getAttribute("data-app-action-sidebar-thread-pinned") === "true",
+        active: row.getAttribute("data-app-action-sidebar-thread-active") === "true"
       }];
     });
   }
@@ -436,9 +441,38 @@
     sendPanelMessage("bindings", {
       bindings: readBindings(),
       threads: availableThreads(),
-      projects: availableProjects()
+      projects: availableProjects(),
+      skills: availableSkillsCache,
+      skillsError: availableSkillsError
     });
     syncCodexTheme(true);
+  }
+
+  async function refreshAvailableSkills({ forceReload = false } = {}) {
+    if (skillsRefreshPromise) return skillsRefreshPromise;
+    skillsRefreshPromise = (async () => {
+      try {
+        availableSkillsCache = await listCodexSkills({ forceReload });
+        availableSkillsError = "";
+      } catch (error) {
+        availableSkillsError = String(error?.message || error);
+      }
+      sendPanelMessage("skills", {
+        skills: availableSkillsCache,
+        message: availableSkillsError
+      });
+      return availableSkillsCache;
+    })().finally(() => { skillsRefreshPromise = null; });
+    return skillsRefreshPromise;
+  }
+
+  async function runtimeAnalysisSkill() {
+    if (!runtimeAnalysisSkillPromise) {
+      runtimeAnalysisSkillPromise = panelJson("/api/codex/runtime")
+        .then((payload) => payload?.analysisSkill || null)
+        .catch(() => null);
+    }
+    return runtimeAnalysisSkillPromise;
   }
 
   async function completeResolvedBindingFinalization(issueKey, binding) {
@@ -554,6 +588,38 @@
     return task;
   }
 
+  function bindPendingIssueToThread(pending, threadId, {
+    threadTitle = "",
+    firstMessageStatus = "pending"
+  } = {}) {
+    if (!pending?.issueKey || !pending.startedAt || !threadId) return null;
+    const knownIds = new Set(Array.isArray(pending.knownThreadIds) ? pending.knownThreadIds : []);
+    const bindings = readBindings();
+    bindings[pending.issueKey] = {
+      threadId,
+      uiThreadId: isProvisionalCodexThreadId(threadId) ? threadId : "",
+      threadTitle: threadTitle || pending.issueTitle || pending.issueKey,
+      issueTitle: pending.issueTitle || "",
+      boundAt: new Date().toISOString(),
+      firstMessageStatus,
+      pendingFinalization: {
+        ...pending,
+        startedAt: Number(pending.startedAt)
+      }
+    };
+    if (!writeStoredObject(BINDINGS_KEY, bindings)) return null;
+    window.localStorage.removeItem(PENDING_BINDING_KEY);
+    if (isProvisionalCodexThreadId(threadId)) {
+      void reconcileIssueBinding(pending.issueKey, { activeThreadId: threadId, retry: true });
+    } else {
+      void completeResolvedBindingFinalization(pending.issueKey, bindings[pending.issueKey]);
+    }
+    setConversationThreadHint(pending.issueKey, bindings[pending.issueKey], knownIds.size ? Array.from(knownIds) : []);
+    sendBindings();
+    ensureConversationIssueFloat();
+    return bindings[pending.issueKey];
+  }
+
   function tryBindPendingIssue() {
     const pending = readStoredObject(PENDING_BINDING_KEY);
     if (!pending.issueKey || !pending.startedAt) return false;
@@ -567,30 +633,11 @@
       return threadId && !knownIds.has(threadId);
     });
     if (!thread) return false;
-    const threadId = thread.getAttribute("data-app-action-sidebar-thread-id");
-    const bindings = readBindings();
-    bindings[pending.issueKey] = {
-      threadId,
-      uiThreadId: isProvisionalCodexThreadId(threadId) ? threadId : "",
-      threadTitle: thread.getAttribute("data-app-action-sidebar-thread-title") || pending.issueTitle || pending.issueKey,
-      issueTitle: pending.issueTitle || "",
-      boundAt: new Date().toISOString(),
-      pendingFinalization: {
-        ...pending,
-        startedAt: Number(pending.startedAt)
-      }
-    };
-    if (!writeStoredObject(BINDINGS_KEY, bindings)) return false;
-    window.localStorage.removeItem(PENDING_BINDING_KEY);
-    if (isProvisionalCodexThreadId(threadId)) {
-      void reconcileIssueBinding(pending.issueKey, { activeThreadId: threadId, retry: true });
-    } else {
-      void completeResolvedBindingFinalization(pending.issueKey, bindings[pending.issueKey]);
-    }
-    setConversationThreadHint(pending.issueKey, bindings[pending.issueKey], knownIds.size ? Array.from(knownIds) : []);
-    sendBindings();
-    ensureConversationIssueFloat();
-    return true;
+    return Boolean(bindPendingIssueToThread(
+      pending,
+      thread.getAttribute("data-app-action-sidebar-thread-id"),
+      { threadTitle: thread.getAttribute("data-app-action-sidebar-thread-title") || "" }
+    ));
   }
 
   function installStyles() {
@@ -3405,6 +3452,127 @@
     }));
   }
 
+  function normalizedConfiguredSkill(skill) {
+    if (!skill || typeof skill !== "object") return null;
+    const name = String(skill.name || "").trim();
+    if (!name) return null;
+    return {
+      name,
+      path: String(skill.path || "").trim(),
+      scope: String(skill.scope || "").trim()
+    };
+  }
+
+  async function resolveIssueSkillInputs(configuredSkill, projectId) {
+    const [analysisSkill] = await Promise.all([
+      runtimeAnalysisSkill(),
+      refreshAvailableSkills()
+    ]);
+    const skills = [];
+    const notices = [];
+    const selected = normalizedConfiguredSkill(configuredSkill);
+    if (selected) {
+      const exactPath = selected.path
+        ? availableSkillsCache.find((candidate) => candidate.enabled !== false && candidate.path === selected.path)
+        : null;
+      const exactNames = availableSkillsCache.filter((candidate) => (
+        candidate.enabled !== false && candidate.name === selected.name
+      ));
+      const resolved = exactPath || (exactNames.length === 1 ? exactNames[0] : null);
+      if (resolved) {
+        // Keep the explicitly bound Skill first. The bundled Jira Skill declares
+        // itself as fallback-only and fills only concerns left unspecified here.
+        skills.push({ name: resolved.name, path: resolved.path, scope: resolved.scope || "" });
+      } else {
+        notices.push(`绑定 Skill“${selected.name}”当前不可用，已降级为分析模板、内置 Jira Skill${projectId ? "和绑定项目" : "及现有 Jira 上下文"}。`);
+      }
+    }
+    const internal = normalizedConfiguredSkill(analysisSkill);
+    if (internal?.path) {
+      skills.push(internal);
+    } else {
+      notices.push("内置 Jira 降级 Skill 当前不可用；绑定 Skill 未覆盖的部分将仅按分析模板和已有上下文处理。");
+    }
+    return {
+      skills: skills.filter((skill, index, all) => (
+        all.findIndex((candidate) => candidate.path === skill.path) === index
+      )),
+      fallbackNotice: notices.join("\n")
+    };
+  }
+
+  function setFirstMessageStatus(issueKey, status, error = "") {
+    const normalizedIssueKey = String(issueKey || "").trim().toUpperCase();
+    if (!normalizedIssueKey) return false;
+    const bindings = readBindings();
+    const binding = bindings[normalizedIssueKey];
+    if (!binding?.threadId) return false;
+    bindings[normalizedIssueKey] = {
+      ...binding,
+      firstMessageStatus: status,
+      firstMessageError: error ? String(error) : "",
+      firstMessageUpdatedAt: new Date().toISOString()
+    };
+    if (!writeStoredObject(BINDINGS_KEY, bindings)) return false;
+    sendBindings();
+    return true;
+  }
+
+  async function structuredIssuePromptPayload(issue, prompt, skill, projectId) {
+    const [materialized, routing] = await Promise.all([
+      materializeIssueAttachments(issue),
+      resolveIssueSkillInputs(skill, projectId)
+    ]);
+    return {
+      message: [String(prompt || "").trim(), routing.fallbackNotice].filter(Boolean).join("\n\n"),
+      attachments: materialized.map((attachment) => ({
+        path: attachment.path,
+        label: attachment.filename || attachment.name || attachment.path.split(/[\\/]/).at(-1),
+        mimeType: attachment.mimeType || ""
+      })),
+      skills: routing.skills
+    };
+  }
+
+  async function submitStructuredIssuePrompt(threadId, prompt, {
+    issue,
+    skill = null,
+    projectId = ""
+  } = {}) {
+    try {
+      const payload = await structuredIssuePromptPayload(issue, prompt, skill, projectId);
+      const started = await startCodexThreadTurn(threadId, payload.message, {
+        allowProvisional: true,
+        attachments: payload.attachments,
+        skills: payload.skills
+      });
+      tryBindPendingIssue();
+      setFirstMessageStatus(issue?.key, "sent");
+      sendPanelMessage("issue-prompt-sent", { issueKey: issue?.key || "" });
+      const binding = readBindings()[issue?.key];
+      if (binding?.threadId && isProvisionalCodexThreadId(binding.threadId)) {
+        void reconcileIssueBinding(issue.key, {
+          activeThreadId: binding.uiThreadId || binding.threadId,
+          retry: true
+        });
+      }
+      return started;
+    } catch (error) {
+      window.localStorage.removeItem(PENDING_BINDING_KEY);
+      const bindingRetained = setFirstMessageStatus(issue?.key, "failed", error.message || error);
+      if (issue?.__jiraCodexAutomated) {
+        void reportAutomationFailure(issue.key, `首条分析消息未发送：${error.message || error}`);
+      }
+      openPanel();
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained,
+        message: `首条分析消息未发送：${error.message || error}。已保留当前会话和补充说明，可直接重试，不会创建重复对话。`
+      });
+      return null;
+    }
+  }
+
   function composerAttachmentCount(composerInput) {
     const scope = composerInput?.closest?.(".composer-surface-chrome") || composerInput?.parentElement || document;
     const rows = Array.from(scope.querySelectorAll?.("[data-composer-attachments-row]") || []);
@@ -3564,73 +3732,80 @@
     }, 150);
   }
 
-  function prepareNewConversationAndSend(prompt, {
+  async function prepareNewConversationAndSend(prompt, {
     projectId = "",
     issue = null,
-    previousComposer = null,
-    previousActiveThreadIds = []
+    skill = null
   } = {}) {
-    let attempts = 0;
-    const timer = window.setInterval(() => {
-      attempts += 1;
-      const composer = findVisibleComposer();
-      const currentActiveIds = new Set(activeThreadIds());
-      const leftPreviousConversation = previousActiveThreadIds.length === 0
-        ? attempts >= 3
-        : previousActiveThreadIds.every((threadId) => !currentActiveIds.has(threadId));
-      const composerReplaced = Boolean(composer && composer !== previousComposer);
-      const navigationReady = leftPreviousConversation || composerReplaced || isNewConversationHeaderVisible();
-      if (!composer || !navigationReady) {
-        if (attempts < 40) return;
-      } else if (!projectId) {
-        const clearProject = document.querySelector('[data-clear-project-button="true"]');
-        if (clearProject) {
-          clearProject.click();
-          return;
-        }
-      }
-      window.clearInterval(timer);
-      if (!composer || !navigationReady) {
+    const pending = readStoredObject(PENDING_BINDING_KEY);
+    try {
+      const payload = await structuredIssuePromptPayload(issue, prompt, skill, projectId);
+      const title = [`分析 ${issue?.key || "Jira"}`, issue?.title || ""]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 180);
+      const started = await startCodexConversation(payload.message, {
+        projectId,
+        title,
+        attachments: payload.attachments,
+        skills: payload.skills
+      });
+      const normalizedThreadId = normalizeCodexThreadId(started.threadId);
+      const storedThreadId = started.hostId === "local"
+        ? `local:${normalizedThreadId}`
+        : normalizedThreadId;
+      const binding = bindPendingIssueToThread(pending, storedThreadId, {
+        threadTitle: title,
+        firstMessageStatus: "sent"
+      });
+      if (!binding) {
         window.localStorage.removeItem(PENDING_BINDING_KEY);
-        if (issue?.__jiraCodexAutomated) {
-          void reportAutomationFailure(issue.key, "Codex 未能切换到自动创建的新对话。");
-        }
         openPanel();
-        sendPanelMessage("binding-error", { message: "Codex 未能切换到新对话，因此没有写入或发送分析消息；原绑定保持不变。" });
+        sendPanelMessage("binding-error", {
+          issueKey: issue?.key || "",
+          bindingRetained: false,
+          message: `Codex 已创建会话并发送分析消息，但本地绑定保存失败。请通过“绑定已有会话”关联会话 ID：${normalizedThreadId}`
+        });
         return;
       }
-      sendComposerPrompt(prompt, { issue });
-    }, 150);
+      sendPanelMessage("issue-prompt-sent", { issueKey: issue?.key || "" });
+      setConversationThreadHint(issue.key, binding);
+      closePanel();
+      try {
+        await navigateCodexThread(normalizedThreadId);
+      } catch (error) {
+        openPanel();
+        sendPanelMessage("binding-error", {
+          issueKey: issue?.key || "",
+          bindingRetained: true,
+          message: `分析会话已创建并绑定，但暂时无法跳转：${error.message || error}`
+        });
+      }
+      window.setTimeout(ensureConversationIssueFloat, 0);
+    } catch (error) {
+      window.localStorage.removeItem(PENDING_BINDING_KEY);
+      const bindingRetained = Boolean(readBindings()[issue?.key]);
+      if (issue?.__jiraCodexAutomated) {
+        void reportAutomationFailure(issue.key, `Codex 新会话创建失败：${error.message || error}`);
+      }
+      openPanel();
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained,
+        message: `Codex 新会话创建失败，未发送分析消息：${error.message || error}。补充说明仍已保留，可直接重试。`
+      });
+    }
   }
 
-  function startIssue(issue, prompt, projectId = "", { automated = false, monitorGeneration = 0 } = {}) {
+  function startIssue(issue, prompt, projectId = "", {
+    automated = false,
+    monitorGeneration = 0,
+    skill = null
+  } = {}) {
     const knownThreadIds = threadRows()
       .map((row) => row.getAttribute("data-app-action-sidebar-thread-id"))
       .filter(Boolean);
     const normalizedProjectId = String(projectId || "").trim();
-    const previousComposer = findVisibleComposer();
-    const previousActiveThreadIds = activeThreadIds();
-    let newChat;
-    if (normalizedProjectId) {
-      const projectRow = Array.from(document.querySelectorAll("[data-app-action-sidebar-project-id]"))
-        .find((row) => row.getAttribute("data-app-action-sidebar-project-id") === normalizedProjectId);
-      newChat = Array.from(projectRow?.querySelectorAll("button") || []).find((button) => (
-        button.getAttribute("aria-hidden") !== "true" && !button.hasAttribute("aria-haspopup")
-      ));
-      if (!projectRow || !newChat) {
-        if (automated) void reportAutomationFailure(issue.key, "绑定的 Codex 项目当前不可用。");
-        sendPanelMessage("binding-error", { message: "绑定的 Codex 项目当前不可用，请在 Jira 设置中重新选择项目。" });
-        return;
-      }
-    } else {
-      const buttons = Array.from(document.querySelectorAll("button"));
-      newChat = buttons.find((button) => buttonMatches(button, newChatLabels));
-    }
-    if (!newChat) {
-      if (automated) void reportAutomationFailure(issue.key, "未找到 Codex 新对话入口。");
-      sendPanelMessage("binding-error", { message: "未找到 Codex 新对话入口，请刷新 Codex 后重试。" });
-      return;
-    }
     const pendingSaved = writeStoredObject(PENDING_BINDING_KEY, {
       issueKey: issue.key,
       issueTitle: issue.title,
@@ -3640,28 +3815,31 @@
       automated,
       monitorGeneration,
       captureSvnBaseline: true,
+      firstMessageStatus: "pending",
       knownThreadIds,
       startedAt: Date.now()
     });
     if (!pendingSaved) {
       if (automated) void reportAutomationFailure(issue.key, "无法保存本地会话绑定。");
-      sendPanelMessage("binding-error", { message: "无法保存本地会话绑定，请检查 Codex 本地存储。" });
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained: false,
+        message: "无法保存本地会话绑定，请检查 Codex 本地存储。"
+      });
       return;
     }
     closePanel();
-    newChat.click();
-    prepareNewConversationAndSend(prompt, {
+    void prepareNewConversationAndSend(prompt, {
       projectId: normalizedProjectId,
       issue: automated ? { ...issue, __jiraCodexAutomated: true } : issue,
-      previousComposer,
-      previousActiveThreadIds
+      skill
     });
   }
 
-  async function openIssueConversation(issue, prompt, projectId) {
+  async function openIssueConversation(issue, prompt, projectId, skill = null) {
     const binding = readBindings()[issue.key];
     if (!binding?.threadId) {
-      startIssue(issue, prompt, projectId);
+      startIssue(issue, prompt, projectId, { skill });
       return;
     }
     const thread = threadRows().find((row) => (
@@ -3680,36 +3858,86 @@
       clearConversationThreadHint();
       openPanel();
       sendPanelMessage("binding-error", {
-        message: `无法按会话 ID 打开已绑定的 Codex 对话“${binding.threadTitle || issue.key}”：${error.message || error}。可以点击“重新绑定对话”修正绑定。`
+        message: `无法按会话 ID 打开已绑定的 Codex 对话“${binding.threadTitle || issue.key}”：${error.message || error}。可以点击“更改关联”修正绑定。`
       });
     }
   }
 
-  function bindIssueToThread(issue, threadId) {
+  async function bindIssueToThread(issue, threadId, { confirmConflict = false } = {}) {
     const normalizedThreadId = String(threadId || "").trim();
-    const thread = threadRows().find((row) => (
-      row.getAttribute("data-app-action-sidebar-thread-id") === normalizedThreadId
-    ));
-    if (!thread) {
-      sendPanelMessage("binding-error", { message: "当前 Codex 侧栏中未找到指定会话 ID，旧绑定未被修改。" });
+    if (!normalizedThreadId) {
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained: Boolean(readBindings()[issue?.key]),
+        message: "Codex 会话 ID 不能为空，旧绑定未被修改。"
+      });
       return;
     }
+    const thread = threadRows().find((row) => (
+      normalizeCodexThreadId(row.getAttribute("data-app-action-sidebar-thread-id")) === normalizeCodexThreadId(normalizedThreadId)
+    ));
+    if (!thread) {
+      try {
+        await readCodexThreadState(normalizedThreadId, { timeoutMs: 8_000 });
+      } catch (error) {
+        sendPanelMessage("binding-error", {
+          issueKey: issue?.key || "",
+          bindingRetained: Boolean(readBindings()[issue?.key]),
+          message: `无法按会话 ID 验证目标对话，旧绑定未被修改：${error.message || error}`
+        });
+        return;
+      }
+    }
     const bindings = readBindings();
+    const conflict = Object.entries(bindings).find(([candidateIssueKey, binding]) => (
+      candidateIssueKey !== issue.key && bindingMatchesThread(binding, normalizedThreadId)
+    ));
+    if (conflict && !confirmConflict) {
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained: Boolean(bindings[issue.key]),
+        message: `该会话当前关联 ${conflict[0]}，必须人工确认后才能改为关联 ${issue.key}。`
+      });
+      return;
+    }
+    if (conflict) delete bindings[conflict[0]];
     bindings[issue.key] = {
       threadId: normalizedThreadId,
       uiThreadId: isProvisionalCodexThreadId(normalizedThreadId) ? normalizedThreadId : "",
-      threadTitle: thread.getAttribute("data-app-action-sidebar-thread-title") || issue.title || issue.key,
+      threadTitle: thread?.getAttribute("data-app-action-sidebar-thread-title") || issue.title || issue.key,
       issueTitle: issue.title || "",
       boundAt: new Date().toISOString()
     };
     if (!writeStoredObject(BINDINGS_KEY, bindings)) {
-      sendPanelMessage("binding-error", { message: "无法保存新的会话绑定，旧绑定未被修改。" });
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained: Boolean(readBindings()[issue.key]),
+        message: "无法保存新的会话绑定，旧绑定未被修改。"
+      });
       return;
     }
     setConversationThreadHint(issue.key, bindings[issue.key]);
     sendBindings();
+    sendPanelMessage("binding-success", {
+      issueKey: issue.key,
+      message: conflict
+        ? `已将会话从 ${conflict[0]} 改为关联 ${issue.key}。`
+        : `已关联 ${issue.key}，不会向已有会话自动发送消息。`
+    });
     closePanel();
-    thread.click();
+    if (thread) thread.click();
+    else {
+      try {
+        await navigateCodexThread(normalizedThreadId);
+      } catch (error) {
+        openPanel();
+        sendPanelMessage("binding-error", {
+          issueKey: issue?.key || "",
+          bindingRetained: true,
+          message: `会话关联已保存，但暂时无法完成跳转：${error.message || error}`
+        });
+      }
+    }
     if (isProvisionalCodexThreadId(normalizedThreadId)) {
       window.setTimeout(() => void reconcileIssueBinding(issue.key, {
         activeThreadId: normalizedThreadId,
@@ -3717,6 +3945,32 @@
       }), 0);
     }
     window.setTimeout(ensureConversationIssueFloat, 0);
+  }
+
+  async function retryIssuePrompt(issue, prompt, projectId = "", skill = null) {
+    const binding = readBindings()[issue?.key];
+    if (!binding?.threadId) {
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained: false,
+        message: "当前任务没有可重试的绑定会话，请重新关联。"
+      });
+      return;
+    }
+    setFirstMessageStatus(issue.key, "pending");
+    const started = await submitStructuredIssuePrompt(binding.threadId, prompt, {
+      issue,
+      skill,
+      projectId
+    });
+    if (!started) return;
+    setConversationThreadHint(issue.key, readBindings()[issue.key] || binding);
+    closePanel();
+    try {
+      await navigateCodexThread(started.threadId || binding.threadId);
+    } catch {
+      // The turn already started; navigation can be retried from the Jira panel.
+    }
   }
 
   function readBugMonitorState() {
@@ -3828,13 +4082,13 @@
         monitor.activeStartedAt = Date.now();
         saveBugMonitorState(monitor);
         const prompt = buildIssuePrompt(issue, {
-          messageTemplate: config.messageTemplate,
-          projectId: config.codexProjectId,
-          projectLabel: config.codexProjectLabel
+          messageTemplate: config.promptTemplates?.bug?.content || config.messageTemplate || DEFAULT_BUG_MESSAGE_TEMPLATE,
+          automated: true
         });
         startIssue(issue, prompt, config.codexProjectId, {
           automated: true,
-          monitorGeneration: generation
+          monitorGeneration: generation,
+          skill: config.promptTemplates?.bug?.skill || null
         });
         sendAutomationStatus(automation, {
           monitorEvent: "started",
@@ -3860,13 +4114,24 @@
     const message = event.data;
     if (!message || message.source !== "jira-codex-panel-poc") return;
     if (message.type === "close") closePanel();
-    if (message.type === "get-bindings" || message.type === "ready") sendBindings();
-    if (message.type === "open-task" && message.issue) {
-      openIssueConversation(message.issue, message.prompt, message.projectId);
+    if (message.type === "get-bindings" || message.type === "ready") {
+      sendBindings();
+      void refreshAvailableSkills();
     }
-    if (message.type === "bind-task" && message.issue) bindIssueToThread(message.issue, message.threadId);
-    if (message.type === "rebind-new-task" && message.issue) {
-      startIssue(message.issue, message.prompt, message.projectId);
+    if (message.type === "get-skills") void refreshAvailableSkills({ forceReload: true });
+    if (message.type === "open-task" && message.issue) {
+      openIssueConversation(message.issue, message.prompt, message.projectId, message.skill);
+    }
+    if (message.type === "bind-task" && message.issue) {
+      void bindIssueToThread(message.issue, message.threadId, {
+        confirmConflict: message.confirmConflict === true
+      });
+    }
+    if ((message.type === "associate-new-task" || message.type === "rebind-new-task") && message.issue) {
+      startIssue(message.issue, message.prompt, message.projectId, { skill: message.skill });
+    }
+    if (message.type === "retry-task-message" && message.issue) {
+      void retryIssuePrompt(message.issue, message.prompt, message.projectId, message.skill);
     }
     if (message.type === "automation-settings-changed") void runBugMonitor();
   }

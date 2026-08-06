@@ -1,9 +1,21 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { DEFAULT_MESSAGE_TEMPLATE } from "./public/prompt-builder.js";
+import {
+  DEFAULT_BUG_MESSAGE_TEMPLATE,
+  DEFAULT_MESSAGE_TEMPLATE,
+  DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE,
+  HISTORICAL_DEFAULT_MESSAGE_TEMPLATE,
+  LEGACY_DEFAULT_MESSAGE_TEMPLATE,
+  PREVIOUS_BUG_MESSAGE_TEMPLATE,
+  PREVIOUS_REQUIREMENT_MESSAGE_TEMPLATE
+} from "./public/prompt-builder.js";
 
-export { DEFAULT_MESSAGE_TEMPLATE } from "./public/prompt-builder.js";
+export {
+  DEFAULT_BUG_MESSAGE_TEMPLATE,
+  DEFAULT_MESSAGE_TEMPLATE,
+  DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE
+} from "./public/prompt-builder.js";
 
 export const LEGACY_DEFAULT_JQL = "assignee = currentUser() ORDER BY updated DESC";
 export const COLLABORATION_DEFAULT_JQL = '(assignee = currentUser() OR "协同处理人" = currentUser()) ORDER BY updated DESC';
@@ -78,12 +90,123 @@ export function normalizeWecomWebhook(value) {
   return url.href;
 }
 
-function normalizeMessageTemplate(value) {
-  const template = String(value ?? DEFAULT_MESSAGE_TEMPLATE).trim() || DEFAULT_MESSAGE_TEMPLATE;
+function normalizeMessageTemplate(value, fallback = DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE) {
+  const template = String(value ?? fallback).trim() || fallback;
   if (template.length > 12_000) {
     throw new ConfigurationError("对话消息模板不能超过 12000 个字符。", { code: "MESSAGE_TEMPLATE_TOO_LONG" });
   }
   return template;
+}
+
+export const DEFAULT_BUG_SKILL = Object.freeze({
+  name: "ct-devops-tracer",
+  path: "",
+  scope: "user"
+});
+
+function hasOwn(object, key) {
+  return Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
+}
+
+function normalizeSkillReference(value, fallback = null) {
+  const source = value === undefined ? fallback : value;
+  if (!source || typeof source !== "object") return null;
+  const name = String(source.name || "").trim();
+  if (!name) return null;
+  const path = String(source.path || "").trim();
+  const scope = String(source.scope || "").trim();
+  if (name.length > 200 || path.length > 4_000 || scope.length > 100) {
+    throw new ConfigurationError("绑定的 Codex 技能信息无效。", { code: "INVALID_CODEX_SKILL" });
+  }
+  return { name, path, scope };
+}
+
+function isManagedLegacyTemplate(value) {
+  const normalized = String(value || "").trim();
+  return !normalized
+    || normalized === DEFAULT_MESSAGE_TEMPLATE.trim()
+    || normalized === PREVIOUS_REQUIREMENT_MESSAGE_TEMPLATE.trim()
+    || normalized === PREVIOUS_BUG_MESSAGE_TEMPLATE.trim()
+    || normalized === HISTORICAL_DEFAULT_MESSAGE_TEMPLATE.trim()
+    || normalized === LEGACY_DEFAULT_MESSAGE_TEMPLATE.trim();
+}
+
+function defaultTemplateEntry(kind) {
+  return {
+    customized: false,
+    content: kind === "bug" ? DEFAULT_BUG_MESSAGE_TEMPLATE : DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE,
+    skill: kind === "bug" ? { ...DEFAULT_BUG_SKILL } : null
+  };
+}
+
+function normalizeTemplateEntry(kind, incoming, previous, legacyValue, hasLegacyValue) {
+  const defaults = defaultTemplateEntry(kind);
+  let customized = defaults.customized;
+  let content = defaults.content;
+
+  if (incoming && typeof incoming === "object") {
+    customized = Boolean(incoming.customized);
+    content = customized
+      ? normalizeMessageTemplate(incoming.content, defaults.content)
+      : defaults.content;
+  } else if (hasLegacyValue) {
+    customized = !isManagedLegacyTemplate(legacyValue);
+    content = customized
+      ? normalizeMessageTemplate(legacyValue, defaults.content)
+      : defaults.content;
+  } else if (previous && typeof previous === "object") {
+    customized = Boolean(previous.customized);
+    content = customized
+      ? normalizeMessageTemplate(previous.content, defaults.content)
+      : defaults.content;
+  }
+
+  let skill;
+  if (incoming && typeof incoming === "object" && hasOwn(incoming, "skill")) {
+    skill = normalizeSkillReference(incoming.skill, defaults.skill);
+  } else if (previous && typeof previous === "object" && hasOwn(previous, "skill")) {
+    skill = normalizeSkillReference(previous.skill, defaults.skill);
+  } else {
+    skill = normalizeSkillReference(undefined, defaults.skill);
+  }
+  return { customized, content, skill };
+}
+
+function normalizePromptTemplates(input = {}, previous = {}) {
+  const incoming = input.promptTemplates && typeof input.promptTemplates === "object"
+    ? input.promptTemplates
+    : null;
+  const prior = previous.promptTemplates && typeof previous.promptTemplates === "object"
+    ? previous.promptTemplates
+    : null;
+  const hasLegacyInput = hasOwn(input, "messageTemplate");
+  const hasLegacyPrevious = !prior && hasOwn(previous, "messageTemplate");
+  const legacyValue = hasLegacyInput ? input.messageTemplate : previous.messageTemplate;
+  const hasLegacyValue = hasLegacyInput || hasLegacyPrevious;
+  return {
+    requirement: normalizeTemplateEntry(
+      "requirement",
+      incoming?.requirement,
+      prior?.requirement,
+      legacyValue,
+      hasLegacyValue
+    ),
+    bug: normalizeTemplateEntry(
+      "bug",
+      incoming?.bug,
+      prior?.bug,
+      legacyValue,
+      hasLegacyValue
+    )
+  };
+}
+
+function storedPromptTemplates(promptTemplates) {
+  return Object.fromEntries(Object.entries(promptTemplates).map(([kind, entry]) => [kind, {
+    customized: Boolean(entry.customized),
+    content: entry.customized ? entry.content : undefined,
+    skill: entry.skill || null
+  }]));
 }
 
 export function normalizeConfiguration(input, previous = {}) {
@@ -93,7 +216,7 @@ export function normalizeConfiguration(input, previous = {}) {
   const suppliedToken = typeof input.token === "string" ? input.token.trim() : "";
   const token = suppliedToken || String(previous.token || "");
   const jql = String(input.jql ?? previous.jql ?? DEFAULT_JQL).trim() || DEFAULT_JQL;
-  const messageTemplate = normalizeMessageTemplate(input.messageTemplate ?? previous.messageTemplate);
+  const promptTemplates = normalizePromptTemplates(input, previous);
   const baseUrl = normalizeBaseUrl(input.baseUrl ?? previous.baseUrl);
   const suppliedWecomWebhook = typeof input.wecomWebhook === "string" ? input.wecomWebhook.trim() : "";
   const wecomWebhook = input.clearWecomWebhook === true
@@ -117,7 +240,8 @@ export function normalizeConfiguration(input, previous = {}) {
     codexProjectLabel: codexProjectId ? codexProjectLabel : "",
     token,
     jql,
-    messageTemplate,
+    promptTemplates,
+    messageTemplate: promptTemplates.requirement.content,
     maxResults: normalizeMaxResults(input.maxResults ?? previous.maxResults),
     bugMonitorEnabled,
     monitorGeneration,
@@ -185,6 +309,10 @@ function publicConfiguration(record) {
     DASHBOARD_ACTIVE_JQL
   ]);
   const storedJql = managedDefaults.has(record?.jql) ? DEFAULT_JQL : record?.jql;
+  const promptTemplates = normalizePromptTemplates({}, {
+    promptTemplates: record?.promptTemplates,
+    ...(hasOwn(record, "messageTemplate") ? { messageTemplate: record.messageTemplate } : {})
+  });
   return {
     configured: Boolean(record?.baseUrl && record?.tokenProtected),
     deployment: "data_center",
@@ -193,7 +321,8 @@ function publicConfiguration(record) {
     codexProjectId: record?.codexProjectId || "",
     codexProjectLabel: record?.codexProjectId ? record?.codexProjectLabel || "" : "",
     jql: storedJql || DEFAULT_JQL,
-    messageTemplate: record?.messageTemplate || DEFAULT_MESSAGE_TEMPLATE,
+    promptTemplates,
+    messageTemplate: promptTemplates.requirement.content,
     maxResults: record?.maxResults || 100,
     hasToken: Boolean(record?.tokenProtected),
     bugMonitorEnabled: Boolean(record?.bugMonitorEnabled),
@@ -261,14 +390,14 @@ export function createConfigStore({
       });
     }
     const record = {
-      version: 2,
+      version: 3,
       deployment: normalized.deployment,
       baseUrl: normalized.baseUrl,
       email: normalized.email,
       codexProjectId: normalized.codexProjectId,
       codexProjectLabel: normalized.codexProjectLabel,
       jql: normalized.jql,
-      messageTemplate: normalized.messageTemplate,
+      promptTemplates: storedPromptTemplates(normalized.promptTemplates),
       maxResults: normalized.maxResults,
       bugMonitorEnabled: normalized.bugMonitorEnabled,
       monitorGeneration: normalized.monitorGeneration,
@@ -301,7 +430,7 @@ export function createConfigStore({
     const wasEnabled = Boolean(record.bugMonitorEnabled);
     const nextRecord = {
       ...record,
-      version: Math.max(2, Number(record.version || 1)),
+      version: Math.max(3, Number(record.version || 1)),
       bugMonitorEnabled: nextEnabled,
       monitorGeneration: !wasEnabled && nextEnabled
         ? Math.max(0, Number(record.monitorGeneration || 0)) + 1

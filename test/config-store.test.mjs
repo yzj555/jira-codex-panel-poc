@@ -7,10 +7,16 @@ import {
   COLLABORATION_DEFAULT_JQL,
   createConfigStore,
   DASHBOARD_ACTIVE_JQL,
+  DEFAULT_BUG_MESSAGE_TEMPLATE,
   DEFAULT_JQL,
   DEFAULT_MESSAGE_TEMPLATE,
+  DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE,
   LEGACY_DEFAULT_JQL
 } from "../config-store.mjs";
+import {
+  HISTORICAL_DEFAULT_MESSAGE_TEMPLATE,
+  LEGACY_DEFAULT_MESSAGE_TEMPLATE
+} from "../public/prompt-builder.js";
 
 test("配置固定为 Data Center，文件只保存受保护 Token，公开配置不返回 Token", async () => {
   const directory = await mkdtemp(join(tmpdir(), "jira-codex-config-"));
@@ -46,6 +52,11 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
     assert.equal(publicConfig.codexProjectId, "local-project-1");
     assert.equal(publicConfig.codexProjectLabel, "server-project");
     assert.equal(publicConfig.messageTemplate, "处理 {{key}}");
+    assert.equal(publicConfig.promptTemplates.requirement.content, "处理 {{key}}");
+    assert.equal(publicConfig.promptTemplates.bug.content, "处理 {{key}}");
+    assert.equal(publicConfig.promptTemplates.requirement.customized, true);
+    assert.equal(publicConfig.promptTemplates.bug.customized, true);
+    assert.equal(publicConfig.promptTemplates.bug.skill.name, "ct-devops-tracer");
     assert.equal(publicConfig.bugMonitorEnabled, false);
     assert.equal(publicConfig.wecomConfigured, true);
     assert.equal("token" in publicConfig, false);
@@ -67,6 +78,8 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
     assert.equal(preserved.codexProjectId, "");
     assert.equal(preserved.codexProjectLabel, "");
     assert.equal(preserved.messageTemplate, DEFAULT_MESSAGE_TEMPLATE);
+    assert.equal(preserved.promptTemplates.requirement.content, DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE);
+    assert.equal(preserved.promptTemplates.bug.content, DEFAULT_BUG_MESSAGE_TEMPLATE);
     assert.equal(preserved.token, "secret-token-value");
     assert.match(preserved.wecomWebhook, /^https:\/\/qyapi\.weixin\.qq\.com\//);
 
@@ -134,6 +147,88 @@ test("旧版默认 JQL 自动迁移到 CT 仪表盘筛选器，自定义 JQL 不
       maxResults: 100
     });
     assert.equal(custom.jql, "project = DEMO");
+  } finally {
+    await store.clear();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("需求与 Bug 模板、技能独立保存，系统默认正文不固化到配置文件", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-codex-templates-"));
+  const configFile = join(directory, "config.json");
+  const protect = async (value) => Buffer.from(value, "utf8").toString("base64");
+  const unprotect = async (value) => Buffer.from(value, "base64").toString("utf8");
+  const store = createConfigStore({ configFile, protect, unprotect });
+
+  try {
+    const candidate = await store.prepare({
+      baseUrl: "http://jira.example:8080",
+      token: "token",
+      jql: "project = CT",
+      maxResults: 100,
+      promptTemplates: {
+        requirement: {
+          customized: false,
+          content: "不会保存的旧正文",
+          skill: null
+        },
+        bug: {
+          customized: true,
+          content: "诊断 {{key}}：{{description}}",
+          skill: { name: "custom-bug-skill", path: "C:\\skills\\bug\\SKILL.md", scope: "user" }
+        }
+      }
+    });
+    const publicConfig = await store.save(candidate);
+    assert.equal(publicConfig.promptTemplates.requirement.content, DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE);
+    assert.equal(publicConfig.promptTemplates.requirement.skill, null);
+    assert.equal(publicConfig.promptTemplates.bug.content, "诊断 {{key}}：{{description}}");
+    assert.equal(publicConfig.promptTemplates.bug.skill.name, "custom-bug-skill");
+
+    const record = JSON.parse(await readFile(configFile, "utf8"));
+    assert.equal(record.version, 3);
+    assert.equal("content" in record.promptTemplates.requirement, false);
+    assert.equal(record.promptTemplates.bug.content, "诊断 {{key}}：{{description}}");
+    assert.equal("messageTemplate" in record, false);
+  } finally {
+    await store.clear();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("旧版内置消息模板迁移为新的需求与 Bug 系统默认模板", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-codex-template-migration-"));
+  const configFile = join(directory, "config.json");
+  const protect = async (value) => Buffer.from(value, "utf8").toString("base64");
+  const unprotect = async (value) => Buffer.from(value, "base64").toString("utf8");
+  const store = createConfigStore({ configFile, protect, unprotect });
+
+  try {
+    await writeFile(configFile, JSON.stringify({
+      version: 2,
+      baseUrl: "http://jira.example:8080",
+      jql: "project = CT",
+      messageTemplate: LEGACY_DEFAULT_MESSAGE_TEMPLATE,
+      maxResults: 100,
+      tokenProtected: await protect("token")
+    }), "utf8");
+    const config = await store.getPublic();
+    assert.equal(config.promptTemplates.requirement.customized, false);
+    assert.equal(config.promptTemplates.bug.customized, false);
+    assert.equal(config.promptTemplates.requirement.content, DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE);
+    assert.equal(config.promptTemplates.bug.content, DEFAULT_BUG_MESSAGE_TEMPLATE);
+
+    await writeFile(configFile, JSON.stringify({
+      version: 2,
+      baseUrl: "http://jira.example:8080",
+      jql: "project = CT",
+      messageTemplate: HISTORICAL_DEFAULT_MESSAGE_TEMPLATE,
+      maxResults: 100,
+      tokenProtected: await protect("token")
+    }), "utf8");
+    const historicalConfig = await store.getPublic();
+    assert.equal(historicalConfig.promptTemplates.requirement.customized, false);
+    assert.equal(historicalConfig.promptTemplates.bug.customized, false);
   } finally {
     await store.clear();
     await rm(directory, { recursive: true, force: true });
