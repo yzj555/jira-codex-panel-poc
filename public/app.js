@@ -96,7 +96,7 @@ const DEFAULT_SYNC_SETTINGS = Object.freeze({
 });
 const DEFAULT_TEMPLATE_SKILLS = Object.freeze({
   requirement: null,
-  bug: Object.freeze({ name: "ct-devops-tracer", path: "", scope: "user" })
+  bug: null
 });
 const MAX_TEXT_PREVIEW_CHARACTERS = 500_000;
 const LAST_JXL_SHEET_STORAGE_KEY = "jira-codex-panel:last-jxl-sheet:v1";
@@ -1612,8 +1612,8 @@ function settingsBoardSources(config) {
   if (configured && typeof configured === "object") {
     return {
       projectKey: String(configured.projectKey || ""),
-      collaboratorFieldId: String(configured.collaboratorFieldId || "customfield_10600"),
-      collaboratorJqlName: String(configured.collaboratorJqlName || "协同处理人"),
+      collaboratorFieldId: String(configured.collaboratorFieldId || ""),
+      collaboratorJqlName: String(configured.collaboratorJqlName || ""),
       requirement: {
         mode: String(configured.requirement?.mode || "builtin"),
         jql: String(configured.requirement?.jql || ""),
@@ -1627,11 +1627,12 @@ function settingsBoardSources(config) {
     };
   }
   const legacyJql = String(config?.jql || "").trim();
-  const isLegacyDefault = !legacyJql || /filter\s*=\s*10103/i.test(legacyJql);
+  const isLegacyDefault = /filter\s*=\s*10103/i.test(legacyJql)
+    || /project\s*=\s*CT\b/i.test(legacyJql);
   return {
     projectKey: isLegacyDefault ? "CT" : "",
-    collaboratorFieldId: "customfield_10600",
-    collaboratorJqlName: "协同处理人",
+    collaboratorFieldId: isLegacyDefault ? "customfield_10600" : "",
+    collaboratorJqlName: isLegacyDefault ? "协同处理人" : "",
     requirement: { mode: isLegacyDefault ? "builtin" : "custom", jql: isLegacyDefault ? "" : legacyJql, filterIds: [] },
     bug: { mode: isLegacyDefault ? "builtin" : "custom", jql: isLegacyDefault ? "" : legacyJql, filterIds: [] }
   };
@@ -1722,20 +1723,28 @@ function renderBoardFilterOptions() {
     if (!select) continue;
     const selected = new Set((state.boardFilterSelections[kind] || []).map(String));
     const filters = Array.isArray(state.boardFilters) ? state.boardFilters : [];
+    const missing = [...selected]
+      .filter((id) => !filters.some((filter) => String(filter.id) === id))
+      .map((id) => ({ id, name: "当前 Jira 不可访问或已删除的 Filter", unavailable: true }));
     select.replaceChildren();
-    if (!filters.length) {
+    if (!filters.length && !missing.length) {
       const empty = document.createElement("option");
       empty.disabled = true;
       empty.textContent = state.boardFiltersLoading ? "正在读取 Filter…" : "暂无可用 Filter";
       select.append(empty);
       continue;
     }
-    for (const filter of filters) {
+    for (const filter of [...missing, ...filters]) {
       const option = document.createElement("option");
       option.value = String(filter.id);
-      option.textContent = `${filter.name || `Filter ${filter.id}`} (#${filter.id})`;
+      const scopeLabel = filter.projectMatch === "unknown" ? "（范围待确认）" : "";
+      option.textContent = `${filter.name || `Filter ${filter.id}`} (#${filter.id})${scopeLabel}`;
       option.title = filter.jql || "";
       option.selected = selected.has(option.value);
+      if (filter.unavailable) {
+        option.disabled = true;
+        option.title = "该 Filter 不在当前 Jira Token 的可访问列表中，请刷新后重新选择。";
+      }
       select.append(option);
     }
   }
@@ -1756,7 +1765,7 @@ function updateBoardSourceVisibility() {
   const help = document.querySelector("#board-source-help");
   if (help) {
     help.textContent = hasBuiltin
-      ? "内置通用 JQL 会按项目、当前用户和任务类型自动查询；自定义 JQL 与 Filter 由你负责确认范围。"
+      ? "内置通用 JQL 会按项目、当前用户和任务类型自动查询；协同处理人字段会从 Jira 自动识别，识别不到时仅按经办人查询。"
       : "当前未使用内置通用 JQL；自定义 JQL 和 Filter 会按各自面板查询，并自动区分活动与历史任务。";
   }
 }
@@ -1795,8 +1804,8 @@ async function loadBoardFilters({ quiet = false, force = false } = {}) {
 function collectBoardSourcesFromForm() {
   const source = {
     projectKey: document.querySelector("#board-project-key")?.value.trim() || "",
-    collaboratorFieldId: state.config?.boardSources?.collaboratorFieldId || "customfield_10600",
-    collaboratorJqlName: state.config?.boardSources?.collaboratorJqlName || "协同处理人"
+    collaboratorFieldId: state.config?.boardSources?.collaboratorFieldId || "",
+    collaboratorJqlName: state.config?.boardSources?.collaboratorJqlName || ""
   };
   for (const kind of ["requirement", "bug"]) {
     const mode = document.querySelector(`#${kind}-source-mode`)?.value || "builtin";
@@ -1811,6 +1820,19 @@ function collectBoardSourcesFromForm() {
     throw new Error("使用内置通用 JQL 时必须选择项目 Key。请先刷新项目列表，或改用自定义 JQL / Filter。");
   }
   return source;
+}
+
+function validateSelectedBoardFilters(boardSources) {
+  const available = new Set((Array.isArray(state.boardFilters) ? state.boardFilters : [])
+    .map((filter) => String(filter?.id || "").trim())
+    .filter(Boolean));
+  for (const kind of ["requirement", "bug"]) {
+    if (boardSources[kind]?.mode !== "filter") continue;
+    const missing = boardSources[kind].filterIds.filter((id) => !available.has(String(id)));
+    if (missing.length) {
+      throw new Error(`${kind === "bug" ? "Bug" : "需求"} 面板包含当前 Jira Token 不可访问的 Filter（${missing.join(", ")}），请先刷新 Filter 并重新选择。`);
+    }
+  }
 }
 
 function populateSettings(config) {
@@ -2130,6 +2152,7 @@ async function saveSettings(event) {
   try {
     const codexProject = document.querySelector("#codex-project");
     const boardSources = collectBoardSourcesFromForm();
+    validateSelectedBoardFilters(boardSources);
     const payload = await api("/api/config", {
       method: "PUT",
       body: {
@@ -2386,6 +2409,17 @@ for (const kind of ["requirement", "bug"]) {
 document.querySelector("#board-project-key").addEventListener("change", () => {
   if (activeBoardFilterMode()) void loadBoardFilters({ quiet: true, force: true });
 });
+for (const connectionField of ["#base-url", "#token"]) {
+  document.querySelector(connectionField)?.addEventListener("change", () => {
+    state.boardFilters = [];
+    state.boardProjects = [];
+    renderBoardFilterOptions();
+    if (activeBoardFilterMode()) void loadBoardFilters({ quiet: true, force: true });
+    if (["requirement", "bug"].some((kind) => document.querySelector(`#${kind}-source-mode`)?.value === "builtin")) {
+      void loadBoardProjects({ quiet: true, force: true });
+    }
+  });
+}
 document.querySelector("#refresh-board-projects").addEventListener("click", () => {
   void loadBoardProjects({ quiet: false, force: true });
 });

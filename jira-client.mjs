@@ -12,10 +12,14 @@ const BASE_ISSUE_FIELDS = [
   "created",
   "updated"
 ];
-
 function issueFields(config) {
-  const collaboratorFieldId = String(config?.collaboratorFieldId || "customfield_10600").trim();
-  return [...new Set([...BASE_ISSUE_FIELDS, collaboratorFieldId])];
+  const collaboratorFieldId = String(
+    config?.collaboratorFieldId || config?.boardSources?.collaboratorFieldId || ""
+  ).trim();
+  return [...new Set([
+    ...BASE_ISSUE_FIELDS,
+    ...(collaboratorFieldId ? [collaboratorFieldId] : [])
+  ])];
 }
 
 export class JiraApiError extends Error {
@@ -121,7 +125,7 @@ function issueTypeGroup(fields) {
   return /bug|defect|缺陷|故障/i.test(name) ? "bug" : "requirement";
 }
 
-function normalizeIssue(issue, baseUrl, collaboratorFieldId = "customfield_10600") {
+function normalizeIssue(issue, baseUrl, collaboratorFieldId = "") {
   const fields = issue.fields || {};
   const description = flattenAtlassianDocument(fields.description).replace(/\n{3,}/g, "\n\n").trim();
   const collaborators = Array.isArray(fields[collaboratorFieldId])
@@ -211,6 +215,9 @@ function filterItems(payload) {
 }
 
 function filterProjectKeys(filter) {
+  if (Array.isArray(filter?.projectKeys) && filter.projectKeys.length) {
+    return filter.projectKeys.map((value) => String(value).toUpperCase());
+  }
   const permissions = Array.isArray(filter?.sharePermissions) ? filter.sharePermissions : [];
   return permissions.flatMap((permission) => {
     const project = permission?.project || permission?.projectId || permission?.projectKey;
@@ -233,6 +240,37 @@ function filterMatchesProject(filter, projectKey) {
     referenced.push(...match[1].split(",").map((value) => value.trim().replace(/^['"]|['"]$/g, "")));
   }
   return referenced.length === 0 || referenced.some((value) => String(value).toUpperCase() === target);
+}
+
+function filterProjectMatch(filter, projectKey) {
+  const target = String(projectKey || "").trim().toUpperCase();
+  if (!target) return "all";
+  if (!filterMatchesRequestedProject(filter, target)) return "other";
+  const shared = filterProjectKeys(filter);
+  if (shared.includes(target)) return "match";
+  const jql = String(filter?.jql || "");
+  const hasProjectClause = /\bproject\s+(?:=|in|!=|not\s+in|is|is\s+not)\b/i.test(jql);
+  return hasProjectClause ? "match" : "unknown";
+}
+
+function filterMatchesRequestedProject(filter, projectKey) {
+  const target = String(projectKey || "").trim().toUpperCase();
+  if (!target) return true;
+  if (filterProjectKeys(filter).includes(target)) return true;
+  const jql = String(filter?.jql || "");
+  const positive = [];
+  const negative = [];
+  for (const match of jql.matchAll(/\bproject\s*(=|!=)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))/ig)) {
+    const value = match[2] || match[3] || match[4];
+    (match[1] === "!=" ? negative : positive).push(value);
+  }
+  for (const match of jql.matchAll(/\bproject\s+(in|not\s+in)\s*\(([^)]*)\)/ig)) {
+    const values = match[2].split(",").map((value) => value.trim().replace(/^[\'"]|[\'"]$/g, ""));
+    (match[1].toLowerCase() === "not in" ? negative : positive).push(...values);
+  }
+  if (positive.length) return positive.some((value) => String(value).toUpperCase() === target);
+  if (negative.length) return !negative.some((value) => String(value).toUpperCase() === target);
+  return true;
 }
 
 function decodeHtmlEntities(value) {
@@ -311,7 +349,11 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
       });
     }
 
-    return normalizeIssue(payload, config.baseUrl, config.collaboratorFieldId);
+    return normalizeIssue(
+      payload,
+      config.baseUrl,
+      config.collaboratorFieldId || config.boardSources?.collaboratorFieldId || ""
+    );
   }
 
   async function fetchTransitions(config, issueKey) {
@@ -478,7 +520,11 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
     }
 
     const issues = Array.isArray(payload?.issues)
-      ? payload.issues.map((issue) => normalizeIssue(issue, config.baseUrl, config.collaboratorFieldId))
+      ? payload.issues.map((issue) => normalizeIssue(
+        issue,
+        config.baseUrl,
+        config.collaboratorFieldId || config.boardSources?.collaboratorFieldId || ""
+      ))
       : [];
     const total = Number.isFinite(payload?.total) ? payload.total : issues.length;
     return {
@@ -539,6 +585,46 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
       fetchedAt: new Date().toISOString(),
       site: config.baseUrl
     };
+  }
+
+  async function fetchFields(config) {
+    const version = config.deployment === "data_center" ? "2" : "3";
+    const endpoint = `${config.baseUrl}/rest/api/${version}/field`;
+    let response;
+    try {
+      response = await fetchImpl(endpoint, {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          authorization: jiraAuthenticationHeader(config)
+        },
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+    } catch (error) {
+      const timeout = error.name === "TimeoutError" || error.name === "AbortError";
+      throw new JiraApiError(timeout ? "读取 Jira 字段列表超时。" : `无法读取 Jira 字段：${error.message}`, {
+        code: timeout ? "JIRA_FIELDS_TIMEOUT" : "JIRA_UNREACHABLE"
+      });
+    }
+    const payload = await responsePayload(response);
+    if (!response.ok) {
+      if (isAuthenticationFailure(payload, response.status)) throw authenticationError(payload);
+      throw new JiraApiError(jiraErrorMessage(payload, `Jira 字段请求失败（HTTP ${response.status}）。`), {
+        code: "JIRA_FIELDS_HTTP_ERROR",
+        upstreamStatus: response.status,
+        details: payload?.errors || null
+      });
+    }
+    const fields = (Array.isArray(payload) ? payload : filterItems(payload))
+      .map((field) => ({
+        id: String(field?.id || "").trim(),
+        name: String(field?.name || "").trim(),
+        custom: Boolean(field?.custom),
+        searchable: field?.searchable !== false,
+        orderable: field?.orderable !== false
+      }))
+      .filter((field) => field.id && field.name);
+    return { fields, total: fields.length, fetchedAt: new Date().toISOString(), site: config.baseUrl };
   }
 
   async function fetchTaskBoardIssues(config, {
@@ -622,6 +708,36 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
         continue;
       }
       results.push(...filterItems(payload));
+      if (endpoint.includes("/filter/search")) {
+        const firstPage = filterItems(payload);
+        const total = Number(payload?.total || payload?.resultCount || 0);
+        const pageSize = Math.max(firstPage.length, Number(payload?.maxResults || 1000), 1);
+        let startAt = firstPage.length;
+        let pages = 0;
+        while (total > startAt && pages < 50) {
+          const pageUrl = `${config.baseUrl}/rest/api/${version}/filter/search?startAt=${startAt}&maxResults=${pageSize}`;
+          let pageResponse;
+          try {
+            pageResponse = await fetchImpl(pageUrl, {
+              method: "GET",
+              headers: {
+                accept: "application/json",
+                authorization: jiraAuthenticationHeader(config)
+              },
+              signal: AbortSignal.timeout(timeoutMs)
+            });
+          } catch {
+            break;
+          }
+          const pagePayload = await responsePayload(pageResponse);
+          if (!pageResponse.ok) break;
+          const pageItems = filterItems(pagePayload);
+          if (!pageItems.length) break;
+          results.push(...pageItems);
+          startAt += pageItems.length;
+          pages += 1;
+        }
+      }
     }
     if (!results.length && config.deployment === "data_center") {
       // Jira 9.x installations may disable the REST collection endpoints
@@ -683,11 +799,12 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
           jql: String(filter?.jql || "").trim(),
           owner: filter?.owner?.displayName || filter?.owner?.name || filter?.owner?.key || "",
           favourite: Boolean(filter?.favourite),
-          projectKeys: filterProjectKeys(filter)
+          projectKeys: filterProjectKeys(filter),
+          projectMatch: filterProjectMatch(filter, projectKey)
         };
       })
       .filter(Boolean)
-      .filter((filter) => filterMatchesProject(filter, projectKey))
+      .filter((filter) => filter.projectMatch !== "other")
       .sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { sensitivity: "base" }));
     return {
       filters,
@@ -773,6 +890,7 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
     fetchProjects,
     fetchTaskBoardIssues,
     fetchFilters,
+    fetchFields,
     fetchTransitions,
     executeTransition,
     fetchAttachment

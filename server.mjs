@@ -1,5 +1,6 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -8,8 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   ConfigurationError,
   buildBoardQueries,
-  createConfigStore,
-  DEFAULT_JQL
+  createConfigStore
 } from "./config-store.mjs";
 import { JiraApiError, createJiraClient } from "./jira-client.mjs";
 import { createJxlClient } from "./jxl-client.mjs";
@@ -22,7 +22,7 @@ import {
   SvnReviewError
 } from "./lib/svn-review-manager.mjs";
 
-const VERSION = "0.26.15";
+const VERSION = "0.26.16";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +31,7 @@ const configStore = createConfigStore();
 const attachmentCacheRoot = join(dirname(configStore.configFile), "attachments");
 const jira = createJiraClient();
 const boardIssueTypeCache = new Map();
+const collaboratorFieldCache = new Map();
 const jxl = createJxlClient();
 const sessionsRoot = process.env.CODEX_SESSIONS_DIR
   || join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions");
@@ -62,7 +63,7 @@ async function discoverBoardBugTypes(config, boardSources) {
   const builtinRequired = ["requirement", "bug"].some((kind) => boardSources?.[kind]?.mode === "builtin");
   if (!builtinRequired) return [];
   const projectKey = String(boardSources?.projectKey || "").trim().toUpperCase();
-  const cacheKey = `${config.baseUrl}|${projectKey}|${boardSources?.collaboratorFieldId || "customfield_10600"}`;
+  const cacheKey = `${config.baseUrl}|${projectKey}|${boardSources?.collaboratorFieldId || "auto"}`;
   const cached = boardIssueTypeCache.get(cacheKey);
   if (cached && Date.now() - cached.fetchedAt < 5 * 60 * 1000) return cached.names;
   const clauses = [];
@@ -87,6 +88,124 @@ async function discoverBoardBugTypes(config, boardSources) {
   }
   boardIssueTypeCache.set(cacheKey, { names, fetchedAt: Date.now() });
   return names;
+}
+
+function collaboratorFieldCandidate(field, preferredName = "") {
+  if (!field?.id || field.custom === false || field.searchable === false) return false;
+  const name = String(field.name || "").trim();
+  const preferred = String(preferredName || "").trim().toLowerCase();
+  if (preferred && name.toLowerCase() === preferred) return true;
+  return /协同\s*(处理|负责|参与)|协作\s*(处理|负责|参与)|collaborat|co-?worker|watcher/i.test(name);
+}
+
+function collaboratorFieldCacheKey(config) {
+  const baseUrl = String(config?.baseUrl || "").trim().toLowerCase();
+  const token = String(config?.token || "");
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex").slice(0, 16);
+  return `${baseUrl}|${tokenHash}`;
+}
+
+async function resolveCollaboratorFieldConfig(config) {
+  const configuredId = String(
+    config?.collaboratorFieldId || config?.boardSources?.collaboratorFieldId || ""
+  ).trim();
+  const baseSources = config?.boardSources && typeof config.boardSources === "object"
+    ? config.boardSources
+    : {};
+  if (configuredId) {
+    const cacheKey = collaboratorFieldCacheKey(config);
+    const cached = collaboratorFieldCache.get(cacheKey);
+    if (cached?.configuredId === configuredId && Date.now() - cached.fetchedAt < 10 * 60 * 1000) {
+      return cached.config ? { ...config, ...cached.config } : config;
+    }
+    try {
+      const result = await jira.fetchFields(config);
+      const exact = result.fields.find((field) => field.id.toLowerCase() === configuredId.toLowerCase());
+      const replacement = exact || result.fields.find((field) => collaboratorFieldCandidate(
+        field,
+        baseSources.collaboratorJqlName
+      ));
+      if (replacement) {
+        const resolved = {
+          collaboratorFieldId: replacement.id,
+          boardSources: {
+            ...baseSources,
+            collaboratorFieldId: replacement.id,
+            collaboratorJqlName: replacement.name
+          }
+        };
+        collaboratorFieldCache.set(cacheKey, {
+          configuredId,
+          config: resolved,
+          fetchedAt: Date.now()
+        });
+        return { ...config, ...resolved };
+      }
+      if (result.fields.length) {
+        const cleared = {
+          collaboratorFieldId: "",
+          boardSources: { ...baseSources, collaboratorFieldId: "", collaboratorJqlName: "" }
+        };
+        collaboratorFieldCache.set(cacheKey, { configuredId, config: cleared, fetchedAt: Date.now() });
+        return { ...config, ...cleared };
+      }
+      collaboratorFieldCache.set(cacheKey, { configuredId, config: null, fetchedAt: Date.now() });
+    } catch {
+      // Preserve an explicitly configured field when an older Jira version
+      // does not expose /field; the issue endpoint can still return it.
+    }
+    return {
+      ...config,
+      collaboratorFieldId: configuredId,
+      boardSources: { ...baseSources, collaboratorFieldId: configuredId }
+    };
+  }
+  const cacheKey = collaboratorFieldCacheKey(config);
+  const cached = collaboratorFieldCache.get(cacheKey);
+  if (cached && !cached.configuredId && Date.now() - cached.fetchedAt < 10 * 60 * 1000) {
+    return cached.config ? { ...config, ...cached.config } : config;
+  }
+  try {
+    const result = await jira.fetchFields(config);
+    const preferredName = baseSources.collaboratorJqlName;
+    const field = result.fields.find((candidate) => collaboratorFieldCandidate(candidate, preferredName));
+    const resolved = field
+      ? {
+          collaboratorFieldId: field.id,
+          boardSources: {
+            ...baseSources,
+            collaboratorFieldId: field.id,
+            collaboratorJqlName: field.name
+          }
+        }
+      : null;
+    collaboratorFieldCache.set(cacheKey, { configuredId: "", config: resolved, fetchedAt: Date.now() });
+    return resolved ? { ...config, ...resolved } : config;
+  } catch {
+    // Field discovery is optional. Built-in boards remain usable with the
+    // assignee-only rule when Jira does not expose field metadata.
+    collaboratorFieldCache.set(cacheKey, { configuredId: "", config: null, fetchedAt: Date.now() });
+    return config;
+  }
+}
+
+async function validateConfiguredFilters(config) {
+  const selected = ["requirement", "bug"].flatMap((kind) => (
+    config?.boardSources?.[kind]?.mode === "filter"
+      ? (config.boardSources[kind].filterIds || []).map(String)
+      : []
+  ));
+  if (!selected.length) return;
+  const discovered = await jira.fetchFilters(config, {
+    projectKey: config.boardSources?.projectKey || ""
+  });
+  const available = new Set((discovered.filters || []).map((filter) => String(filter.id)));
+  const missing = [...new Set(selected.filter((id) => !available.has(id)))];
+  if (missing.length) {
+    throw new ConfigurationError(`当前 Jira Token 无法访问所选 Filter：${missing.join(", ")}。请刷新列表后重新选择。`, {
+      code: "BOARD_FILTER_UNAVAILABLE"
+    });
+  }
 }
 
 async function boardQueriesForConfig(config) {
@@ -169,8 +288,11 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "PUT" && url.pathname === "/api/config") {
-    const candidate = await configStore.prepare(await readJson(request));
-    if (candidate.boardSources?.legacy && candidate.jql !== DEFAULT_JQL) {
+    const candidate = await resolveCollaboratorFieldConfig(
+      await configStore.prepare(await readJson(request))
+    );
+    await validateConfiguredFilters(candidate);
+    if (candidate.boardSources?.legacy && candidate.jql) {
       await jira.fetchIssues(candidate, { maxResults: 1 });
     } else {
       const queries = buildBoardQueries(candidate.boardSources);
@@ -257,9 +379,10 @@ async function handleApi(request, response, url) {
         statusCode: 428
       });
     }
-    const result = config.boardSources?.legacy && config.jql !== DEFAULT_JQL
-      ? await jira.fetchIssues(config)
-      : await jira.fetchTaskBoardIssues(config, await boardQueriesForConfig(config));
+    const effectiveConfig = await resolveCollaboratorFieldConfig(config);
+    const result = effectiveConfig.boardSources?.legacy && effectiveConfig.jql
+      ? await jira.fetchIssues(effectiveConfig)
+      : await jira.fetchTaskBoardIssues(effectiveConfig, await boardQueriesForConfig(effectiveConfig));
     return json(response, 200, result);
   }
 
@@ -273,7 +396,7 @@ async function handleApi(request, response, url) {
     }
     const issueKey = url.searchParams.get("issueKey");
     const threadId = url.searchParams.get("threadId");
-    const issue = await jira.fetchIssue(config, issueKey);
+    const issue = await jira.fetchIssue(await resolveCollaboratorFieldConfig(config), issueKey);
     return json(response, 200, {
       context: await svnReviews.inspect({ threadId, issue }),
       message: buildSvnCommitMessage(issue),
@@ -459,8 +582,9 @@ async function handleApi(request, response, url) {
         statusCode: 428
       });
     }
+    const effectiveConfig = await resolveCollaboratorFieldConfig(config);
     return json(response, 200, {
-      issue: await jira.fetchIssue(config, issueMatch[1]),
+      issue: await jira.fetchIssue(effectiveConfig, issueMatch[1]),
       fetchedAt: new Date().toISOString()
     });
   }
@@ -523,7 +647,8 @@ async function handleApi(request, response, url) {
       });
     }
     const { _scope, ...sheetInfo } = sheet;
-    const result = await jira.fetchIssues({ ...config, jql: _scope.value });
+    const effectiveConfig = await resolveCollaboratorFieldConfig(config);
+    const result = await jira.fetchIssues({ ...effectiveConfig, jql: _scope.value });
     return json(response, 200, { ...result, sheet: sheetInfo });
   }
 

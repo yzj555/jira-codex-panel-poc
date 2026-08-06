@@ -23,9 +23,15 @@ export const DASHBOARD_ACTIVE_JQL = "(filter = 10103 OR filter = 10102) ORDER BY
 export const DASHBOARD_COMPLETED_JQL = 'project = CT AND statusCategory = Done AND (assignee = currentUser() OR "协同处理人" = currentUser()) ORDER BY updated DESC';
 export const DEFAULT_JQL = '((filter = 10103 OR filter = 10102) OR (project = CT AND statusCategory = Done AND (assignee = currentUser() OR "协同处理人" = currentUser()))) ORDER BY updated DESC';
 
-export const DEFAULT_BOARD_PROJECT_KEY = "CT";
-export const DEFAULT_COLLABORATOR_FIELD_ID = "customfield_10600";
-export const DEFAULT_COLLABORATOR_JQL_NAME = "协同处理人";
+// These values are kept only to recognize configurations written by older
+// releases. New installations must not inherit a project, dashboard Filter,
+// or a site-specific custom field from the original CT environment.
+export const LEGACY_DEFAULT_BOARD_PROJECT_KEY = "CT";
+export const LEGACY_DEFAULT_COLLABORATOR_FIELD_ID = "customfield_10600";
+export const LEGACY_DEFAULT_COLLABORATOR_JQL_NAME = "协同处理人";
+export const DEFAULT_BOARD_PROJECT_KEY = "";
+export const DEFAULT_COLLABORATOR_FIELD_ID = "";
+export const DEFAULT_COLLABORATOR_JQL_NAME = "";
 export const BOARD_SOURCE_MODES = Object.freeze(["builtin", "custom", "filter"]);
 export const TASK_SYNC_INTERVALS = Object.freeze([30, 60, 300, 600]);
 export const SHEETS_SYNC_INTERVALS = Object.freeze([0, 300, 600]);
@@ -104,10 +110,20 @@ function normalizeBoardSource(kind, incoming = {}, previous = {}) {
 
 function legacyBoardSources(jql) {
   const value = String(jql || "").trim();
-  if (!value || value === DEFAULT_JQL || value === LEGACY_DEFAULT_JQL
-    || value === COLLABORATION_DEFAULT_JQL || value === DASHBOARD_ACTIVE_JQL) {
+  if (Boolean(value) && (value === DEFAULT_JQL || value === LEGACY_DEFAULT_JQL
+    || value === COLLABORATION_DEFAULT_JQL || value === DASHBOARD_ACTIVE_JQL)) {
     return {
       legacy: true,
+      projectKey: LEGACY_DEFAULT_BOARD_PROJECT_KEY,
+      collaboratorFieldId: LEGACY_DEFAULT_COLLABORATOR_FIELD_ID,
+      collaboratorJqlName: LEGACY_DEFAULT_COLLABORATOR_JQL_NAME,
+      requirement: { mode: "builtin", jql: "", filterIds: [] },
+      bug: { mode: "builtin", jql: "", filterIds: [] }
+    };
+  }
+  if (!value) {
+    return {
+      legacy: false,
       projectKey: DEFAULT_BOARD_PROJECT_KEY,
       collaboratorFieldId: DEFAULT_COLLABORATOR_FIELD_ID,
       collaboratorJqlName: DEFAULT_COLLABORATOR_JQL_NAME,
@@ -125,7 +141,7 @@ function legacyBoardSources(jql) {
   };
 }
 
-export function normalizeBoardSources(input, previous = {}, legacyJql = DEFAULT_JQL) {
+export function normalizeBoardSources(input, previous = {}, legacyJql = "") {
   const incoming = input && typeof input === "object" ? input : null;
   const prior = previous && typeof previous === "object" ? previous : null;
   if (!incoming && (!prior || !Object.keys(prior).length)) return legacyBoardSources(legacyJql);
@@ -133,8 +149,8 @@ export function normalizeBoardSources(input, previous = {}, legacyJql = DEFAULT_
     return {
       legacy: Boolean(prior.legacy),
       projectKey: normalizeBoardProjectKey(prior.projectKey, ""),
-      collaboratorFieldId: String(prior.collaboratorFieldId || DEFAULT_COLLABORATOR_FIELD_ID).trim() || DEFAULT_COLLABORATOR_FIELD_ID,
-      collaboratorJqlName: String(prior.collaboratorJqlName || DEFAULT_COLLABORATOR_JQL_NAME).trim() || DEFAULT_COLLABORATOR_JQL_NAME,
+      collaboratorFieldId: String(prior.collaboratorFieldId || DEFAULT_COLLABORATOR_FIELD_ID).trim(),
+      collaboratorJqlName: String(prior.collaboratorJqlName || DEFAULT_COLLABORATOR_JQL_NAME).trim(),
       requirement: normalizeBoardSource("requirement", prior.requirement, prior.requirement),
       bug: normalizeBoardSource("bug", prior.bug, prior.bug)
     };
@@ -146,11 +162,11 @@ export function normalizeBoardSources(input, previous = {}, legacyJql = DEFAULT_
   );
   const collaboratorFieldId = String(
     incoming.collaboratorFieldId ?? prior?.collaboratorFieldId ?? DEFAULT_COLLABORATOR_FIELD_ID
-  ).trim() || DEFAULT_COLLABORATOR_FIELD_ID;
+  ).trim();
   const collaboratorJqlName = String(
     incoming.collaboratorJqlName ?? prior?.collaboratorJqlName ?? DEFAULT_COLLABORATOR_JQL_NAME
-  ).trim() || DEFAULT_COLLABORATOR_JQL_NAME;
-  if (!/^[A-Za-z][A-Za-z0-9_]{0,99}$/.test(collaboratorFieldId)) {
+  ).trim();
+  if (collaboratorFieldId && !/^[A-Za-z][A-Za-z0-9_]{0,99}$/.test(collaboratorFieldId)) {
     throw new ConfigurationError("协同处理人字段 ID 无效。", { code: "INVALID_COLLABORATOR_FIELD" });
   }
   if (collaboratorJqlName.length > 200) {
@@ -223,12 +239,14 @@ function joinSourceParts(parts, fallback) {
 }
 
 export function buildBoardQueries(boardSources, { bugTypeNames = [] } = {}) {
-  const sources = normalizeBoardSources(boardSources, null, DEFAULT_JQL);
+  const sources = normalizeBoardSources(boardSources, null, "");
   const sourceParts = ["requirement", "bug"].map((kind) => sourceBaseJql(kind, sources[kind], sources, bugTypeNames));
   const historyParts = ["requirement", "bug"].map((kind) => historySourceJql(kind, sources[kind], sources, bugTypeNames));
   const activeParts = sourceParts.map((part) => `(${part}) AND statusCategory != Done`);
   const completedParts = historyParts.map((part) => `(${part}) AND statusCategory = Done`);
-  const fallback = `project = ${sources.projectKey || DEFAULT_BOARD_PROJECT_KEY}`;
+  const fallback = sources.projectKey
+    ? `project = ${sources.projectKey}`
+    : "assignee = currentUser()";
   return {
     activeJql: `${joinSourceParts(activeParts, fallback)} ORDER BY updated DESC`,
     completedJql: `${joinSourceParts(completedParts, fallback)} ORDER BY updated DESC`,
@@ -357,11 +375,10 @@ function normalizeMessageTemplate(value, fallback = DEFAULT_REQUIREMENT_MESSAGE_
   return template;
 }
 
-export const DEFAULT_BUG_SKILL = Object.freeze({
-  name: "ct-devops-tracer",
-  path: "",
-  scope: "user"
-});
+// External diagnostic skills are optional and must be selected from the
+// current user's Codex-loaded list. Never persist a site-specific name as a
+// first-use default.
+export const DEFAULT_BUG_SKILL = null;
 
 function hasOwn(object, key) {
   return Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
@@ -380,6 +397,12 @@ function normalizeSkillReference(value, fallback = null) {
   return { name, path, scope };
 }
 
+function isLegacyDefaultBugSkill(value) {
+  const skill = value && typeof value === "object" ? value : null;
+  return String(skill?.name || "").trim().toLowerCase() === "ct-devops-tracer"
+    && !String(skill?.path || "").trim();
+}
+
 function isManagedLegacyTemplate(value) {
   const normalized = String(value || "").trim();
   return !normalized
@@ -394,7 +417,7 @@ function defaultTemplateEntry(kind) {
   return {
     customized: false,
     content: kind === "bug" ? DEFAULT_BUG_MESSAGE_TEMPLATE : DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE,
-    skill: kind === "bug" ? { ...DEFAULT_BUG_SKILL } : null
+    skill: kind === "bug" && DEFAULT_BUG_SKILL ? { ...DEFAULT_BUG_SKILL } : null
   };
 }
 
@@ -424,7 +447,9 @@ function normalizeTemplateEntry(kind, incoming, previous, legacyValue, hasLegacy
   if (incoming && typeof incoming === "object" && hasOwn(incoming, "skill")) {
     skill = normalizeSkillReference(incoming.skill, defaults.skill);
   } else if (previous && typeof previous === "object" && hasOwn(previous, "skill")) {
-    skill = normalizeSkillReference(previous.skill, defaults.skill);
+    skill = isLegacyDefaultBugSkill(previous.skill)
+      ? null
+      : normalizeSkillReference(previous.skill, defaults.skill);
   } else {
     skill = normalizeSkillReference(undefined, defaults.skill);
   }
@@ -460,6 +485,14 @@ function normalizePromptTemplates(input = {}, previous = {}) {
   };
 }
 
+function isManagedLegacyJql(value) {
+  const normalized = String(value || "").trim();
+  return normalized === DEFAULT_JQL
+    || normalized === LEGACY_DEFAULT_JQL
+    || normalized === COLLABORATION_DEFAULT_JQL
+    || normalized === DASHBOARD_ACTIVE_JQL;
+}
+
 function storedPromptTemplates(promptTemplates) {
   return Object.fromEntries(Object.entries(promptTemplates).map(([kind, entry]) => [kind, {
     customized: Boolean(entry.customized),
@@ -474,11 +507,15 @@ export function normalizeConfiguration(input, previous = {}) {
   const codexProjectLabel = String(input.codexProjectLabel ?? previous.codexProjectLabel ?? "").trim();
   const suppliedToken = typeof input.token === "string" ? input.token.trim() : "";
   const token = suppliedToken || String(previous.token || "");
-  const jql = String(input.jql ?? previous.jql ?? DEFAULT_JQL).trim() || DEFAULT_JQL;
+  const rawJql = String(input.jql ?? previous.jql ?? "").trim();
+  const jql = isManagedLegacyJql(rawJql) ? "" : rawJql;
+  const jqlChangedWithoutBoardSources = !input.boardSources
+    && hasOwn(input, "jql")
+    && rawJql !== String(previous.jql || "").trim();
   const boardSources = normalizeBoardSources(
     input.boardSources,
-    previous.boardSources,
-    jql
+    jqlChangedWithoutBoardSources ? null : previous.boardSources,
+    rawJql
   );
   const promptTemplates = normalizePromptTemplates(input, previous);
   const baseUrl = normalizeBaseUrl(input.baseUrl ?? previous.baseUrl);
@@ -570,13 +607,9 @@ $plain = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Securi
 }
 
 function publicConfiguration(record) {
-  const managedDefaults = new Set([
-    LEGACY_DEFAULT_JQL,
-    COLLABORATION_DEFAULT_JQL,
-    DASHBOARD_ACTIVE_JQL
-  ]);
-  const storedJql = managedDefaults.has(record?.jql) ? DEFAULT_JQL : record?.jql;
-  const boardSources = normalizeBoardSources(record?.boardSources, {}, storedJql || DEFAULT_JQL);
+  const rawJql = String(record?.jql || "").trim();
+  const storedJql = isManagedLegacyJql(rawJql) ? "" : rawJql;
+  const boardSources = normalizeBoardSources(record?.boardSources, {}, rawJql);
   const promptTemplates = normalizePromptTemplates({}, {
     promptTemplates: record?.promptTemplates,
     ...(hasOwn(record, "messageTemplate") ? { messageTemplate: record.messageTemplate } : {})
@@ -588,7 +621,7 @@ function publicConfiguration(record) {
     email: "",
     codexProjectId: record?.codexProjectId || "",
     codexProjectLabel: record?.codexProjectId ? record?.codexProjectLabel || "" : "",
-    jql: storedJql || DEFAULT_JQL,
+    jql: storedJql,
     boardSources,
     promptTemplates,
     messageTemplate: promptTemplates.requirement.content,

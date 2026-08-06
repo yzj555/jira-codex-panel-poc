@@ -53,6 +53,7 @@ test("Jira Cloud 使用邮箱和 API Token 调用 REST v3 增强搜索", async (
     email: "user@example.com",
     token: "cloud-token",
     jql: "assignee = currentUser()",
+    collaboratorFieldId: "customfield_10600",
     maxResults: 50
   });
 
@@ -120,7 +121,8 @@ test("可按 Issue Key 直接读取会话浮窗所需的完整 Jira 详情", asy
   const issue = await jira.fetchIssue({
     deployment: "data_center",
     baseUrl: "https://jira.example.com/jira",
-    token: "dc-pat"
+    token: "dc-pat",
+    collaboratorFieldId: "customfield_10600"
   }, "demo-7");
 
   assert.match(request.url, /^https:\/\/jira\.example\.com\/jira\/rest\/api\/2\/issue\/DEMO-7\?fields=/);

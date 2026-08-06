@@ -74,6 +74,16 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
         archived: false
       }]));
     }
+    if (request.url === "/rest/api/2/field") {
+      response.writeHead(200, { "content-type": "application/json" });
+      return response.end(JSON.stringify([{
+        id: "customfield_10600",
+        name: "协同处理人",
+        custom: true,
+        searchable: true,
+        orderable: true
+      }]));
+    }
     if (request.url === "/rest/api/2/project/10101") {
       response.writeHead(200, { "content-type": "application/json" });
       return response.end(JSON.stringify({

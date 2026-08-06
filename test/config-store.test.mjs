@@ -8,7 +8,6 @@ import {
   createConfigStore,
   DASHBOARD_ACTIVE_JQL,
   DEFAULT_BUG_MESSAGE_TEMPLATE,
-  DEFAULT_JQL,
   DEFAULT_MESSAGE_TEMPLATE,
   DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE,
   LEGACY_DEFAULT_JQL
@@ -56,7 +55,7 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
     assert.equal(publicConfig.promptTemplates.bug.content, "处理 {{key}}");
     assert.equal(publicConfig.promptTemplates.requirement.customized, true);
     assert.equal(publicConfig.promptTemplates.bug.customized, true);
-    assert.equal(publicConfig.promptTemplates.bug.skill.name, "ct-devops-tracer");
+    assert.equal(publicConfig.promptTemplates.bug.skill, null);
     assert.equal(publicConfig.bugMonitorEnabled, false);
     assert.equal(publicConfig.wecomConfigured, true);
     assert.deepEqual(publicConfig.syncSettings, {
@@ -155,9 +154,10 @@ test("旧版默认 JQL 自动迁移到 CT 仪表盘筛选器，自定义 JQL 不
       tokenProtected: await protect("token")
     }), "utf8");
 
-    assert.equal((await store.getPublic()).jql, DEFAULT_JQL);
+    assert.equal((await store.getPublic()).jql, "");
+    assert.equal((await store.getPublic()).boardSources.projectKey, "CT");
     assert.equal((await store.getPublic()).messageTemplate, DEFAULT_MESSAGE_TEMPLATE);
-    assert.equal((await store.load()).jql, DEFAULT_JQL);
+    assert.equal((await store.load()).jql, "");
 
     await writeFile(configFile, JSON.stringify({
       version: 1,
@@ -168,7 +168,7 @@ test("旧版默认 JQL 自动迁移到 CT 仪表盘筛选器，自定义 JQL 不
       maxResults: 100,
       tokenProtected: await protect("token")
     }), "utf8");
-    assert.equal((await store.getPublic()).jql, DEFAULT_JQL);
+    assert.equal((await store.getPublic()).jql, "");
 
     await writeFile(configFile, JSON.stringify({
       version: 1,
@@ -179,7 +179,7 @@ test("旧版默认 JQL 自动迁移到 CT 仪表盘筛选器，自定义 JQL 不
       maxResults: 100,
       tokenProtected: await protect("token")
     }), "utf8");
-    assert.equal((await store.getPublic()).jql, DEFAULT_JQL);
+    assert.equal((await store.getPublic()).jql, "");
 
     const custom = await store.prepare({
       deployment: "cloud",
@@ -271,6 +271,29 @@ test("旧版内置消息模板迁移为新的需求与 Bug 系统默认模板", 
     const historicalConfig = await store.getPublic();
     assert.equal(historicalConfig.promptTemplates.requirement.customized, false);
     assert.equal(historicalConfig.promptTemplates.bug.customized, false);
+  } finally {
+    await store.clear();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("新配置不携带旧项目、旧 Filter、站点协同字段或外部 Bug Skill 默认值", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-codex-clean-defaults-"));
+  const configFile = join(directory, "config.json");
+  const store = createConfigStore({
+    configFile,
+    protect: async (value) => Buffer.from(value, "utf8").toString("base64"),
+    unprotect: async (value) => Buffer.from(value, "base64").toString("utf8")
+  });
+  try {
+    const config = await store.prepare({ baseUrl: "http://jira.example:8080", token: "token" });
+    assert.equal(config.jql, "");
+    assert.equal(config.boardSources.projectKey, "");
+    assert.equal(config.boardSources.collaboratorFieldId, "");
+    assert.equal(config.boardSources.collaboratorJqlName, "");
+    assert.equal(config.boardSources.requirement.mode, "builtin");
+    assert.equal(config.boardSources.bug.mode, "builtin");
+    assert.equal(config.promptTemplates.bug.skill, null);
   } finally {
     await store.clear();
     await rm(directory, { recursive: true, force: true });

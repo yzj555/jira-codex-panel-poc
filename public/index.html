@@ -315,11 +315,11 @@
               <label id="board-project-field" class="field">
                 <span>项目 Key（内置 JQL 时使用）</span>
                 <div class="board-project-input-row">
-                  <input id="board-project-key" type="text" list="board-project-options" placeholder="例如 CT" spellcheck="false" />
+                  <input id="board-project-key" type="text" list="board-project-options" placeholder="从 Jira 项目列表中选择" spellcheck="false" />
                   <button id="refresh-board-projects" class="plain-button" type="button">刷新项目</button>
                 </div>
                 <datalist id="board-project-options"></datalist>
-                <small id="board-project-help">选择内置通用 JQL 时，按当前用户负责或协同处理的任务查询；项目列表来自当前 Token 可访问范围。</small>
+                <small id="board-project-help">选择内置通用 JQL 时，按当前用户负责或协同处理的任务查询；项目列表来自当前 Token 可访问范围，协同字段由 Jira 字段列表自动识别。</small>
               </label>
               <div id="board-filters-status" class="board-filters-status" hidden></div>
             </div>
@@ -328,7 +328,7 @@
                 <div class="board-source-card-head">
                   <div>
                     <strong>需求面板</strong>
-                    <small>左侧“CT 仪表盘-需要我完成的事宜”</small>
+                    <small>左侧“需要我完成的事宜”</small>
                   </div>
                 </div>
                 <label class="field">
@@ -341,7 +341,7 @@
                 </label>
                 <label id="requirement-board-jql-field" class="field board-source-extra" hidden>
                   <span>需求 JQL</span>
-                  <textarea id="requirement-board-jql" rows="3" spellcheck="false" placeholder="例如 project = CT AND ..."></textarea>
+                  <textarea id="requirement-board-jql" rows="3" spellcheck="false" placeholder="例如 project = YOUR_PROJECT AND ..."></textarea>
                   <small>保存时会自动补充活动/已完成状态条件。</small>
                 </label>
                 <label id="requirement-filter-field" class="field board-source-extra" hidden>
@@ -354,7 +354,7 @@
                 <div class="board-source-card-head">
                   <div>
                     <strong>Bug 面板</strong>
-                    <small>右侧“CT-BUG-需要我修复的”</small>
+                    <small>右侧“需要我修复的 Bug”</small>
                   </div>
                 </div>
                 <label class="field">
@@ -367,7 +367,7 @@
                 </label>
                 <label id="bug-board-jql-field" class="field board-source-extra" hidden>
                   <span>Bug JQL</span>
-                  <textarea id="bug-board-jql" rows="3" spellcheck="false" placeholder="例如 project = CT AND issuetype = Bug"></textarea>
+                  <textarea id="bug-board-jql" rows="3" spellcheck="false" placeholder="例如 project = YOUR_PROJECT AND issuetype = Bug"></textarea>
                   <small>保存时会自动补充活动/已完成状态条件。</small>
                 </label>
                 <label id="bug-filter-field" class="field board-source-extra" hidden>
@@ -408,7 +408,7 @@
                   <button class="plain-button edit-template" data-template-kind="bug" type="button">编辑</button>
                 </div>
                 <p id="bug-template-preview" class="template-preview"></p>
-                <div class="template-skill-row">绑定技能 <span id="bug-template-skill" class="template-skill">ct-devops-tracer</span></div>
+                <div class="template-skill-row">绑定技能 <span id="bug-template-skill" class="template-skill">未绑定（从 Codex 列表选择）</span></div>
               </article>
             </div>
             <small>需求与 Bug 使用独立模板和技能。绑定 Skill 的相关规则优先；模板和内置 Jira Skill 只补充未覆盖部分。</small>
