@@ -47,6 +47,44 @@ test("实际内嵌面板脚本可以在同一作用域中编译", async () => {
   scripts.forEach((script) => assert.doesNotThrow(() => new Function(script)));
 });
 
+test("设置面板包含六个分组和可持久化的数据同步控件", async () => {
+  const [html, styles, configSource, appSource] = await Promise.all([
+    readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
+    readFile(new URL("../config-store.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../public/app.js", import.meta.url), "utf8")
+  ]);
+  for (const section of ["jira", "codex", "sync", "automation", "templates", "advanced"]) {
+    assert.match(html, new RegExp(`data-settings-section-tab="${section}"`));
+    assert.match(html, new RegExp(`data-settings-section="${section}"`));
+  }
+  for (const id of ["sync-tasks-enabled", "sync-task-interval", "sync-on-panel-return", "sync-sheets-interval"]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(styles, /\.settings-dialog form \{[^}]*grid-template-rows: auto auto minmax\(0, 1fr\) auto auto/);
+  assert.match(styles, /\.form-grid \{[^}]*overflow: auto/);
+  assert.match(styles, /\.settings-actions \{[^}]*min-height: 62px/);
+  assert.match(appSource, /syncOnPanelReturn/);
+  assert.match(appSource, /scheduleSyncTimers/);
+  assert.match(configSource, /DEFAULT_SYNC_SETTINGS/);
+});
+
+test("首页需求和 Bug 面板支持独立的状态筛选", async () => {
+  const [appSource, styles] = await Promise.all([
+    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/styles.css", import.meta.url), "utf8")
+  ]);
+  assert.match(appSource, /inboxStatusFilters: \{ requirement: \[\], bug: \[\] \}/);
+  assert.match(appSource, /function issueStatusName\(issue\)/);
+  assert.match(appSource, /function createLaneStatusFilter\(type, issues, selectedStatuses\)/);
+  assert.match(appSource, /showStatusFilter: !history/);
+  assert.match(appSource, /state\.inboxStatusFilters\[type\] = Array\.from\(next\)/);
+  assert.match(appSource, /状态筛选（可多选）/);
+  assert.match(appSource, /selectedStatuses\.includes\(issueStatusName\(issue\)\)/);
+  assert.match(styles, /\.lane-status-filter/);
+  assert.match(styles, /\.lane-status-button\.active/);
+});
+
 test("Codex 宿主注入脚本包含会话 Jira 浮窗并可编译", async () => {
   const [clientSource, navigationSource, promptBuilderSource, injectorSource] = await Promise.all([
     readFile(new URL("../inject/client.js", import.meta.url), "utf8"),
@@ -65,6 +103,7 @@ test("Codex 宿主注入脚本包含会话 Jira 浮窗并可编译", async () =>
   assert.doesNotThrow(() => new Function(compiled));
   assert.match(clientSource, /jira-codex-conversation-float/);
   assert.match(clientSource, /jira-codex-svn-modal/);
+  assert.match(clientSource, /\[\$\{HOST_ATTRIBUTE\}="true"\][\s\S]*?pointer-events: auto !important;/);
   assert.match(clientSource, /\/api\/svn\/reviews/);
   assert.match(clientSource, /确认提交到 SVN/);
   assert.match(clientSource, /我已人工查看文件改动和审核报告/);
@@ -114,6 +153,9 @@ test("完整面板和会话浮窗跟随 Codex 深浅主题", async () => {
   assert.match(styles, /--panel-bg: var\(--codex-theme-bg/);
   assert.match(styles, /Codex host theme bridge/);
   assert.match(styles, /\.issue-action-group \{[^}]*margin-left: auto;/);
+  assert.match(styles, /\.top-actions \.icon-button \{[^}]*width: 40px; height: 40px; min-width: 40px;/);
+  assert.doesNotMatch(styles, /\.top-actions \.icon-button::after/);
+  assert.match(appSource, /topActions\.addEventListener\("click"/);
 });
 
 test("SVN 选择器按项目构建文件树、分类变更并加载单文件差异", async () => {

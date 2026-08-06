@@ -59,6 +59,12 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
     assert.equal(publicConfig.promptTemplates.bug.skill.name, "ct-devops-tracer");
     assert.equal(publicConfig.bugMonitorEnabled, false);
     assert.equal(publicConfig.wecomConfigured, true);
+    assert.deepEqual(publicConfig.syncSettings, {
+      tasksEnabled: true,
+      taskIntervalSeconds: 60,
+      syncOnPanelReturn: true,
+      sheetsIntervalSeconds: 300
+    });
     assert.equal("token" in publicConfig, false);
     assert.equal(publicConfig.baseUrl, "https://demo.atlassian.net");
 
@@ -89,6 +95,42 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
     assert.equal((await store.setBugMonitorEnabled(true)).monitorGeneration, 1);
     await store.setBugMonitorEnabled(false);
     assert.equal((await store.setBugMonitorEnabled(true)).monitorGeneration, 2);
+  } finally {
+    await store.clear();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("数据同步配置使用安全默认值并只接受支持的频率", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-codex-sync-"));
+  const configFile = join(directory, "config.json");
+  const protect = async (value) => Buffer.from(value, "utf8").toString("base64");
+  const unprotect = async (value) => Buffer.from(value, "base64").toString("utf8");
+  const store = createConfigStore({ configFile, protect, unprotect });
+
+  try {
+    const candidate = await store.prepare({
+      baseUrl: "http://jira.example:8080",
+      token: "token",
+      syncSettings: {
+        tasksEnabled: false,
+        taskIntervalSeconds: 31,
+        syncOnPanelReturn: false,
+        sheetsIntervalSeconds: 0
+      }
+    });
+    assert.deepEqual(candidate.syncSettings, {
+      tasksEnabled: false,
+      taskIntervalSeconds: 60,
+      syncOnPanelReturn: false,
+      sheetsIntervalSeconds: 0
+    });
+    await store.save(candidate);
+    const raw = JSON.parse(await readFile(configFile, "utf8"));
+    assert.deepEqual(raw.syncSettings, candidate.syncSettings);
+
+    const preserved = await store.prepare({ baseUrl: "http://jira.example:8080", token: "" });
+    assert.deepEqual(preserved.syncSettings, candidate.syncSettings);
   } finally {
     await store.clear();
     await rm(directory, { recursive: true, force: true });

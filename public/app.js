@@ -50,6 +50,7 @@ if (window.parent === window) {
 }
 
 const board = document.querySelector("#board");
+const topActions = document.querySelector(".top-actions");
 const drawer = document.querySelector("#drawer");
 const backdrop = document.querySelector("#backdrop");
 const toast = document.querySelector("#toast");
@@ -64,6 +65,7 @@ const settingsDialog = document.querySelector("#settings-dialog");
 const settingsBackdrop = document.querySelector("#settings-backdrop");
 const settingsForm = document.querySelector("#settings-form");
 const settingsStatus = document.querySelector("#settings-status");
+const settingsSectionTabs = Array.from(document.querySelectorAll(".settings-section-tab"));
 const templateEditorDialog = document.querySelector("#template-editor-dialog");
 const templateEditorBackdrop = document.querySelector("#template-editor-backdrop");
 const templateEditorForm = document.querySelector("#template-editor-form");
@@ -86,6 +88,12 @@ const transitionSelect = document.querySelector("#transition-select");
 const transitionAction = document.querySelector("#transition-action");
 const transitionHint = document.querySelector("#transition-hint");
 const FIXED_DEPLOYMENT = "data_center";
+const DEFAULT_SYNC_SETTINGS = Object.freeze({
+  tasksEnabled: true,
+  taskIntervalSeconds: 60,
+  syncOnPanelReturn: true,
+  sheetsIntervalSeconds: 300
+});
 const DEFAULT_TEMPLATE_SKILLS = Object.freeze({
   requirement: null,
   bug: Object.freeze({ name: "ct-devops-tracer", path: "", scope: "user" })
@@ -120,12 +128,22 @@ const state = {
   bindings: {},
   threads: [],
   projects: [],
+  boardFilters: [],
+  boardFilterSelections: { requirement: [], bug: [] },
+  boardFiltersLoading: false,
+  boardFiltersError: "",
+  boardProjects: [],
+  boardProjectsLoading: false,
+  boardProjectsError: "",
   skills: [],
   skillsError: "",
   config: null,
   automation: null,
   automationUpdating: false,
   activeView: "inbox",
+  // Empty means all Jira statuses. Non-empty values are the original Jira
+  // status names selected independently in each homepage lane.
+  inboxStatusFilters: { requirement: [], bug: [] },
   activeSheet: "",
   jxlSheets: [],
   jxlLoaded: false,
@@ -147,6 +165,7 @@ const state = {
   transitioning: false,
   transitionError: "",
   loading: false,
+  backgroundSyncing: false,
   fetchedAt: null,
   total: 0,
   truncated: false
@@ -163,6 +182,11 @@ let transitionRequestId = 0;
 let editingTemplateKind = "";
 let templateDrafts = defaultTemplateDrafts();
 let associationPendingIssueKey = "";
+let activeSettingsSection = "jira";
+let taskSyncTimer = 0;
+let sheetsSyncTimer = 0;
+let lastPanelActivationAt = 0;
+let initialLoadComplete = false;
 
 class ApiError extends Error {
   constructor(message, payload = {}) {
@@ -249,6 +273,11 @@ async function loadAutomationStatus({ quiet = true } = {}) {
 
 function statusLabel(status) {
   return statusDefinitions.find((item) => item.id === status)?.label || status;
+}
+
+function issueStatusName(issue) {
+  const statusName = String(issue?.statusName || "").trim();
+  return statusName || String(issue?.status || "未知状态").trim() || "未知状态";
 }
 
 function typeLabel(issue) {
@@ -665,7 +694,55 @@ function bindIssueOpen(node, issue) {
   });
 }
 
-function createTaskLane({ title, subtitle, type, issues }) {
+function createLaneStatusFilter(type, issues, selectedStatuses) {
+  const filter = element("div", "lane-status-filter");
+  filter.setAttribute("role", "group");
+  filter.setAttribute("aria-label", "状态筛选（可多选）");
+  filter.append(element("span", "lane-status-filter-hint", "状态（可多选）"));
+  const selected = new Set(Array.isArray(selectedStatuses) ? selectedStatuses : []);
+  const statusCounts = new Map();
+  issues.forEach((issue) => {
+    const statusName = issueStatusName(issue);
+    statusCounts.set(statusName, (statusCounts.get(statusName) || 0) + 1);
+  });
+  const statusOptions = Array.from(statusCounts, ([id, count]) => ({ id, label: id, count }))
+    .sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+  const allButton = element("button", "lane-status-button", `全部 ${issues.length}`);
+  allButton.type = "button";
+  allButton.setAttribute("aria-pressed", String(selected.size === 0));
+  allButton.classList.toggle("active", selected.size === 0);
+  allButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    state.inboxStatusFilters[type] = [];
+    render();
+  });
+  filter.append(allButton);
+  statusOptions.forEach((option) => {
+    const button = element("button", "lane-status-button", `${option.label} ${option.count}`);
+    button.type = "button";
+    button.title = `筛选状态：${option.label}`;
+    button.setAttribute("aria-pressed", String(selected.has(option.id)));
+    button.classList.toggle("active", selected.has(option.id));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const next = new Set(selected);
+      if (next.has(option.id)) next.delete(option.id);
+      else next.add(option.id);
+      state.inboxStatusFilters[type] = Array.from(next);
+      render();
+    });
+    filter.append(button);
+  });
+  return filter;
+}
+
+function createTaskLane({ title, subtitle, type, issues, showStatusFilter = false }) {
+  const selectedStatuses = showStatusFilter && Array.isArray(state.inboxStatusFilters[type])
+    ? state.inboxStatusFilters[type]
+    : [];
+  const visibleIssues = selectedStatuses.length === 0
+    ? issues
+    : issues.filter((issue) => selectedStatuses.includes(issueStatusName(issue)));
   const lane = element("section", `task-lane ${type}`);
   lane.dataset.kind = type;
   const head = element("header", "lane-head");
@@ -676,10 +753,18 @@ function createTaskLane({ title, subtitle, type, issues }) {
     element("h2", "", title)
   );
   heading.append(titleRow, element("p", "", subtitle));
-  head.append(heading, element("span", "lane-count", String(issues.length)));
+  if (showStatusFilter) heading.append(createLaneStatusFilter(type, issues, selectedStatuses));
+  head.append(heading, element("span", "lane-count", String(visibleIssues.length)));
   const list = element("div", "card-list");
-  if (issues.length) issues.forEach((issue) => list.append(createCard(issue)));
-  else list.append(element("div", "empty", search.value.trim() ? "没有匹配的任务" : "暂无任务"));
+  if (visibleIssues.length) visibleIssues.forEach((issue) => list.append(createCard(issue)));
+  else {
+    const emptyMessage = search.value.trim()
+      ? "没有匹配的任务"
+      : selectedStatuses.length === 0
+        ? "暂无任务"
+        : "所选状态暂无任务";
+    list.append(element("div", "empty", emptyMessage));
+  }
   lane.append(head, list);
   return lane;
 }
@@ -692,13 +777,15 @@ function renderSplitView(issues, history = false) {
       title: history ? "需求处理历史" : "CT仪表盘-需要我完成的事宜",
       subtitle: history ? "已完成的需求与任务" : "需求 · 待处理 / 处理中",
       type: "requirement",
-      issues: requirements
+      issues: requirements,
+      showStatusFilter: !history
     }),
     createTaskLane({
       title: history ? "Bug 修复历史" : "CT-BUG-需要我修复的",
       subtitle: history ? "已完成的 Bug" : "Bug · 待修复 / 处理中",
       type: "bug",
-      issues: bugs
+      issues: bugs,
+      showStatusFilter: !history
     })
   );
 }
@@ -812,7 +899,7 @@ function renderSheets(issues) {
     return;
   }
 
-  if (state.jxlError) {
+  if (state.jxlError && !state.jxlSheets.length) {
     panel.append(element("div", "sheet-empty error", state.jxlError));
     board.append(panel);
     return;
@@ -830,13 +917,13 @@ function renderSheets(issues) {
     return;
   }
 
-  if (state.sheetLoading) {
+  if (state.sheetLoading && !state.sheetFetchedAt && !state.sheetIssues.length) {
     panel.append(element("div", "sheet-empty", "正在按所选 JXL Sheet 的查询范围加载任务…"));
     board.append(panel);
     return;
   }
 
-  if (state.sheetError) {
+  if (state.sheetError && !state.sheetIssues.length) {
     panel.append(element("div", "sheet-empty error", state.sheetError));
     board.append(panel);
     return;
@@ -1014,6 +1101,10 @@ function updateCounts() {
   document.querySelector("#sheets-count").textContent = state.jxlLoaded ? String(state.jxlSheets.length) : "…";
   document.querySelector("#history-count").textContent = String(counts.history);
   const summary = document.querySelector("#sync-summary");
+  if (state.backgroundSyncing) {
+    summary.textContent = "正在自动同步…";
+    return;
+  }
   if (state.activeView === "sheets") {
     if (!state.sheetFetchedAt) return void (summary.textContent = "");
     const sheetTotalText = state.sheetTruncated
@@ -1516,6 +1607,212 @@ function closeTemplateEditor() {
   editingTemplateKind = "";
 }
 
+function settingsBoardSources(config) {
+  const configured = config?.boardSources;
+  if (configured && typeof configured === "object") {
+    return {
+      projectKey: String(configured.projectKey || ""),
+      collaboratorFieldId: String(configured.collaboratorFieldId || "customfield_10600"),
+      collaboratorJqlName: String(configured.collaboratorJqlName || "协同处理人"),
+      requirement: {
+        mode: String(configured.requirement?.mode || "builtin"),
+        jql: String(configured.requirement?.jql || ""),
+        filterIds: Array.isArray(configured.requirement?.filterIds) ? configured.requirement.filterIds.map(String) : []
+      },
+      bug: {
+        mode: String(configured.bug?.mode || "builtin"),
+        jql: String(configured.bug?.jql || ""),
+        filterIds: Array.isArray(configured.bug?.filterIds) ? configured.bug.filterIds.map(String) : []
+      }
+    };
+  }
+  const legacyJql = String(config?.jql || "").trim();
+  const isLegacyDefault = !legacyJql || /filter\s*=\s*10103/i.test(legacyJql);
+  return {
+    projectKey: isLegacyDefault ? "CT" : "",
+    collaboratorFieldId: "customfield_10600",
+    collaboratorJqlName: "协同处理人",
+    requirement: { mode: isLegacyDefault ? "builtin" : "custom", jql: isLegacyDefault ? "" : legacyJql, filterIds: [] },
+    bug: { mode: isLegacyDefault ? "builtin" : "custom", jql: isLegacyDefault ? "" : legacyJql, filterIds: [] }
+  };
+}
+
+function setBoardFiltersStatus(message = "", kind = "info") {
+  const status = document.querySelector("#board-filters-status");
+  if (!status) return;
+  status.className = `board-filters-status ${kind}`;
+  status.textContent = message;
+  status.hidden = !message;
+}
+
+function boardDataRequest(path, { projectKey = "" } = {}) {
+  const baseUrl = document.querySelector("#base-url")?.value.trim() || "";
+  const token = document.querySelector("#token")?.value.trim() || "";
+  const savedBaseUrl = String(state.config?.baseUrl || "").trim();
+  const usingDraftConnection = Boolean(token) || (Boolean(baseUrl) && baseUrl !== savedBaseUrl);
+  const query = projectKey ? `?projectKey=${encodeURIComponent(projectKey)}` : "";
+  if (usingDraftConnection) {
+    return {
+      path: `${path}${query}`,
+      options: { method: "POST", body: { baseUrl, token } },
+      usingDraftConnection: true
+    };
+  }
+  return { path: `${path}${query}`, options: {}, usingDraftConnection: false };
+}
+
+function renderBoardProjectOptions() {
+  const datalist = document.querySelector("#board-project-options");
+  if (!datalist) return;
+  datalist.replaceChildren(...(Array.isArray(state.boardProjects) ? state.boardProjects : []).map((project) => {
+    const option = document.createElement("option");
+    option.value = project.key;
+    option.label = `${project.key} · ${project.name}`;
+    return option;
+  }));
+}
+
+async function loadBoardProjects({ quiet = false, force = false } = {}) {
+  const hasDraftConnection = Boolean(document.querySelector("#base-url")?.value.trim() && document.querySelector("#token")?.value.trim());
+  if ((!state.config?.configured && !hasDraftConnection) || state.boardProjectsLoading || (!force && state.boardProjects.length)) return;
+  state.boardProjectsLoading = true;
+  state.boardProjectsError = "";
+  const request = boardDataRequest("/api/projects");
+  setBoardFiltersStatus(
+    request.usingDraftConnection
+      ? "正在使用当前表单中的新 Token 读取 Jira 项目…"
+      : "正在读取当前 Token 可访问的 Jira 项目…",
+    "info"
+  );
+  try {
+    const payload = await api(request.path, request.options);
+    state.boardProjects = Array.isArray(payload.projects) ? payload.projects : [];
+    renderBoardProjectOptions();
+    const input = document.querySelector("#board-project-key");
+    const current = input?.value.trim().toUpperCase() || "";
+    const exact = state.boardProjects.some((project) => project.key === current);
+    if (!current && state.boardProjects.length === 1 && input) {
+      input.value = state.boardProjects[0].key;
+      setBoardFiltersStatus(`已自动选择项目 ${state.boardProjects[0].key}`, "info");
+    } else if (current && state.boardProjects.length && !exact) {
+      setBoardFiltersStatus(`当前项目 ${current} 不在 Token 可访问列表中，请从输入提示中选择有效项目。`, "error");
+    } else if (!state.boardProjects.length) {
+      setBoardFiltersStatus("当前 Token 没有可访问的 Jira 项目，或 Token 认证已失效。", "error");
+    } else {
+      setBoardFiltersStatus(`已读取 ${state.boardProjects.length} 个可访问项目`, "info");
+    }
+  } catch (error) {
+    state.boardProjects = [];
+    state.boardProjectsError = error.message;
+    renderBoardProjectOptions();
+    setBoardFiltersStatus(`项目读取失败：${error.message}`, "error");
+    if (!quiet) showToast(`读取 Jira 项目失败：${error.message}`, 5000);
+  } finally {
+    state.boardProjectsLoading = false;
+  }
+}
+
+function activeBoardFilterMode() {
+  return ["requirement", "bug"].some((kind) => document.querySelector(`#${kind}-source-mode`)?.value === "filter");
+}
+
+function renderBoardFilterOptions() {
+  for (const kind of ["requirement", "bug"]) {
+    const select = document.querySelector(`#${kind}-filter-ids`);
+    if (!select) continue;
+    const selected = new Set((state.boardFilterSelections[kind] || []).map(String));
+    const filters = Array.isArray(state.boardFilters) ? state.boardFilters : [];
+    select.replaceChildren();
+    if (!filters.length) {
+      const empty = document.createElement("option");
+      empty.disabled = true;
+      empty.textContent = state.boardFiltersLoading ? "正在读取 Filter…" : "暂无可用 Filter";
+      select.append(empty);
+      continue;
+    }
+    for (const filter of filters) {
+      const option = document.createElement("option");
+      option.value = String(filter.id);
+      option.textContent = `${filter.name || `Filter ${filter.id}`} (#${filter.id})`;
+      option.title = filter.jql || "";
+      option.selected = selected.has(option.value);
+      select.append(option);
+    }
+  }
+}
+
+function updateBoardSourceVisibility() {
+  let hasBuiltin = false;
+  for (const kind of ["requirement", "bug"]) {
+    const mode = document.querySelector(`#${kind}-source-mode`)?.value || "builtin";
+    hasBuiltin ||= mode === "builtin";
+    const jqlField = document.querySelector(`#${kind}-board-jql-field`);
+    const filterField = document.querySelector(`#${kind}-filter-field`);
+    if (jqlField) jqlField.hidden = mode !== "custom";
+    if (filterField) filterField.hidden = mode !== "filter";
+  }
+  const projectField = document.querySelector("#board-project-field");
+  if (projectField) projectField.hidden = !hasBuiltin;
+  const help = document.querySelector("#board-source-help");
+  if (help) {
+    help.textContent = hasBuiltin
+      ? "内置通用 JQL 会按项目、当前用户和任务类型自动查询；自定义 JQL 与 Filter 由你负责确认范围。"
+      : "当前未使用内置通用 JQL；自定义 JQL 和 Filter 会按各自面板查询，并自动区分活动与历史任务。";
+  }
+}
+
+async function loadBoardFilters({ quiet = false, force = false } = {}) {
+  const hasDraftConnection = Boolean(document.querySelector("#base-url")?.value.trim() && document.querySelector("#token")?.value.trim());
+  if ((!state.config?.configured && !hasDraftConnection) || state.boardFiltersLoading || (!force && !activeBoardFilterMode())) return;
+  state.boardFiltersLoading = true;
+  state.boardFiltersError = "";
+  const projectKey = document.querySelector("#board-project-key")?.value.trim() || "";
+  const request = boardDataRequest("/api/filters", { projectKey });
+  setBoardFiltersStatus(
+    request.usingDraftConnection
+      ? "正在使用当前表单中的新 Token 读取 Jira Filter…"
+      : "正在读取 Jira Filter…",
+    "info"
+  );
+  renderBoardFilterOptions();
+  try {
+    const payload = await api(request.path, request.options);
+    state.boardFilters = Array.isArray(payload.filters) ? payload.filters : [];
+    setBoardFiltersStatus(`已读取 ${state.boardFilters.length} 个可用 Filter`, "info");
+    renderBoardFilterOptions();
+  } catch (error) {
+    state.boardFilters = [];
+    state.boardFiltersError = error.message;
+    setBoardFiltersStatus(`Filter 读取失败：${error.message}`, "error");
+    renderBoardFilterOptions();
+    if (!quiet) showToast(`读取 Jira Filter 失败：${error.message}`, 5000);
+  } finally {
+    state.boardFiltersLoading = false;
+    renderBoardFilterOptions();
+  }
+}
+
+function collectBoardSourcesFromForm() {
+  const source = {
+    projectKey: document.querySelector("#board-project-key")?.value.trim() || "",
+    collaboratorFieldId: state.config?.boardSources?.collaboratorFieldId || "customfield_10600",
+    collaboratorJqlName: state.config?.boardSources?.collaboratorJqlName || "协同处理人"
+  };
+  for (const kind of ["requirement", "bug"]) {
+    const mode = document.querySelector(`#${kind}-source-mode`)?.value || "builtin";
+    const jql = document.querySelector(`#${kind}-board-jql`)?.value.trim() || "";
+    const filterIds = Array.from(document.querySelector(`#${kind}-filter-ids`)?.selectedOptions || []).map((option) => option.value);
+    state.boardFilterSelections[kind] = filterIds;
+    if (mode === "custom" && !jql) throw new Error(`${kind === "bug" ? "Bug" : "需求"} 面板的自定义 JQL 不能为空。`);
+    if (mode === "filter" && !filterIds.length) throw new Error(`请为${kind === "bug" ? "Bug" : "需求"}面板选择至少一个 Filter。`);
+    source[kind] = { mode, jql: mode === "custom" ? jql : "", filterIds: mode === "filter" ? filterIds : [] };
+  }
+  if (["requirement", "bug"].some((kind) => source[kind].mode === "builtin") && !source.projectKey) {
+    throw new Error("使用内置通用 JQL 时必须选择项目 Key。请先刷新项目列表，或改用自定义 JQL / Filter。");
+  }
+  return source;
+}
+
 function populateSettings(config) {
   document.querySelector("#base-url").value = config?.baseUrl || "";
   document.querySelector("#token").value = "";
@@ -1529,13 +1826,42 @@ function populateSettings(config) {
     : "配置后，自动分析完成时会把结果推送到群机器人；留空则不推送。";
   document.querySelector("#clear-wecom").checked = false;
   document.querySelector("#clear-wecom-wrap").hidden = !config?.wecomConfigured;
-  document.querySelector("#jql").value = config?.jql
-    || '((filter = 10103 OR filter = 10102) OR (project = CT AND statusCategory = Done AND (assignee = currentUser() OR "协同处理人" = currentUser()))) ORDER BY updated DESC';
+  const sync = {
+    ...DEFAULT_SYNC_SETTINGS,
+    ...(config?.syncSettings || {})
+  };
+  document.querySelector("#sync-tasks-enabled").checked = Boolean(sync.tasksEnabled);
+  document.querySelector("#sync-task-interval").value = String(sync.taskIntervalSeconds);
+  document.querySelector("#sync-on-panel-return").checked = Boolean(sync.syncOnPanelReturn);
+  document.querySelector("#sync-sheets-interval").value = String(sync.sheetsIntervalSeconds);
+  updateSyncControls();
+  const boardSources = settingsBoardSources(config);
+  document.querySelector("#jql").value = config?.jql || "";
+  document.querySelector("#board-project-key").value = boardSources.projectKey;
+  renderBoardProjectOptions();
+  state.boardFilterSelections = {
+    requirement: boardSources.requirement.filterIds,
+    bug: boardSources.bug.filterIds
+  };
+  for (const kind of ["requirement", "bug"]) {
+    document.querySelector(`#${kind}-source-mode`).value = boardSources[kind].mode;
+    document.querySelector(`#${kind}-board-jql`).value = boardSources[kind].jql;
+  }
+  state.boardFilters = [];
+  state.boardFiltersError = "";
+  state.boardFiltersLoading = false;
+  renderBoardFilterOptions();
+  updateBoardSourceVisibility();
+  setBoardFiltersStatus("");
   templateDrafts = templateDraftsFromConfig(config);
   renderTemplateCards();
   populateCodexProjectOptions(config?.codexProjectId || "", config?.codexProjectLabel || "");
   document.querySelector("#max-results").value = config?.maxResults || 100;
   document.querySelector("#clear-settings").hidden = !config?.configured;
+  if (activeBoardFilterMode() && config?.configured) void loadBoardFilters({ quiet: true });
+  if (config?.configured && ["requirement", "bug"].some((kind) => document.querySelector(`#${kind}-source-mode`)?.value === "builtin")) {
+    void loadBoardProjects({ quiet: true, force: true });
+  }
 }
 
 function populateCodexProjectOptions(selectedId = "", selectedLabel = "") {
@@ -1564,9 +1890,77 @@ function setSettingsStatus(message, kind = "error") {
   settingsStatus.hidden = !message;
 }
 
+function updateSyncControls() {
+  const enabled = Boolean(document.querySelector("#sync-tasks-enabled")?.checked);
+  const interval = document.querySelector("#sync-task-interval");
+  if (interval) interval.disabled = !enabled;
+}
+
+function setSettingsSection(section = "jira") {
+  const available = settingsSectionTabs.map((button) => button.dataset.settingsSectionTab);
+  activeSettingsSection = available.includes(section) ? section : "jira";
+  settingsSectionTabs.forEach((button) => {
+    const active = button.dataset.settingsSectionTab === activeSettingsSection;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll("[data-settings-section]").forEach((item) => {
+    item.classList.toggle("settings-section-hidden", item.dataset.settingsSection !== activeSettingsSection);
+  });
+}
+
+function currentSyncSettings() {
+  return {
+    ...DEFAULT_SYNC_SETTINGS,
+    ...(state.config?.syncSettings && typeof state.config.syncSettings === "object"
+      ? state.config.syncSettings
+      : {})
+  };
+}
+
+function clearSyncTimers() {
+  if (taskSyncTimer) window.clearInterval(taskSyncTimer);
+  if (sheetsSyncTimer) window.clearInterval(sheetsSyncTimer);
+  taskSyncTimer = 0;
+  sheetsSyncTimer = 0;
+}
+
+function scheduleSyncTimers() {
+  clearSyncTimers();
+  if (!state.config?.configured) return;
+  const sync = currentSyncSettings();
+  if (sync.tasksEnabled && Number(sync.taskIntervalSeconds) > 0) {
+    taskSyncTimer = window.setInterval(() => {
+      void loadIssues({ background: true });
+    }, Number(sync.taskIntervalSeconds) * 1000);
+  }
+  if (state.activeView === "sheets" && Number(sync.sheetsIntervalSeconds) > 0) {
+    sheetsSyncTimer = window.setInterval(() => {
+      void loadJxlSheets({ loadSelected: true, background: true });
+    }, Number(sync.sheetsIntervalSeconds) * 1000);
+  }
+}
+
+function refreshOnPanelReturn() {
+  if (!initialLoadComplete || !state.config?.configured) return;
+  const sync = currentSyncSettings();
+  if (!sync.syncOnPanelReturn) return;
+  const now = Date.now();
+  if (now - lastPanelActivationAt < 1_500) return;
+  lastPanelActivationAt = now;
+  void loadIssues({ background: true });
+  if (state.activeView === "sheets") void loadJxlSheets({ loadSelected: true, background: true });
+}
+
+settingsSectionTabs.forEach((button) => {
+  button.addEventListener("click", () => setSettingsSection(button.dataset.settingsSectionTab));
+});
+
 function openSettings() {
   populateSettings(state.config);
   setSettingsStatus("");
+  setSettingsSection(activeSettingsSection);
   settingsBackdrop.hidden = false;
   settingsDialog.hidden = false;
   window.parent.postMessage({ source: "jira-codex-panel-poc", type: "get-skills" }, "*");
@@ -1579,7 +1973,7 @@ function closeSettings() {
   settingsDialog.hidden = true;
 }
 
-async function loadIssues() {
+async function loadIssues({ background = false } = {}) {
   if (!state.config?.configured) {
     setHealth("", "需要配置 Jira");
     state.issues = [];
@@ -1587,7 +1981,9 @@ async function loadIssues() {
     render();
     return;
   }
-  state.loading = true;
+  if (state.loading || (background && state.backgroundSyncing)) return;
+  if (background) state.backgroundSyncing = true;
+  else state.loading = true;
   setHealth("syncing", "正在同步 Jira");
   hideNotice();
   render();
@@ -1599,12 +1995,12 @@ async function loadIssues() {
     state.fetchedAt = payload.fetchedAt;
     setHealth("ok", "Jira 已连接");
   } catch (error) {
-    state.issues = [];
-    state.fetchedAt = null;
-    setHealth("error", "Jira 连接失败");
-    showNotice(error.message, { kind: "error", settings: true });
+    if (!background && !state.issues.length) state.fetchedAt = null;
+    setHealth("error", background ? "同步失败，保留旧数据" : "Jira 连接失败");
+    if (!background) showNotice(error.message, { kind: "error", settings: true });
   } finally {
-    state.loading = false;
+    if (background) state.backgroundSyncing = false;
+    else state.loading = false;
     updateCounts();
     render();
   }
@@ -1628,7 +2024,7 @@ function resetJxlState() {
   resetSheetTableState();
 }
 
-async function loadJxlSheetIssues() {
+async function loadJxlSheetIssues({ background = false } = {}) {
   const sheet = activeJxlSheet();
   const requestedKey = jxlSheetKey(sheet);
   if (!sheet || !sheet.queryable) {
@@ -1644,13 +2040,16 @@ async function loadJxlSheetIssues() {
     return;
   }
 
+  if (state.sheetLoading) return;
   const requestId = ++sheetRequestId;
   state.sheetLoading = true;
   state.sheetError = "";
-  state.sheetIssues = [];
-  state.sheetFetchedAt = null;
-  state.sheetTotal = 0;
-  state.sheetTruncated = false;
+  if (!background) {
+    state.sheetIssues = [];
+    state.sheetFetchedAt = null;
+    state.sheetTotal = 0;
+    state.sheetTruncated = false;
+  }
   updateCounts();
   render();
   try {
@@ -1663,7 +2062,6 @@ async function loadJxlSheetIssues() {
     state.sheetTruncated = Boolean(payload.truncated);
   } catch (error) {
     if (requestId !== sheetRequestId || requestedKey !== state.activeSheet) return;
-    state.sheetIssues = [];
     state.sheetLoadedKey = requestedKey;
     state.sheetError = error.message;
   } finally {
@@ -1675,7 +2073,7 @@ async function loadJxlSheetIssues() {
   }
 }
 
-async function loadJxlSheets({ loadSelected = true } = {}) {
+async function loadJxlSheets({ loadSelected = true, background = false } = {}) {
   if (!state.config?.configured || state.jxlLoading) return;
   state.jxlLoading = true;
   state.jxlError = "";
@@ -1707,11 +2105,15 @@ async function loadJxlSheets({ loadSelected = true } = {}) {
     }
   } catch (error) {
     state.jxlLoaded = true;
-    state.jxlSheets = [];
-    state.activeSheet = "";
-    state.sheetIssues = [];
-    state.sheetLoadedKey = "";
-    state.jxlError = `无法读取 JXL Sheets：${error.message}`;
+    if (!background) {
+      state.jxlSheets = [];
+      state.activeSheet = "";
+      state.sheetIssues = [];
+      state.sheetLoadedKey = "";
+      state.jxlError = `无法读取 JXL Sheets：${error.message}`;
+    } else {
+      state.jxlError = `同步失败，保留上次 Sheets 数据：${error.message}`;
+    }
   } finally {
     state.jxlLoading = false;
     updateCounts();
@@ -1727,6 +2129,7 @@ async function saveSettings(event) {
   setSettingsStatus("正在连接 Jira 并验证 JQL…", "info");
   try {
     const codexProject = document.querySelector("#codex-project");
+    const boardSources = collectBoardSourcesFromForm();
     const payload = await api("/api/config", {
       method: "PUT",
       body: {
@@ -1739,6 +2142,7 @@ async function saveSettings(event) {
         wecomWebhook: document.querySelector("#wecom-webhook").value,
         clearWecomWebhook: document.querySelector("#clear-wecom").checked,
         jql: document.querySelector("#jql").value,
+        boardSources,
         promptTemplates: {
           requirement: {
             customized: Boolean(templateDrafts.requirement.customized),
@@ -1751,10 +2155,17 @@ async function saveSettings(event) {
             skill: normalizedSkillReference(templateDrafts.bug.skill)
           }
         },
+        syncSettings: {
+          tasksEnabled: document.querySelector("#sync-tasks-enabled").checked,
+          taskIntervalSeconds: Number(document.querySelector("#sync-task-interval").value),
+          syncOnPanelReturn: document.querySelector("#sync-on-panel-return").checked,
+          sheetsIntervalSeconds: Number(document.querySelector("#sync-sheets-interval").value)
+        },
         maxResults: Number(document.querySelector("#max-results").value)
       }
     });
     state.config = payload.config;
+    scheduleSyncTimers();
     await loadAutomationStatus();
     resetJxlState();
     closeSettings();
@@ -1776,8 +2187,13 @@ async function clearSettings() {
     await api("/api/config", { method: "DELETE" });
     const payload = await api("/api/config");
     state.config = payload.config;
+    clearSyncTimers();
     state.automation = null;
     state.issues = [];
+    state.boardFilters = [];
+    state.boardProjects = [];
+    state.boardProjectsError = "";
+    state.boardFilterSelections = { requirement: [], bug: [] };
     state.fetchedAt = null;
     resetJxlState();
     closeSettings();
@@ -1793,6 +2209,7 @@ async function clearSettings() {
 pageTabs.forEach((button) => {
   button.addEventListener("click", () => {
     state.activeView = button.dataset.view;
+    scheduleSyncTimers();
     pageTabs.forEach((candidate) => {
       const active = candidate === button;
       candidate.classList.toggle("active", active);
@@ -1837,15 +2254,22 @@ bugMonitorToggle.addEventListener("change", async () => {
 });
 
 search.addEventListener("input", render);
-document.querySelector("#close-panel").addEventListener("click", () => {
-  window.parent.postMessage({ source: "jira-codex-panel-poc", type: "close" }, "*");
-});
-document.querySelector("#refresh").addEventListener("click", () => {
+topActions.addEventListener("click", (event) => {
+  const action = event.target.closest?.("button.icon-button");
+  if (!action || !topActions.contains(action)) return;
+  if (action.id === "close-panel") {
+    window.parent.postMessage({ source: "jira-codex-panel-poc", type: "close" }, "*");
+    return;
+  }
+  if (action.id === "open-settings") {
+    openSettings();
+    return;
+  }
+  if (action.id !== "refresh") return;
   if (!state.config?.configured) return openSettings();
   if (state.activeView === "sheets") return void loadJxlSheets();
   void loadIssues();
 });
-document.querySelector("#open-settings").addEventListener("click", openSettings);
 noticeAction.addEventListener("click", openSettings);
 document.querySelector("#close-drawer").addEventListener("click", closeDetails);
 transitionSelect.addEventListener("change", updateTransitionAction);
@@ -1949,6 +2373,25 @@ document.querySelector("#cancel-settings").addEventListener("click", closeSettin
 settingsBackdrop.addEventListener("click", closeSettings);
 settingsForm.addEventListener("submit", saveSettings);
 document.querySelector("#clear-settings").addEventListener("click", clearSettings);
+document.querySelector("#sync-tasks-enabled").addEventListener("change", updateSyncControls);
+for (const kind of ["requirement", "bug"]) {
+  document.querySelector(`#${kind}-source-mode`).addEventListener("change", () => {
+    updateBoardSourceVisibility();
+    if (document.querySelector(`#${kind}-source-mode`).value === "filter") void loadBoardFilters({ quiet: true });
+  });
+  document.querySelector(`#${kind}-filter-ids`).addEventListener("change", (event) => {
+    state.boardFilterSelections[kind] = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+  });
+}
+document.querySelector("#board-project-key").addEventListener("change", () => {
+  if (activeBoardFilterMode()) void loadBoardFilters({ quiet: true, force: true });
+});
+document.querySelector("#refresh-board-projects").addEventListener("click", () => {
+  void loadBoardProjects({ quiet: false, force: true });
+});
+document.querySelector("#refresh-board-filters").addEventListener("click", () => {
+  void loadBoardFilters({ quiet: false, force: true });
+});
 document.querySelectorAll(".edit-template").forEach((button) => {
   button.addEventListener("click", () => openTemplateEditor(button.dataset.templateKind));
 });
@@ -1991,6 +2434,7 @@ window.addEventListener("message", (event) => {
   const message = event.data;
   if (!message || message.source !== "jira-codex-panel-host") return;
   if (message.type === "theme") applyHostTheme(message);
+  if (message.type === "panel-activated") refreshOnPanelReturn();
   if (message.type === "bindings") {
     state.bindings = message.bindings && typeof message.bindings === "object" ? message.bindings : {};
     state.threads = Array.isArray(message.threads) ? message.threads : [];
@@ -2038,6 +2482,11 @@ window.addEventListener("message", (event) => {
   }
 });
 
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshOnPanelReturn();
+});
+window.addEventListener("focus", refreshOnPanelReturn);
+
 async function boot() {
   window.parent.postMessage({ source: "jira-codex-panel-poc", type: "get-bindings" }, "*");
   try {
@@ -2047,6 +2496,7 @@ async function boot() {
       await loadAutomationStatus();
       await loadIssues();
       await loadJxlSheets({ loadSelected: false });
+      scheduleSyncTimers();
     }
     else {
       setHealth("", "需要配置 Jira");
@@ -2054,6 +2504,8 @@ async function boot() {
       render();
       openSettings();
     }
+    initialLoadComplete = true;
+    lastPanelActivationAt = Date.now();
   } catch (error) {
     setHealth("error", "本地服务异常");
     showNotice(error.message, { kind: "error" });

@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = "0.26.3";
+  const VERSION = "0.26.15";
   const ENTRY_ID = "jira-codex-poc-entry";
   const PAGE_ID = "jira-codex-poc-page";
   const STYLE_ID = "jira-codex-poc-style";
@@ -650,7 +650,7 @@
         position: relative !important;
         z-index: 31 !important;
         overflow: hidden !important;
-        pointer-events: none !important;
+        pointer-events: auto !important;
       }
       #${PAGE_ID} { position: absolute; inset: 0; z-index: 1; background: var(--color-token-main-surface-primary, #f7f7f5); pointer-events: auto; }
       #${PAGE_ID}[hidden] { display: none !important; }
@@ -1338,6 +1338,7 @@
     mountActivePage();
     entry?.setAttribute("aria-current", "page");
     window.setTimeout(sendBindings, 0);
+    window.setTimeout(() => sendPanelMessage("panel-activated"), 0);
   }
 
   function closePanel() {
@@ -4117,6 +4118,7 @@
     if (message.type === "get-bindings" || message.type === "ready") {
       sendBindings();
       void refreshAvailableSkills();
+      if (message.type === "ready") sendPanelMessage("panel-activated");
     }
     if (message.type === "get-skills") void refreshAvailableSkills({ forceReload: true });
     if (message.type === "open-task" && message.issue) {

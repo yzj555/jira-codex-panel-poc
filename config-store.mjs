@@ -22,6 +22,20 @@ export const COLLABORATION_DEFAULT_JQL = '(assignee = currentUser() OR "协同�
 export const DASHBOARD_ACTIVE_JQL = "(filter = 10103 OR filter = 10102) ORDER BY updated DESC";
 export const DASHBOARD_COMPLETED_JQL = 'project = CT AND statusCategory = Done AND (assignee = currentUser() OR "协同处理人" = currentUser()) ORDER BY updated DESC';
 export const DEFAULT_JQL = '((filter = 10103 OR filter = 10102) OR (project = CT AND statusCategory = Done AND (assignee = currentUser() OR "协同处理人" = currentUser()))) ORDER BY updated DESC';
+
+export const DEFAULT_BOARD_PROJECT_KEY = "CT";
+export const DEFAULT_COLLABORATOR_FIELD_ID = "customfield_10600";
+export const DEFAULT_COLLABORATOR_JQL_NAME = "协同处理人";
+export const BOARD_SOURCE_MODES = Object.freeze(["builtin", "custom", "filter"]);
+export const TASK_SYNC_INTERVALS = Object.freeze([30, 60, 300, 600]);
+export const SHEETS_SYNC_INTERVALS = Object.freeze([0, 300, 600]);
+export const DEFAULT_SYNC_SETTINGS = Object.freeze({
+  tasksEnabled: true,
+  taskIntervalSeconds: 60,
+  syncOnPanelReturn: true,
+  sheetsIntervalSeconds: 300
+});
+
 export class ConfigurationError extends Error {
   constructor(message, { code = "INVALID_CONFIGURATION", statusCode = 400 } = {}) {
     super(message);
@@ -29,6 +43,204 @@ export class ConfigurationError extends Error {
     this.code = code;
     this.statusCode = statusCode;
   }
+}
+
+function normalizeBoardSourceMode(value) {
+  const mode = String(value || "builtin").trim().toLowerCase();
+  return BOARD_SOURCE_MODES.includes(mode) ? mode : "builtin";
+}
+
+function normalizeBoardProjectKey(value, fallback = DEFAULT_BOARD_PROJECT_KEY) {
+  const projectKey = String(value ?? fallback).trim();
+  if (!projectKey) return "";
+  if (!/^[A-Za-z][A-Za-z0-9_]{0,49}$/.test(projectKey)) {
+    throw new ConfigurationError("Jira 项目 Key 无效，请使用 1-50 位字母、数字或下划线。", {
+      code: "INVALID_BOARD_PROJECT_KEY"
+    });
+  }
+  return projectKey.toUpperCase();
+}
+
+function normalizeBoardJql(value, { required = false } = {}) {
+  const jql = String(value || "").trim();
+  if (required && !jql) {
+    throw new ConfigurationError("自定义 JQL 不能为空。", { code: "BOARD_JQL_REQUIRED" });
+  }
+  if (jql.length > 12_000) {
+    throw new ConfigurationError("面板 JQL 不能超过 12000 个字符。", { code: "BOARD_JQL_TOO_LONG" });
+  }
+  return jql;
+}
+
+function normalizeFilterIds(value, { required = false } = {}) {
+  const values = Array.isArray(value) ? value : value === undefined || value === null || value === "" ? [] : [value];
+  const ids = [...new Set(values.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (ids.some((id) => !/^\d+$/.test(id))) {
+    throw new ConfigurationError("Filter ID 必须是数字。", { code: "INVALID_BOARD_FILTER_ID" });
+  }
+  if (ids.length > 100) {
+    throw new ConfigurationError("单个面板最多选择 100 个 Filter。", { code: "TOO_MANY_BOARD_FILTERS" });
+  }
+  if (required && !ids.length) {
+    throw new ConfigurationError("请选择至少一个 Jira Filter。", { code: "BOARD_FILTER_REQUIRED" });
+  }
+  return ids;
+}
+
+function normalizeBoardSource(kind, incoming = {}, previous = {}) {
+  const source = incoming && typeof incoming === "object" ? incoming : {};
+  const prior = previous && typeof previous === "object" ? previous : {};
+  const mode = normalizeBoardSourceMode(source.mode ?? prior.mode);
+  const jql = normalizeBoardJql(source.jql ?? prior.jql, { required: mode === "custom" });
+  const filterIds = normalizeFilterIds(source.filterIds ?? source.filters ?? prior.filterIds ?? prior.filters, {
+    required: mode === "filter"
+  });
+  return {
+    mode,
+    jql: mode === "custom" ? jql : "",
+    filterIds: mode === "filter" ? filterIds : []
+  };
+}
+
+function legacyBoardSources(jql) {
+  const value = String(jql || "").trim();
+  if (!value || value === DEFAULT_JQL || value === LEGACY_DEFAULT_JQL
+    || value === COLLABORATION_DEFAULT_JQL || value === DASHBOARD_ACTIVE_JQL) {
+    return {
+      legacy: true,
+      projectKey: DEFAULT_BOARD_PROJECT_KEY,
+      collaboratorFieldId: DEFAULT_COLLABORATOR_FIELD_ID,
+      collaboratorJqlName: DEFAULT_COLLABORATOR_JQL_NAME,
+      requirement: { mode: "builtin", jql: "", filterIds: [] },
+      bug: { mode: "builtin", jql: "", filterIds: [] }
+    };
+  }
+  return {
+    legacy: true,
+    projectKey: "",
+    collaboratorFieldId: DEFAULT_COLLABORATOR_FIELD_ID,
+    collaboratorJqlName: DEFAULT_COLLABORATOR_JQL_NAME,
+    requirement: { mode: "custom", jql: value, filterIds: [] },
+    bug: { mode: "custom", jql: value, filterIds: [] }
+  };
+}
+
+export function normalizeBoardSources(input, previous = {}, legacyJql = DEFAULT_JQL) {
+  const incoming = input && typeof input === "object" ? input : null;
+  const prior = previous && typeof previous === "object" ? previous : null;
+  if (!incoming && (!prior || !Object.keys(prior).length)) return legacyBoardSources(legacyJql);
+  if (!incoming && prior) {
+    return {
+      legacy: Boolean(prior.legacy),
+      projectKey: normalizeBoardProjectKey(prior.projectKey, ""),
+      collaboratorFieldId: String(prior.collaboratorFieldId || DEFAULT_COLLABORATOR_FIELD_ID).trim() || DEFAULT_COLLABORATOR_FIELD_ID,
+      collaboratorJqlName: String(prior.collaboratorJqlName || DEFAULT_COLLABORATOR_JQL_NAME).trim() || DEFAULT_COLLABORATOR_JQL_NAME,
+      requirement: normalizeBoardSource("requirement", prior.requirement, prior.requirement),
+      bug: normalizeBoardSource("bug", prior.bug, prior.bug)
+    };
+  }
+
+  const projectKey = normalizeBoardProjectKey(
+    incoming.projectKey ?? prior?.projectKey,
+    incoming.projectKey === "" ? "" : prior?.projectKey || DEFAULT_BOARD_PROJECT_KEY
+  );
+  const collaboratorFieldId = String(
+    incoming.collaboratorFieldId ?? prior?.collaboratorFieldId ?? DEFAULT_COLLABORATOR_FIELD_ID
+  ).trim() || DEFAULT_COLLABORATOR_FIELD_ID;
+  const collaboratorJqlName = String(
+    incoming.collaboratorJqlName ?? prior?.collaboratorJqlName ?? DEFAULT_COLLABORATOR_JQL_NAME
+  ).trim() || DEFAULT_COLLABORATOR_JQL_NAME;
+  if (!/^[A-Za-z][A-Za-z0-9_]{0,99}$/.test(collaboratorFieldId)) {
+    throw new ConfigurationError("协同处理人字段 ID 无效。", { code: "INVALID_COLLABORATOR_FIELD" });
+  }
+  if (collaboratorJqlName.length > 200) {
+    throw new ConfigurationError("协同处理人字段名称无效。", { code: "INVALID_COLLABORATOR_FIELD" });
+  }
+  return {
+    legacy: Boolean(incoming.legacy ?? prior?.legacy),
+    projectKey,
+    collaboratorFieldId,
+    collaboratorJqlName,
+    requirement: normalizeBoardSource("requirement", incoming.requirement, prior?.requirement),
+    bug: normalizeBoardSource("bug", incoming.bug, prior?.bug)
+  };
+}
+
+function stripOrderBy(jql) {
+  return String(jql || "").trim().replace(/\s+ORDER\s+BY[\s\S]*$/i, "").trim();
+}
+
+function collaboratorJqlField(sources) {
+  const fieldId = String(sources.collaboratorFieldId || "").trim();
+  const numericId = fieldId.match(/^customfield_(\d+)$/i);
+  if (numericId) return `cf[${numericId[1]}]`;
+  const displayName = String(sources.collaboratorJqlName || "").trim();
+  return displayName ? `"${displayName.replace(/"/g, '\\"')}"` : "";
+}
+
+function builtInBoardJql(kind, sources, bugTypeNames = []) {
+  const clauses = [];
+  if (sources.projectKey) clauses.push(`project = ${sources.projectKey}`);
+  // Jira Data Center accepts the custom-field clause form cf[12345]. The
+  // REST field ID (customfield_12345) is valid in issue payloads but is not a
+  // searchable JQL field name on this Jira version.
+  const collaboratorField = collaboratorJqlField(sources);
+  const collaborator = collaboratorField
+    ? `(assignee = currentUser() OR ${collaboratorField} = currentUser())`
+    : "assignee = currentUser()";
+  clauses.push(collaborator);
+  const names = [...new Set((Array.isArray(bugTypeNames) ? bugTypeNames : [])
+    .map((name) => String(name || "").trim()).filter(Boolean))];
+  if (names.length) {
+    const values = names.map((name) => `"${name.replace(/"/g, '\\"')}"`).join(", ");
+    clauses.push(kind === "bug"
+      ? `issuetype in (${values})`
+      : `issuetype not in (${values})`);
+  }
+  return clauses.join(" AND ");
+}
+
+function sourceBaseJql(kind, source, sources, bugTypeNames) {
+  if (source.mode === "custom") return stripOrderBy(source.jql);
+  if (source.mode === "filter") return source.filterIds.map((id) => `filter = ${id}`).join(" OR ");
+  return builtInBoardJql(kind, sources, bugTypeNames);
+}
+
+function historySourceJql(kind, source, sources, bugTypeNames) {
+  // A saved Filter often contains its own active-status clause. Appending
+  // statusCategory = Done to `filter = <id>` would intersect with that clause
+  // and make the history view empty. For project-scoped Filter panels, use the
+  // same project/user/type scope as the built-in history rule instead.
+  if (source.mode === "filter" && sources.projectKey) {
+    return builtInBoardJql(kind, sources, bugTypeNames);
+  }
+  return sourceBaseJql(kind, source, sources, bugTypeNames);
+}
+
+function joinSourceParts(parts, fallback) {
+  const normalized = parts.map((part) => String(part || "").trim()).filter(Boolean);
+  return normalized.length ? normalized.map((part) => `(${part})`).join(" OR ") : fallback;
+}
+
+export function buildBoardQueries(boardSources, { bugTypeNames = [] } = {}) {
+  const sources = normalizeBoardSources(boardSources, null, DEFAULT_JQL);
+  const sourceParts = ["requirement", "bug"].map((kind) => sourceBaseJql(kind, sources[kind], sources, bugTypeNames));
+  const historyParts = ["requirement", "bug"].map((kind) => historySourceJql(kind, sources[kind], sources, bugTypeNames));
+  const activeParts = sourceParts.map((part) => `(${part}) AND statusCategory != Done`);
+  const completedParts = historyParts.map((part) => `(${part}) AND statusCategory = Done`);
+  const fallback = `project = ${sources.projectKey || DEFAULT_BOARD_PROJECT_KEY}`;
+  return {
+    activeJql: `${joinSourceParts(activeParts, fallback)} ORDER BY updated DESC`,
+    completedJql: `${joinSourceParts(completedParts, fallback)} ORDER BY updated DESC`,
+    sourceJql: {
+      requirement: sourceParts[0],
+      bug: sourceParts[1]
+    },
+    historySourceJql: {
+      requirement: historyParts[0],
+      bug: historyParts[1]
+    }
+  };
 }
 
 function defaultConfigFile() {
@@ -65,6 +277,53 @@ function normalizeMaxResults(value) {
     throw new ConfigurationError("任务数量必须是 1 到 200 之间的整数。", { code: "INVALID_MAX_RESULTS" });
   }
   return number;
+}
+
+function normalizeBoolean(value, fallback) {
+  if (value === undefined || value === null || value === "") return Boolean(fallback);
+  if (typeof value === "string") {
+    if (value.trim().toLowerCase() === "false") return false;
+    if (value.trim().toLowerCase() === "true") return true;
+  }
+  return Boolean(value);
+}
+
+function normalizeChoice(value, choices, fallback) {
+  const number = Number(value);
+  return choices.includes(number) ? number : fallback;
+}
+
+export function normalizeSyncSettings(input, previous = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const prior = previous && typeof previous === "object" ? previous : {};
+  return {
+    tasksEnabled: normalizeBoolean(
+      source.tasksEnabled ?? source.autoSyncTasks,
+      prior.tasksEnabled ?? prior.autoSyncTasks ?? DEFAULT_SYNC_SETTINGS.tasksEnabled
+    ),
+    taskIntervalSeconds: normalizeChoice(
+      source.taskIntervalSeconds ?? source.taskInterval,
+      TASK_SYNC_INTERVALS,
+      normalizeChoice(
+        prior.taskIntervalSeconds ?? prior.taskInterval,
+        TASK_SYNC_INTERVALS,
+        DEFAULT_SYNC_SETTINGS.taskIntervalSeconds
+      )
+    ),
+    syncOnPanelReturn: normalizeBoolean(
+      source.syncOnPanelReturn ?? source.refreshOnPanelReturn,
+      prior.syncOnPanelReturn ?? prior.refreshOnPanelReturn ?? DEFAULT_SYNC_SETTINGS.syncOnPanelReturn
+    ),
+    sheetsIntervalSeconds: normalizeChoice(
+      source.sheetsIntervalSeconds ?? source.sheetsInterval,
+      SHEETS_SYNC_INTERVALS,
+      normalizeChoice(
+        prior.sheetsIntervalSeconds ?? prior.sheetsInterval,
+        SHEETS_SYNC_INTERVALS,
+        DEFAULT_SYNC_SETTINGS.sheetsIntervalSeconds
+      )
+    )
+  };
 }
 
 export function normalizeWecomWebhook(value) {
@@ -216,6 +475,11 @@ export function normalizeConfiguration(input, previous = {}) {
   const suppliedToken = typeof input.token === "string" ? input.token.trim() : "";
   const token = suppliedToken || String(previous.token || "");
   const jql = String(input.jql ?? previous.jql ?? DEFAULT_JQL).trim() || DEFAULT_JQL;
+  const boardSources = normalizeBoardSources(
+    input.boardSources,
+    previous.boardSources,
+    jql
+  );
   const promptTemplates = normalizePromptTemplates(input, previous);
   const baseUrl = normalizeBaseUrl(input.baseUrl ?? previous.baseUrl);
   const suppliedWecomWebhook = typeof input.wecomWebhook === "string" ? input.wecomWebhook.trim() : "";
@@ -224,6 +488,7 @@ export function normalizeConfiguration(input, previous = {}) {
     : normalizeWecomWebhook(suppliedWecomWebhook || previous.wecomWebhook || "");
   const bugMonitorEnabled = Boolean(input.bugMonitorEnabled ?? previous.bugMonitorEnabled ?? false);
   const monitorGeneration = Math.max(0, Number(input.monitorGeneration ?? previous.monitorGeneration ?? 0) || 0);
+  const syncSettings = normalizeSyncSettings(input.syncSettings, previous.syncSettings);
 
   if (!token) {
     throw new ConfigurationError("请填写 Jira Data Center Personal Access Token (PAT)。", { code: "TOKEN_REQUIRED" });
@@ -240,9 +505,11 @@ export function normalizeConfiguration(input, previous = {}) {
     codexProjectLabel: codexProjectId ? codexProjectLabel : "",
     token,
     jql,
+    boardSources,
     promptTemplates,
     messageTemplate: promptTemplates.requirement.content,
     maxResults: normalizeMaxResults(input.maxResults ?? previous.maxResults),
+    syncSettings,
     bugMonitorEnabled,
     monitorGeneration,
     wecomWebhook
@@ -309,6 +576,7 @@ function publicConfiguration(record) {
     DASHBOARD_ACTIVE_JQL
   ]);
   const storedJql = managedDefaults.has(record?.jql) ? DEFAULT_JQL : record?.jql;
+  const boardSources = normalizeBoardSources(record?.boardSources, {}, storedJql || DEFAULT_JQL);
   const promptTemplates = normalizePromptTemplates({}, {
     promptTemplates: record?.promptTemplates,
     ...(hasOwn(record, "messageTemplate") ? { messageTemplate: record.messageTemplate } : {})
@@ -321,9 +589,11 @@ function publicConfiguration(record) {
     codexProjectId: record?.codexProjectId || "",
     codexProjectLabel: record?.codexProjectId ? record?.codexProjectLabel || "" : "",
     jql: storedJql || DEFAULT_JQL,
+    boardSources,
     promptTemplates,
     messageTemplate: promptTemplates.requirement.content,
     maxResults: record?.maxResults || 100,
+    syncSettings: normalizeSyncSettings(record?.syncSettings),
     hasToken: Boolean(record?.tokenProtected),
     bugMonitorEnabled: Boolean(record?.bugMonitorEnabled),
     monitorGeneration: Math.max(0, Number(record?.monitorGeneration || 0)),
@@ -397,8 +667,10 @@ export function createConfigStore({
       codexProjectId: normalized.codexProjectId,
       codexProjectLabel: normalized.codexProjectLabel,
       jql: normalized.jql,
+      boardSources: normalized.boardSources,
       promptTemplates: storedPromptTemplates(normalized.promptTemplates),
       maxResults: normalized.maxResults,
+      syncSettings: normalized.syncSettings,
       bugMonitorEnabled: normalized.bugMonitorEnabled,
       monitorGeneration: normalized.monitorGeneration,
       tokenProtected,

@@ -202,14 +202,23 @@
           <button id="close-settings" class="icon-button" type="button" aria-label="关闭配置">×</button>
         </header>
 
+        <nav id="settings-section-tabs" class="settings-section-tabs" role="tablist" aria-label="设置分组">
+          <button class="settings-section-tab active" data-settings-section-tab="jira" type="button" role="tab" aria-selected="true">Jira 连接</button>
+          <button class="settings-section-tab" data-settings-section-tab="codex" type="button" role="tab" aria-selected="false">Codex 集成</button>
+          <button class="settings-section-tab" data-settings-section-tab="sync" type="button" role="tab" aria-selected="false">数据同步</button>
+          <button class="settings-section-tab" data-settings-section-tab="automation" type="button" role="tab" aria-selected="false">自动化通知</button>
+          <button class="settings-section-tab" data-settings-section-tab="templates" type="button" role="tab" aria-selected="false">消息模板</button>
+          <button class="settings-section-tab" data-settings-section-tab="advanced" type="button" role="tab" aria-selected="false">高级配置</button>
+        </nav>
+
         <div class="form-grid">
-          <label class="field">
+          <label class="field" data-settings-section="jira">
             <span>部署类型</span>
             <input id="deployment-label" type="text" value="Jira Data Center" readonly aria-readonly="true" />
             <small>当前面板固定使用 Jira Data Center。</small>
           </label>
 
-          <label class="field">
+          <label class="field" data-settings-section="codex">
             <span>默认 Codex 项目</span>
             <select id="codex-project" name="codexProjectId">
               <option value="">不绑定项目（普通对话）</option>
@@ -217,18 +226,18 @@
             <small>选择项目后，新建的任务对话会归入该项目；留空则创建不带项目的普通对话。</small>
           </label>
 
-          <label class="field field-wide">
+          <label class="field field-wide" data-settings-section="jira">
             <span>Jira 地址</span>
             <input id="base-url" name="baseUrl" type="url" required placeholder="http://jira.company.com:8080" spellcheck="false" />
           </label>
 
-          <label class="field field-wide">
+          <label class="field field-wide" data-settings-section="jira">
             <span id="token-label">Personal Access Token (PAT)</span>
             <input id="token" name="token" type="password" placeholder="粘贴 Token" autocomplete="new-password" spellcheck="false" />
             <small id="token-help">Token 会使用 Windows DPAPI 加密，仅当前 Windows 用户可解密。</small>
           </label>
 
-          <div class="field field-wide">
+          <div class="field field-wide" data-settings-section="automation">
             <label for="wecom-webhook">企业微信机器人 Webhook（可选）</label>
             <input id="wecom-webhook" name="wecomWebhook" type="password" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." autocomplete="new-password" spellcheck="false" />
             <div class="field-help-row">
@@ -240,13 +249,143 @@
             </div>
           </div>
 
-          <label class="field field-wide">
-            <span>JQL</span>
-            <textarea id="jql" name="jql" rows="3" spellcheck="false"></textarea>
-            <small>活动任务跟随 CT 仪表盘筛选器 10103/10102；已完成任务按经办人或协同处理人查询，每个分区按加载上限分别获取。</small>
+          <section class="sync-settings-card field-wide" data-settings-section="sync">
+            <div class="sync-settings-heading">
+              <div>
+                <strong>数据同步</strong>
+                <small>自动同步只读取 Jira，不会修改 Jira 数据；手动刷新始终保留。</small>
+              </div>
+            </div>
+            <div class="sync-settings-grid">
+              <label class="sync-option">
+                <span>
+                  <strong>自动同步任务</strong>
+                  <small>开启后按设定频率刷新待办与历史。</small>
+                </span>
+                <span class="switch-control">
+                  <input id="sync-tasks-enabled" type="checkbox" role="switch" aria-label="自动同步任务" />
+                  <i aria-hidden="true"></i>
+                </span>
+              </label>
+              <label class="field sync-field">
+                <span>任务同步频率</span>
+                <select id="sync-task-interval">
+                  <option value="30">30 秒</option>
+                  <option value="60">1 分钟</option>
+                  <option value="300">5 分钟</option>
+                  <option value="600">10 分钟</option>
+                </select>
+              </label>
+              <label class="sync-option">
+                <span>
+                  <strong>返回面板时同步</strong>
+                  <small>重新打开或回到 Jira 面板时立即刷新一次。</small>
+                </span>
+                <span class="switch-control">
+                  <input id="sync-on-panel-return" type="checkbox" role="switch" aria-label="返回面板时同步" />
+                  <i aria-hidden="true"></i>
+                </span>
+              </label>
+              <label class="field sync-field">
+                <span>Sheets 同步频率</span>
+                <select id="sync-sheets-interval">
+                  <option value="0">手动</option>
+                  <option value="300">5 分钟</option>
+                  <option value="600">10 分钟</option>
+                </select>
+              </label>
+            </div>
+            <div class="sync-default-hint">建议默认：任务自动同步开启、每 1 分钟同步、返回面板时同步开启、Sheets 每 5 分钟同步。</div>
+          </section>
+
+          <div class="settings-info-card field-wide" data-settings-section="automation">
+            <strong>自动化 Bug 监控</strong>
+            <span>主页顶部的“自动分析新 Bug”开关负责启动监控；配置企业微信机器人后，分析结果会按需推送，未配置则只保留在 Codex 对话中。</span>
+          </div>
+
+          <section class="field field-wide board-source-settings" data-settings-section="advanced">
+            <div class="board-source-heading">
+              <div>
+                <strong>首页任务来源</strong>
+                <small>需求和 Bug 分别配置；Filter 会直接使用 Jira 当前保存的 JQL。</small>
+              </div>
+              <button id="refresh-board-filters" class="plain-button board-filter-refresh" type="button">刷新 Filter</button>
+            </div>
+            <div class="board-project-row">
+              <label id="board-project-field" class="field">
+                <span>项目 Key（内置 JQL 时使用）</span>
+                <div class="board-project-input-row">
+                  <input id="board-project-key" type="text" list="board-project-options" placeholder="例如 CT" spellcheck="false" />
+                  <button id="refresh-board-projects" class="plain-button" type="button">刷新项目</button>
+                </div>
+                <datalist id="board-project-options"></datalist>
+                <small id="board-project-help">选择内置通用 JQL 时，按当前用户负责或协同处理的任务查询；项目列表来自当前 Token 可访问范围。</small>
+              </label>
+              <div id="board-filters-status" class="board-filters-status" hidden></div>
+            </div>
+            <div class="board-source-grid">
+              <article class="board-source-card" data-board-kind="requirement">
+                <div class="board-source-card-head">
+                  <div>
+                    <strong>需求面板</strong>
+                    <small>左侧“CT 仪表盘-需要我完成的事宜”</small>
+                  </div>
+                </div>
+                <label class="field">
+                  <span>来源方式</span>
+                  <select id="requirement-source-mode">
+                    <option value="builtin">内置通用 JQL</option>
+                    <option value="custom">自定义 JQL</option>
+                    <option value="filter">已有 Filter</option>
+                  </select>
+                </label>
+                <label id="requirement-board-jql-field" class="field board-source-extra" hidden>
+                  <span>需求 JQL</span>
+                  <textarea id="requirement-board-jql" rows="3" spellcheck="false" placeholder="例如 project = CT AND ..."></textarea>
+                  <small>保存时会自动补充活动/已完成状态条件。</small>
+                </label>
+                <label id="requirement-filter-field" class="field board-source-extra" hidden>
+                  <span>选择需求 Filter（可多选）</span>
+                  <select id="requirement-filter-ids" multiple size="5"></select>
+                  <small>列表按当前项目筛选；全局 Filter 也会显示。</small>
+                </label>
+              </article>
+              <article class="board-source-card" data-board-kind="bug">
+                <div class="board-source-card-head">
+                  <div>
+                    <strong>Bug 面板</strong>
+                    <small>右侧“CT-BUG-需要我修复的”</small>
+                  </div>
+                </div>
+                <label class="field">
+                  <span>来源方式</span>
+                  <select id="bug-source-mode">
+                    <option value="builtin">内置通用 JQL</option>
+                    <option value="custom">自定义 JQL</option>
+                    <option value="filter">已有 Filter</option>
+                  </select>
+                </label>
+                <label id="bug-board-jql-field" class="field board-source-extra" hidden>
+                  <span>Bug JQL</span>
+                  <textarea id="bug-board-jql" rows="3" spellcheck="false" placeholder="例如 project = CT AND issuetype = Bug"></textarea>
+                  <small>保存时会自动补充活动/已完成状态条件。</small>
+                </label>
+                <label id="bug-filter-field" class="field board-source-extra" hidden>
+                  <span>选择 Bug Filter（可多选）</span>
+                  <select id="bug-filter-ids" multiple size="5"></select>
+                  <small>列表按当前项目筛选；全局 Filter 也会显示。</small>
+                </label>
+              </article>
+            </div>
+            <div id="board-source-help" class="board-source-help">内置通用 JQL 会按项目、当前用户和任务类型自动查询；自定义 JQL 与 Filter 由你负责确认范围。</div>
+          </section>
+
+          <label class="field field-wide legacy-jql-field" data-settings-section="advanced" hidden>
+            <span>兼容 JQL</span>
+            <textarea id="jql" name="jql" rows="2" spellcheck="false"></textarea>
           </label>
 
-          <div class="field field-wide template-settings">
+          <div class="field field-wide template-settings" data-settings-section="templates">
             <span>首条分析消息</span>
             <div class="template-card-grid">
               <article class="template-card" data-template-card="requirement">
@@ -275,7 +414,7 @@
             <small>需求与 Bug 使用独立模板和技能。绑定 Skill 的相关规则优先；模板和内置 Jira Skill 只补充未覆盖部分。</small>
           </div>
 
-          <label class="field">
+          <label class="field" data-settings-section="advanced">
             <span>每个分区最多加载</span>
             <input id="max-results" name="maxResults" type="number" min="1" max="200" step="1" />
           </label>

@@ -1,4 +1,4 @@
-const ISSUE_FIELDS = [
+const BASE_ISSUE_FIELDS = [
   "summary",
   "description",
   "issuetype",
@@ -6,13 +6,17 @@ const ISSUE_FIELDS = [
   "status",
   "assignee",
   "attachment",
-  "customfield_10600",
   "labels",
   "project",
   "fixVersions",
   "created",
   "updated"
 ];
+
+function issueFields(config) {
+  const collaboratorFieldId = String(config?.collaboratorFieldId || "customfield_10600").trim();
+  return [...new Set([...BASE_ISSUE_FIELDS, collaboratorFieldId])];
+}
 
 export class JiraApiError extends Error {
   constructor(message, { code = "JIRA_REQUEST_FAILED", upstreamStatus = null, details = null } = {}) {
@@ -45,7 +49,7 @@ function transitionEndpoint(config, issueKey, { expand = false } = {}) {
 function issueEndpoint(config, issueKey) {
   const version = config.deployment === "data_center" ? "2" : "3";
   return `${config.baseUrl}/rest/api/${version}/issue/${encodeURIComponent(issueKey)}`
-    + `?fields=${encodeURIComponent(ISSUE_FIELDS.join(","))}`;
+    + `?fields=${encodeURIComponent(issueFields(config).join(","))}`;
 }
 
 export function jiraAuthenticationHeader(config) {
@@ -117,11 +121,11 @@ function issueTypeGroup(fields) {
   return /bug|defect|缺陷|故障/i.test(name) ? "bug" : "requirement";
 }
 
-function normalizeIssue(issue, baseUrl) {
+function normalizeIssue(issue, baseUrl, collaboratorFieldId = "customfield_10600") {
   const fields = issue.fields || {};
   const description = flattenAtlassianDocument(fields.description).replace(/\n{3,}/g, "\n\n").trim();
-  const collaborators = Array.isArray(fields.customfield_10600)
-    ? fields.customfield_10600.map((user) => ({
+  const collaborators = Array.isArray(fields[collaboratorFieldId])
+    ? fields[collaboratorFieldId].map((user) => ({
       displayName: user.displayName || user.name || "未知用户",
       name: user.name || "",
       active: user.active !== false
@@ -173,6 +177,94 @@ function jiraErrorMessage(payload, fallback) {
   return messages.filter(Boolean).join("；") || fallback;
 }
 
+function isAuthenticationFailure(payload, status) {
+  if (status === 401) return true;
+  const message = jiraErrorMessage(payload, "").toLowerCase();
+  return /must be authenticated|not authenticated|未登录|必须登录|匿名用户|需要认证|认证失败|authentication required|unauthori[sz]ed/.test(message);
+}
+
+function authenticationError(payload, fallback = "Jira Token 已失效或无权访问，请重新配置 Token。") {
+  return new JiraApiError(fallback, {
+    code: "JIRA_AUTH_FAILED",
+    upstreamStatus: 401,
+    details: payload?.errors || null
+  });
+}
+
+function normalizeProject(project) {
+  const key = String(project?.key || "").trim().toUpperCase();
+  if (!key) return null;
+  return {
+    id: String(project?.id || ""),
+    key,
+    name: String(project?.name || key).trim(),
+    projectTypeKey: String(project?.projectTypeKey || "").trim(),
+    archived: Boolean(project?.archived)
+  };
+}
+
+function filterItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.values)) return payload.values;
+  if (Array.isArray(payload?.filters)) return payload.filters;
+  return [];
+}
+
+function filterProjectKeys(filter) {
+  const permissions = Array.isArray(filter?.sharePermissions) ? filter.sharePermissions : [];
+  return permissions.flatMap((permission) => {
+    const project = permission?.project || permission?.projectId || permission?.projectKey;
+    if (!project) return [];
+    if (typeof project === "string" || typeof project === "number") return [String(project).toUpperCase()];
+    return [project.key, project.id].filter(Boolean).map((value) => String(value).toUpperCase());
+  });
+}
+
+function filterMatchesProject(filter, projectKey) {
+  const target = String(projectKey || "").trim().toUpperCase();
+  if (!target) return true;
+  if (filterProjectKeys(filter).includes(target)) return true;
+  const jql = String(filter?.jql || "");
+  const referenced = [];
+  for (const match of jql.matchAll(/\bproject\s*=\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))/ig)) {
+    referenced.push(match[1] || match[2] || match[3]);
+  }
+  for (const match of jql.matchAll(/\bproject\s+in\s*\(([^)]*)\)/ig)) {
+    referenced.push(...match[1].split(",").map((value) => value.trim().replace(/^['"]|['"]$/g, "")));
+  }
+  return referenced.length === 0 || referenced.some((value) => String(value).toUpperCase() === target);
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_match, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseManageFiltersHtml(html) {
+  const filters = [];
+  for (const rowMatch of String(html || "").matchAll(/<tr\b[^>]*data-filter-id=["'](\d+)["'][\s\S]*?<\/tr>/gi)) {
+    const row = rowMatch[0];
+    const id = rowMatch[1];
+    const nameMatch = row.match(new RegExp(`id=["']filterlink_${id}["'][^>]*>([\\s\\S]*?)<\\/a>`, "i"));
+    const ownerMatch = row.match(/data-filter-field=["']owner-full-name["'][^>]*>([\s\S]*?)<\//i);
+    filters.push({
+      id,
+      name: decodeHtmlEntities(nameMatch?.[1] || `Filter ${id}`),
+      owner: decodeHtmlEntities(ownerMatch?.[1] || "")
+    });
+  }
+  return filters;
+}
+
 async function responsePayload(response) {
   const text = await response.text();
   if (!text) return null;
@@ -219,7 +311,7 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
       });
     }
 
-    return normalizeIssue(payload, config.baseUrl);
+    return normalizeIssue(payload, config.baseUrl, config.collaboratorFieldId);
   }
 
   async function fetchTransitions(config, issueKey) {
@@ -343,7 +435,7 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
     const body = {
       jql: config.jql,
       maxResults,
-      fields: ISSUE_FIELDS
+      fields: issueFields(config)
     };
     if (!cloud) body.startAt = 0;
 
@@ -368,6 +460,9 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
 
     const payload = await responsePayload(response);
     if (!response.ok) {
+      if (isAuthenticationFailure(payload, response.status)) {
+        throw authenticationError(payload);
+      }
       const fallback = response.status === 401
         ? "Jira 认证失败，请检查邮箱和 Token。"
         : response.status === 403
@@ -383,7 +478,7 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
     }
 
     const issues = Array.isArray(payload?.issues)
-      ? payload.issues.map((issue) => normalizeIssue(issue, config.baseUrl))
+      ? payload.issues.map((issue) => normalizeIssue(issue, config.baseUrl, config.collaboratorFieldId))
       : [];
     const total = Number.isFinite(payload?.total) ? payload.total : issues.length;
     return {
@@ -393,6 +488,56 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
       fetchedAt: new Date().toISOString(),
       site: config.baseUrl,
       jql: config.jql
+    };
+  }
+
+  async function fetchProjects(config) {
+    const version = config.deployment === "data_center" ? "2" : "3";
+    const endpoint = `${config.baseUrl}/rest/api/${version}/project`;
+    let response;
+    try {
+      response = await fetchImpl(endpoint, {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          authorization: jiraAuthenticationHeader(config)
+        },
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+    } catch (error) {
+      const timeout = error.name === "TimeoutError" || error.name === "AbortError";
+      throw new JiraApiError(timeout ? "读取 Jira 项目列表超时。" : `无法读取 Jira 项目列表：${error.message}`, {
+        code: timeout ? "JIRA_PROJECTS_TIMEOUT" : "JIRA_UNREACHABLE"
+      });
+    }
+
+    const payload = await responsePayload(response);
+    if (!response.ok) {
+      if (isAuthenticationFailure(payload, response.status)) {
+        throw authenticationError(payload);
+      }
+      const fallback = response.status === 403
+        ? "当前 Jira 用户无权读取可用项目列表。"
+        : response.status === 404
+          ? "当前 Jira 实例不支持项目列表接口。"
+          : `Jira 返回 HTTP ${response.status}，无法读取项目列表。`;
+      throw new JiraApiError(jiraErrorMessage(payload, fallback), {
+        code: "JIRA_PROJECTS_HTTP_ERROR",
+        upstreamStatus: response.status,
+        details: payload?.errors || null
+      });
+    }
+
+    const projects = (Array.isArray(payload) ? payload : filterItems(payload))
+      .map(normalizeProject)
+      .filter(Boolean)
+      .filter((project) => !project.archived)
+      .sort((left, right) => left.key.localeCompare(right.key, "en", { sensitivity: "base" }));
+    return {
+      projects,
+      total: projects.length,
+      fetchedAt: new Date().toISOString(),
+      site: config.baseUrl
     };
   }
 
@@ -433,6 +578,123 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
         active: { total: active.total, returned: active.issues.length, jql: activeJql },
         completed: { total: completed.total, returned: completed.issues.length, jql: completedJql }
       }
+    };
+  }
+
+  async function fetchFilters(config, { projectKey = "" } = {}) {
+    const version = config.deployment === "data_center" ? "2" : "3";
+    const endpoints = [
+      `${config.baseUrl}/rest/api/${version}/filter/search?maxResults=1000`,
+      `${config.baseUrl}/rest/api/${version}/filter/my`,
+      `${config.baseUrl}/rest/api/${version}/filter/favourite`
+    ];
+    const results = [];
+    let lastFailure = null;
+    for (const endpoint of endpoints) {
+      let response;
+      try {
+        response = await fetchImpl(endpoint, {
+          method: "GET",
+          headers: {
+            accept: "application/json",
+            authorization: jiraAuthenticationHeader(config)
+          },
+          signal: AbortSignal.timeout(timeoutMs)
+        });
+      } catch (error) {
+        const timeout = error.name === "TimeoutError" || error.name === "AbortError";
+        lastFailure = new JiraApiError(timeout ? "读取 Jira Filter 超时。" : `无法读取 Jira Filter：${error.message}`, {
+          code: timeout ? "JIRA_FILTER_TIMEOUT" : "JIRA_UNREACHABLE"
+        });
+        continue;
+      }
+      const payload = await responsePayload(response);
+      if (!response.ok) {
+        if (isAuthenticationFailure(payload, response.status)) {
+          throw authenticationError(payload);
+        }
+        lastFailure = new JiraApiError(jiraErrorMessage(payload, `Jira Filter 请求失败（HTTP ${response.status}）。`), {
+          code: "JIRA_FILTER_HTTP_ERROR",
+          upstreamStatus: response.status,
+          details: payload?.errors || null
+        });
+        if (![403, 404].includes(response.status)) throw lastFailure;
+        continue;
+      }
+      results.push(...filterItems(payload));
+    }
+    if (!results.length && config.deployment === "data_center") {
+      // Jira 9.x installations may disable the REST collection endpoints
+      // while still exposing the authenticated Manage Filters view. Use it
+      // only as a read-only discovery fallback, then resolve each JQL through
+      // the normal REST detail endpoint.
+      const manageUrl = `${config.baseUrl}/secure/ManageFilters.jspa?search=search&searchName=`;
+      try {
+        const manageResponse = await fetchImpl(manageUrl, {
+          method: "GET",
+          headers: {
+            accept: "text/html,application/xhtml+xml",
+            authorization: jiraAuthenticationHeader(config)
+          },
+          signal: AbortSignal.timeout(timeoutMs)
+        });
+        if (manageResponse.ok) {
+          const html = await manageResponse.text();
+          const discovered = parseManageFiltersHtml(html).slice(0, 200);
+          const details = await Promise.all(discovered.map(async (filter) => {
+            try {
+              const detailResponse = await fetchImpl(`${config.baseUrl}/rest/api/${version}/filter/${filter.id}`, {
+                method: "GET",
+                headers: {
+                  accept: "application/json",
+                  authorization: jiraAuthenticationHeader(config)
+                },
+                signal: AbortSignal.timeout(timeoutMs)
+              });
+              const detail = await responsePayload(detailResponse);
+              if (!detailResponse.ok) return filter;
+              return { ...filter, ...detail };
+            } catch {
+              return filter;
+            }
+          }));
+          results.push(...details);
+        }
+      } catch {
+        // Keep an empty list if the HTML fallback is unavailable.
+      }
+    }
+    if (!results.length && lastFailure && endpoints.length) {
+      // A user may have access to neither collection endpoint. Preserve the
+      // useful upstream error instead of presenting an empty selector.
+      if (lastFailure.code !== "JIRA_FILTER_HTTP_ERROR" || !lastFailure.upstreamStatus || ![403, 404].includes(lastFailure.upstreamStatus)) {
+        throw lastFailure;
+      }
+    }
+    const seen = new Set();
+    const filters = results
+      .map((filter) => {
+        const id = String(filter?.id || "").trim();
+        if (!id || seen.has(id)) return null;
+        seen.add(id);
+        return {
+          id,
+          name: String(filter?.name || `Filter ${id}`).trim(),
+          jql: String(filter?.jql || "").trim(),
+          owner: filter?.owner?.displayName || filter?.owner?.name || filter?.owner?.key || "",
+          favourite: Boolean(filter?.favourite),
+          projectKeys: filterProjectKeys(filter)
+        };
+      })
+      .filter(Boolean)
+      .filter((filter) => filterMatchesProject(filter, projectKey))
+      .sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { sensitivity: "base" }));
+    return {
+      filters,
+      total: filters.length,
+      fetchedAt: new Date().toISOString(),
+      site: config.baseUrl,
+      projectKey: String(projectKey || "").trim()
     };
   }
 
@@ -505,5 +767,14 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
     };
   }
 
-  return { fetchIssue, fetchIssues, fetchTaskBoardIssues, fetchTransitions, executeTransition, fetchAttachment };
+  return {
+    fetchIssue,
+    fetchIssues,
+    fetchProjects,
+    fetchTaskBoardIssues,
+    fetchFilters,
+    fetchTransitions,
+    executeTransition,
+    fetchAttachment
+  };
 }

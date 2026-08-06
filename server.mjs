@@ -7,9 +7,8 @@ import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
   ConfigurationError,
+  buildBoardQueries,
   createConfigStore,
-  DASHBOARD_ACTIVE_JQL,
-  DASHBOARD_COMPLETED_JQL,
   DEFAULT_JQL
 } from "./config-store.mjs";
 import { JiraApiError, createJiraClient } from "./jira-client.mjs";
@@ -23,7 +22,7 @@ import {
   SvnReviewError
 } from "./lib/svn-review-manager.mjs";
 
-const VERSION = "0.26.3";
+const VERSION = "0.26.15";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +30,7 @@ const publicDir = join(root, "public");
 const configStore = createConfigStore();
 const attachmentCacheRoot = join(dirname(configStore.configFile), "attachments");
 const jira = createJiraClient();
+const boardIssueTypeCache = new Map();
 const jxl = createJxlClient();
 const sessionsRoot = process.env.CODEX_SESSIONS_DIR
   || join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions");
@@ -49,6 +49,64 @@ const svnReviews = createSvnReviewManager({
   reviewArtifactsRoot: process.env.JIRA_CODEX_SVN_REVIEW_ARTIFACTS_DIR
     || join(attachmentCacheRoot, "svn-reviews")
 });
+
+function boardCollaboratorJqlField(boardSources) {
+  const fieldId = String(boardSources?.collaboratorFieldId || "").trim();
+  const numericId = fieldId.match(/^customfield_(\d+)$/i);
+  if (numericId) return `cf[${numericId[1]}]`;
+  const displayName = String(boardSources?.collaboratorJqlName || "").trim();
+  return displayName ? `"${displayName.replace(/"/g, '\\"')}"` : "";
+}
+
+async function discoverBoardBugTypes(config, boardSources) {
+  const builtinRequired = ["requirement", "bug"].some((kind) => boardSources?.[kind]?.mode === "builtin");
+  if (!builtinRequired) return [];
+  const projectKey = String(boardSources?.projectKey || "").trim().toUpperCase();
+  const cacheKey = `${config.baseUrl}|${projectKey}|${boardSources?.collaboratorFieldId || "customfield_10600"}`;
+  const cached = boardIssueTypeCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < 5 * 60 * 1000) return cached.names;
+  const clauses = [];
+  if (projectKey) clauses.push(`project = ${projectKey}`);
+  const collaboratorField = boardCollaboratorJqlField(boardSources);
+  clauses.push(collaboratorField
+    ? `(assignee = currentUser() OR ${collaboratorField} = currentUser())`
+    : "assignee = currentUser()");
+  clauses.push("statusCategory != Done");
+  let names = [];
+  try {
+    const result = await jira.fetchIssues({
+      ...config,
+      jql: `${clauses.join(" AND ")} ORDER BY updated DESC`
+    }, { maxResults: Math.min(Number(config.maxResults || 100), 200) });
+    names = [...new Set(result.issues
+      .map((issue) => String(issue.typeName || "").trim())
+      .filter((name) => /bug|defect|缺陷|故障|错误/i.test(name)))];
+  } catch {
+    // Type discovery is an optimization. If a project or custom field is not
+    // visible, leave the type clause out and let the panel classify results.
+  }
+  boardIssueTypeCache.set(cacheKey, { names, fetchedAt: Date.now() });
+  return names;
+}
+
+async function boardQueriesForConfig(config) {
+  const bugTypeNames = await discoverBoardBugTypes(config, config.boardSources);
+  return buildBoardQueries(config.boardSources, { bugTypeNames });
+}
+
+async function jiraConfigForPreview(request) {
+  if (request.method !== "POST") return configStore.load();
+  const input = await readJson(request);
+  const current = await configStore.load();
+  // Preview endpoints deliberately use the token currently in the form but
+  // never persist it. This lets first-time setup discover projects/filters
+  // before the user commits the configuration.
+  return configStore.prepare({
+    deployment: "data_center",
+    baseUrl: input.baseUrl ?? current.baseUrl,
+    token: input.token ?? ""
+  });
+}
 
 const staticFiles = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
@@ -112,7 +170,12 @@ async function handleApi(request, response, url) {
 
   if (request.method === "PUT" && url.pathname === "/api/config") {
     const candidate = await configStore.prepare(await readJson(request));
-    await jira.fetchIssues(candidate, { maxResults: 1 });
+    if (candidate.boardSources?.legacy && candidate.jql !== DEFAULT_JQL) {
+      await jira.fetchIssues(candidate, { maxResults: 1 });
+    } else {
+      const queries = buildBoardQueries(candidate.boardSources);
+      await jira.fetchIssues({ ...candidate, jql: queries.activeJql }, { maxResults: 1 });
+    }
     const config = await configStore.save(candidate);
     return json(response, 200, { config, connection: { ok: true } });
   }
@@ -162,6 +225,30 @@ async function handleApi(request, response, url) {
     });
   }
 
+  if (["GET", "POST"].includes(request.method) && url.pathname === "/api/filters") {
+    const config = await jiraConfigForPreview(request);
+    if (!config.baseUrl || !config.token) {
+      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
+        code: "JIRA_NOT_CONFIGURED",
+        statusCode: 428
+      });
+    }
+    return json(response, 200, await jira.fetchFilters(config, {
+      projectKey: url.searchParams.get("projectKey") || ""
+    }));
+  }
+
+  if (["GET", "POST"].includes(request.method) && url.pathname === "/api/projects") {
+    const config = await jiraConfigForPreview(request);
+    if (!config.baseUrl || !config.token) {
+      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
+        code: "JIRA_NOT_CONFIGURED",
+        statusCode: 428
+      });
+    }
+    return json(response, 200, await jira.fetchProjects(config));
+  }
+
   if (request.method === "GET" && url.pathname === "/api/issues") {
     const config = await configStore.load();
     if (!config.configured || !config.token) {
@@ -170,12 +257,9 @@ async function handleApi(request, response, url) {
         statusCode: 428
       });
     }
-    const result = config.jql === DEFAULT_JQL
-      ? await jira.fetchTaskBoardIssues(config, {
-        activeJql: DASHBOARD_ACTIVE_JQL,
-        completedJql: DASHBOARD_COMPLETED_JQL
-      })
-      : await jira.fetchIssues(config);
+    const result = config.boardSources?.legacy && config.jql !== DEFAULT_JQL
+      ? await jira.fetchIssues(config)
+      : await jira.fetchTaskBoardIssues(config, await boardQueriesForConfig(config));
     return json(response, 200, result);
   }
 
