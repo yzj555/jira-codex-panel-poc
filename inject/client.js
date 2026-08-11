@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = "0.26.16";
+  const VERSION = "0.28.6";
   const ENTRY_ID = "jira-codex-poc-entry";
   const PAGE_ID = "jira-codex-poc-page";
   const STYLE_ID = "jira-codex-poc-style";
@@ -65,7 +65,18 @@
   };
 
   /*__JIRA_CODEX_NAVIGATION_HELPERS__*/
+  /*__JIRA_CODEX_APPLICATION_COMMANDS__*/
   /*__JIRA_CODEX_PROMPT_HELPERS__*/
+
+  const legacyCodexHost = createLegacyCodexHostAdapter();
+  const appServerCodexRuntime = createPanelCodexRuntimeAdapter({ request: panelJson });
+  const codexRuntimeSelector = createCodexRuntimeSelector({
+    runtimes: [appServerCodexRuntime, legacyCodexHost]
+  });
+  const codexCommands = createCodexApplicationCommands({
+    selector: codexRuntimeSelector,
+    legacyHost: legacyCodexHost
+  });
 
   if (window.__jiraCodexPoc?.version === VERSION) {
     window.__jiraCodexPoc.ensure();
@@ -81,6 +92,13 @@
   let themeObserver = null;
   let currentThemeFingerprint = "";
   let bindingTimer = null;
+  let bindingHydrationPromise = null;
+  let bindingMutationTimer = null;
+  let bindingMutationInFlight = null;
+  let bindingPersistenceRevision = 0;
+  let bindingPersistenceError = "";
+  const pendingBindingUpserts = new Map();
+  const pendingBindingDeletes = new Set();
   let bugMonitorTimer = null;
   let bugMonitorRunning = false;
   let conversationFloat = null;
@@ -137,9 +155,11 @@
     }
   }
 
-  function writeStoredObject(key, value) {
+  function writeStoredObject(key, value, { persist = true } = {}) {
     try {
+      const previous = key === BINDINGS_KEY ? readStoredObject(key) : null;
       window.localStorage.setItem(key, JSON.stringify(value));
+      if (key === BINDINGS_KEY && persist) queueBindingMutations(previous, value);
       return true;
     } catch {
       return false;
@@ -148,6 +168,100 @@
 
   function readBindings() {
     return readStoredObject(BINDINGS_KEY);
+  }
+
+  function queueBindingMutations(previous, next) {
+    const before = previous && typeof previous === "object" ? previous : {};
+    const after = next && typeof next === "object" ? next : {};
+    const issueKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const issueKey of issueKeys) {
+      const previousBinding = before[issueKey];
+      const nextBinding = after[issueKey];
+      if (JSON.stringify(previousBinding) === JSON.stringify(nextBinding)) continue;
+      if (!nextBinding) {
+        pendingBindingUpserts.delete(issueKey);
+        pendingBindingDeletes.add(issueKey);
+      } else {
+        pendingBindingDeletes.delete(issueKey);
+        pendingBindingUpserts.set(issueKey, nextBinding);
+      }
+    }
+    scheduleBindingMutationFlush();
+  }
+
+  function scheduleBindingMutationFlush(delay = 120) {
+    if (bindingMutationTimer) window.clearTimeout(bindingMutationTimer);
+    bindingMutationTimer = window.setTimeout(() => {
+      bindingMutationTimer = null;
+      void flushBindingMutations();
+    }, delay);
+  }
+
+  async function flushBindingMutations() {
+    if (bindingMutationInFlight) await bindingMutationInFlight.catch(() => {});
+    if (!pendingBindingUpserts.size && !pendingBindingDeletes.size) return;
+    if (bindingHydrationPromise) await bindingHydrationPromise.catch(() => {});
+    if (bindingMutationInFlight) await bindingMutationInFlight.catch(() => {});
+    if (!pendingBindingUpserts.size && !pendingBindingDeletes.size) return;
+    const upserts = Object.fromEntries(pendingBindingUpserts);
+    const deletes = Array.from(pendingBindingDeletes);
+    pendingBindingUpserts.clear();
+    pendingBindingDeletes.clear();
+    const request = panelJson("/api/bindings/mutations", {
+      method: "PUT",
+      body: { upserts, deletes }
+    });
+    bindingMutationInFlight = request;
+    try {
+      const payload = await request;
+      bindingPersistenceRevision = Number(payload?.revision || bindingPersistenceRevision);
+      bindingPersistenceError = "";
+    } catch (error) {
+      for (const [issueKey, binding] of Object.entries(upserts)) {
+        if (!pendingBindingDeletes.has(issueKey) && !pendingBindingUpserts.has(issueKey)) {
+          pendingBindingUpserts.set(issueKey, binding);
+        }
+      }
+      for (const issueKey of deletes) {
+        if (!pendingBindingUpserts.has(issueKey)) pendingBindingDeletes.add(issueKey);
+      }
+      bindingPersistenceError = String(error?.message || error);
+      scheduleBindingMutationFlush(2_000);
+    } finally {
+      if (bindingMutationInFlight === request) bindingMutationInFlight = null;
+    }
+  }
+
+  function applyBindingDelta(base, before, after) {
+    const merged = { ...(base || {}) };
+    const issueKeys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+    for (const issueKey of issueKeys) {
+      if (JSON.stringify(before?.[issueKey]) === JSON.stringify(after?.[issueKey])) continue;
+      if (after?.[issueKey]) merged[issueKey] = after[issueKey];
+      else delete merged[issueKey];
+    }
+    return merged;
+  }
+
+  function hydrateBindingsFromService() {
+    if (bindingHydrationPromise) return bindingHydrationPromise;
+    const initial = readBindings();
+    bindingHydrationPromise = panelJson("/api/bindings/import", {
+      method: "PUT",
+      body: { bindings: initial }
+    }).then((payload) => {
+      const current = readBindings();
+      const hydrated = applyBindingDelta(payload?.bindings || {}, initial, current);
+      writeStoredObject(BINDINGS_KEY, hydrated, { persist: false });
+      bindingPersistenceRevision = Number(payload?.revision || 0);
+      bindingPersistenceError = "";
+      sendBindings();
+      return hydrated;
+    }).catch((error) => {
+      bindingPersistenceError = String(error?.message || error);
+      return initial;
+    });
+    return bindingHydrationPromise;
   }
 
   function bindingMatchesThread(binding, threadId) {
@@ -178,17 +292,45 @@
     });
   }
 
+  function projectWorkspaceFromRow(row, projectId) {
+    const reactPropsKey = Object.keys(row || {}).find((key) => key.startsWith("__reactProps$"));
+    const root = reactPropsKey ? row[reactPropsKey] : null;
+    const queue = root ? [{ value: root, depth: 0 }] : [];
+    const visited = new Set();
+    while (queue.length) {
+      const { value, depth } = queue.shift();
+      if (!value || typeof value !== "object" || visited.has(value) || depth > 6) continue;
+      visited.add(value);
+      const candidate = value.group && typeof value.group === "object" ? value.group : value;
+      if (String(candidate.projectId || "") === projectId) {
+        const rootPaths = (Array.isArray(candidate.rootPaths) ? candidate.rootPaths : [])
+          .map((path) => String(path || "").trim())
+          .filter(Boolean);
+        const projectPath = String(candidate.path || rootPaths[0] || "").trim();
+        if (projectPath) return { projectPath, rootPaths: rootPaths.length ? rootPaths : [projectPath] };
+      }
+      for (const key of ["props", "children", "group"]) {
+        const child = value[key];
+        if (Array.isArray(child)) child.forEach((item) => queue.push({ value: item, depth: depth + 1 }));
+        else if (child && typeof child === "object") queue.push({ value: child, depth: depth + 1 });
+      }
+    }
+    return { projectPath: "", rootPaths: [] };
+  }
+
   function availableProjects() {
     const seen = new Set();
     return Array.from(document.querySelectorAll("[data-app-action-sidebar-project-id]")).flatMap((row) => {
       const projectId = row.getAttribute("data-app-action-sidebar-project-id");
       if (!projectId || seen.has(projectId)) return [];
       seen.add(projectId);
+      const workspace = projectWorkspaceFromRow(row, projectId);
       return [{
         projectId,
         projectLabel: row.getAttribute("data-app-action-sidebar-project-label")
           || row.getAttribute("aria-label")
-          || projectId
+          || projectId,
+        ...workspace
       }];
     });
   }
@@ -452,7 +594,10 @@
     if (skillsRefreshPromise) return skillsRefreshPromise;
     skillsRefreshPromise = (async () => {
       try {
-        availableSkillsCache = await listCodexSkills({ forceReload });
+        const result = await codexCommands.listAvailableSkills({ forceReload });
+        availableSkillsCache = Array.isArray(result?.value)
+          ? result.value
+          : Array.isArray(result?.skills) ? result.skills : [];
         availableSkillsError = "";
       } catch (error) {
         availableSkillsError = String(error?.message || error);
@@ -530,7 +675,11 @@
           error: ""
         };
         try {
-          const resolvedThreadId = await resolveCodexThreadId(provisionalThreadId, { timeoutMs: 4_000 });
+          const resolution = await codexCommands.resolveConversationId(provisionalThreadId, {
+            timeoutMs: 4_000,
+            runtimeOwner: latest.runtimeOwner
+          });
+          const resolvedThreadId = String(resolution?.value || resolution?.threadId || "");
           if (resolvedThreadId && !isProvisionalCodexThreadId(resolvedThreadId)) {
             const currentBindings = readBindings();
             const current = currentBindings[normalizedIssueKey];
@@ -590,18 +739,24 @@
 
   function bindPendingIssueToThread(pending, threadId, {
     threadTitle = "",
-    firstMessageStatus = "pending"
+    firstMessageStatus = "pending",
+    runtimeOwner = CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+    hostReference = "current-codex-window",
+    freshDesktopThread = false
   } = {}) {
     if (!pending?.issueKey || !pending.startedAt || !threadId) return null;
     const knownIds = new Set(Array.isArray(pending.knownThreadIds) ? pending.knownThreadIds : []);
     const bindings = readBindings();
     bindings[pending.issueKey] = {
       threadId,
+      runtimeOwner,
+      hostReference,
       uiThreadId: isProvisionalCodexThreadId(threadId) ? threadId : "",
       threadTitle: threadTitle || pending.issueTitle || pending.issueKey,
       issueTitle: pending.issueTitle || "",
       boundAt: new Date().toISOString(),
       firstMessageStatus,
+      freshDesktopThread: freshDesktopThread === true,
       pendingFinalization: {
         ...pending,
         startedAt: Number(pending.startedAt)
@@ -2458,7 +2613,11 @@
       banner.dataset.tone = "success";
       body.appendChild(banner);
     } else if (review.status === "commit_unknown") {
-      const banner = conversationFloatElement("div", "jira-codex-svn-banner", review.error || "SVN 命令结果不明确，需要人工核对日志。");
+      const banner = conversationFloatElement(
+        "div",
+        "jira-codex-svn-banner",
+        review.error || "SVN 命令结果不明确。请勿重复提交；可以重新核对日志，或人工确认已提交并登记 revision。"
+      );
       banner.dataset.tone = "warning";
       body.appendChild(banner);
     } else if (["blocked", "failed", "stale", "dispatch_failed", "timed_out", "commit_failed"].includes(review.status)) {
@@ -2570,7 +2729,7 @@
         || (review.status === "manual_review" && review.codexReviewEnabled === false));
     if (reviewReadyForHumanConfirmation) {
       const confirmSection = conversationFloatElement("section", "jira-codex-svn-section");
-      confirmSection.appendChild(conversationFloatElement("h3", "jira-codex-svn-section-title", "人工确认"));
+      confirmSection.appendChild(conversationFloatElement("h3", "jira-codex-svn-section-title", "提交确认"));
       const confirm = conversationFloatElement("div", "jira-codex-svn-confirm");
       const reviewedLabel = conversationFloatElement("label", "jira-codex-svn-confirm-row");
       const reviewedInput = conversationFloatElement("input");
@@ -2580,38 +2739,16 @@
         state.humanReviewed = reviewedInput.checked;
         renderSvnReviewModal();
       });
+      const confirmationDetails = [
+        review.verdict === "warning" ? "理解上述风险" : "",
+        review.crossTaskConflicts?.length ? "已核对跨任务重叠文件" : ""
+      ].filter(Boolean);
       reviewedLabel.append(reviewedInput, conversationFloatElement(
         "span",
         "",
-        review.codexReviewEnabled === false || review.status === "cancelled"
-          ? "我已人工审核全部文件改动、需求符合性和影响风险"
-          : "我已人工查看文件改动和审核报告"
+        `我已完成本次改动审核${confirmationDetails.length ? `，${confirmationDetails.join("、")}` : ""}，确认提交`
       ));
       confirm.appendChild(reviewedLabel);
-      if (review.verdict === "warning") {
-        const riskLabel = conversationFloatElement("label", "jira-codex-svn-confirm-row");
-        const riskInput = conversationFloatElement("input");
-        riskInput.type = "checkbox";
-        riskInput.checked = Boolean(state.riskAcknowledged);
-        riskInput.addEventListener("change", () => {
-          state.riskAcknowledged = riskInput.checked;
-          renderSvnReviewModal();
-        });
-        riskLabel.append(riskInput, conversationFloatElement("span", "", "我理解上述风险并仍要提交"));
-        confirm.appendChild(riskLabel);
-      }
-      if (review.crossTaskConflicts?.length) {
-        const overlapLabel = conversationFloatElement("label", "jira-codex-svn-confirm-row");
-        const overlapInput = conversationFloatElement("input");
-        overlapInput.type = "checkbox";
-        overlapInput.checked = Boolean(state.overlapAcknowledged);
-        overlapInput.addEventListener("change", () => {
-          state.overlapAcknowledged = overlapInput.checked;
-          renderSvnReviewModal();
-        });
-        overlapLabel.append(overlapInput, conversationFloatElement("span", "", "我已核对与其他 Jira 草稿重叠的文件，确认本次所选改动可以提交"));
-        confirm.appendChild(overlapLabel);
-      }
       confirmSection.appendChild(confirm);
       side.appendChild(confirmSection);
     }
@@ -2644,8 +2781,6 @@
     return Boolean(
       reviewReady
       && state.humanReviewed
-      && (review.verdict !== "warning" || state.riskAcknowledged)
-      && (!review.crossTaskConflicts?.length || state.overlapAcknowledged)
       && !state.busy
     );
   }
@@ -2778,16 +2913,20 @@
       retry.addEventListener("click", () => void retrySvnReviewDispatch());
       footer.appendChild(retry);
     } else if (state.review?.status === "commit_unknown") {
-      const abandon = conversationFloatElement("button", "jira-codex-svn-button", "人工核对后放弃草稿");
+      const abandon = conversationFloatElement("button", "jira-codex-svn-button", "确认未提交并放弃草稿");
       abandon.type = "button";
       abandon.disabled = state.busy;
       abandon.addEventListener("click", () => void abandonSvnReview());
       const reconcile = conversationFloatElement("button", "jira-codex-svn-button", state.busy ? "正在核对…" : "重新核对 SVN 日志");
       reconcile.type = "button";
-      reconcile.dataset.primary = "true";
       reconcile.disabled = state.busy;
       reconcile.addEventListener("click", () => void reconcileSvnCommit());
-      footer.append(abandon, reconcile);
+      const confirmCommitted = conversationFloatElement("button", "jira-codex-svn-button", state.busy ? "正在登记…" : "人工确认已提交");
+      confirmCommitted.type = "button";
+      confirmCommitted.dataset.primary = "true";
+      confirmCommitted.disabled = state.busy;
+      confirmCommitted.addEventListener("click", () => void confirmSvnCommittedResult());
+      footer.append(abandon, reconcile, confirmCommitted);
     } else if (state.review && ["blocked", "stale", "commit_failed"].includes(state.review.status)) {
       const retry = conversationFloatElement("button", "jira-codex-svn-button", "返回文件选择并重新扫描");
       retry.type = "button";
@@ -2862,9 +3001,12 @@
     svnAuditDispatching = true;
     let turnStarted = false;
     try {
-      const preflight = await readCodexThreadState(state.threadId);
+      const preflight = await codexCommands.readConversation(state.threadId, {
+        runtimeOwner: state.runtimeOwner
+      });
       if (preflight.busy) throw new Error("绑定会话正在执行其他 turn。请等待其结束，或关闭 Codex 审查改为人工审核。");
-      const started = await startCodexThreadTurn(state.threadId, prompt, {
+      const started = await codexCommands.sendAnalysisMessage(state.threadId, prompt, {
+        runtimeOwner: state.runtimeOwner,
         attachments: (review.artifacts || []).map((artifact) => ({
           label: artifact.name,
           path: artifact.path
@@ -2880,7 +3022,7 @@
       if (conversationFloatState?.issueKey === state.issueKey) {
         conversationFloatState.notice = "Codex 审查已在当前绑定会话启动；浮窗状态已挂起，可随时重新打开或取消审查。";
       }
-      await navigateCodexThread(state.threadId).catch(() => {});
+      await codexCommands.openConversation(state.threadId).catch(() => {});
       removeSvnReviewModal();
       ensureConversationIssueFloat();
       renderConversationIssueFloat();
@@ -3002,7 +3144,10 @@
     let interruptMessage = "Codex 审查已由人工取消，当前提交降级为人工审核。";
     if (review.auditTurnId) {
       try {
-        await interruptCodexThreadTurn(review.auditThreadId || state.threadId, review.auditTurnId, { timeoutMs: 8_000 });
+        await codexCommands.interruptAnalysis(review.auditThreadId || state.threadId, review.auditTurnId, {
+          timeoutMs: 8_000,
+          runtimeOwner: state.runtimeOwner
+        });
       } catch (error) {
         interruptMessage = `已在提交面板取消审查，但 Codex turn 中断请求未确认（${error.message || error}）；晚到的审查结果将被忽略，提交仍降级为人工审核。`;
       }
@@ -3017,8 +3162,6 @@
       syncConversationFloatSvnStatus(payload.review);
       state.busy = false;
       state.humanReviewed = false;
-      state.riskAcknowledged = false;
-      state.overlapAcknowledged = false;
       renderSvnReviewModal();
     } catch (error) {
       if (svnModalState !== state) return;
@@ -3053,6 +3196,44 @@
     }
   }
 
+  async function confirmSvnCommittedResult() {
+    const state = svnModalState;
+    const review = state?.review;
+    if (!state || !review || state.busy) return;
+    const suggestedRevision = String(review.commitReceipt?.parsedRevision || "").trim();
+    const input = window.prompt(
+      "请先在 SVN 日志中确认提交已经成功，再输入对应 revision。\n此操作只登记提交结果，不会再次执行 SVN commit。",
+      suggestedRevision ? `r${suggestedRevision}` : ""
+    );
+    if (input === null) return;
+    const revision = String(input || "").trim().replace(/^r/i, "");
+    if (!/^\d+$/.test(revision)) {
+      state.error = "请输入有效的 SVN revision，例如 r48473。";
+      renderSvnReviewModal();
+      return;
+    }
+    if (!window.confirm(`确认已经人工查看 SVN 日志，并确认 r${revision} 是本次提交吗？`)) return;
+    state.busy = true;
+    state.error = "";
+    renderSvnReviewModal();
+    try {
+      const payload = await panelJson(`/api/svn/reviews/${encodeURIComponent(review.id)}/confirm-committed`, {
+        method: "POST",
+        body: { acknowledged: true, revision }
+      });
+      if (svnModalState !== state) return;
+      state.review = payload.review;
+      syncConversationFloatSvnStatus(payload.review);
+      state.busy = false;
+      renderSvnReviewModal();
+    } catch (error) {
+      if (svnModalState !== state) return;
+      state.busy = false;
+      state.error = `无法登记 SVN 提交结果：${error.message || error}`;
+      renderSvnReviewModal();
+    }
+  }
+
   function resetSvnSelectionForReload(state) {
     if (!state) return;
     state.review = null;
@@ -3077,8 +3258,6 @@
     state.renderedTreeCategory = "";
     state.renderedPreviewPath = "";
     state.humanReviewed = false;
-    state.riskAcknowledged = false;
-    state.overlapAcknowledged = false;
   }
 
   async function reloadLatestSvnSelection() {
@@ -3125,14 +3304,14 @@
     const state = svnModalState;
     const review = state?.review;
     if (!state || !review || state.busy) return;
-    if (!window.confirm("仅当你已人工查看 SVN 日志并确认仓库实际状态后，才应放弃此草稿。确定继续吗？")) return;
+    if (!window.confirm("仅当你已人工确认本次操作没有产生有效 SVN 提交时，才应放弃此草稿。确定继续吗？")) return;
     state.busy = true;
     state.error = "";
     renderSvnReviewModal();
     try {
       await panelJson(`/api/svn/reviews/${encodeURIComponent(review.id)}/abandon`, {
         method: "POST",
-        body: { acknowledged: true, message: "已人工核对 SVN 仓库状态，放弃该异常提交草稿。" }
+        body: { acknowledged: true, message: "已人工确认本次操作没有产生有效 SVN 提交，放弃该异常提交草稿。" }
       });
       if (svnModalState !== state) return;
       state.busy = false;
@@ -3160,8 +3339,8 @@
         body: {
           issueKey: state.issueKey,
           reviewed: state.humanReviewed,
-          riskAcknowledged: state.riskAcknowledged,
-          overlapAcknowledged: state.overlapAcknowledged
+          riskAcknowledged: state.humanReviewed && review.verdict === "warning",
+          overlapAcknowledged: state.humanReviewed && Boolean(review.crossTaskConflicts?.length)
         }
       });
       const payload = await panelJson(`/api/svn/reviews/${encodeURIComponent(review.id)}/commit`, {
@@ -3212,8 +3391,6 @@
     state.previewError = "";
     state.preview = null;
     state.humanReviewed = false;
-    state.riskAcknowledged = false;
-    state.overlapAcknowledged = false;
     renderSvnReviewModal();
     try {
       const payload = await panelJson(
@@ -3274,6 +3451,7 @@
     removeSvnReviewModal();
     svnModalState = {
       threadId: floatState.threadId,
+      runtimeOwner: floatState.binding?.runtimeOwner || CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
       issueKey: floatState.issueKey,
       issue: floatState.issue,
       loading: true,
@@ -3305,9 +3483,7 @@
       renderedViewKey: "",
       renderedTreeCategory: "",
       renderedPreviewPath: "",
-      humanReviewed: false,
-      riskAcknowledged: false,
-      overlapAcknowledged: false
+      humanReviewed: false
     };
     if (isProvisionalCodexThreadId(svnModalState.threadId)) {
       svnModalState.loading = false;
@@ -3427,7 +3603,11 @@
       throw new Error("本地附件服务返回了无法解析的响应。");
     }
     if (Number(response?.status || 0) < 200 || Number(response?.status || 0) >= 300) {
-      throw new Error(payload.error || `本地附件服务请求失败（HTTP ${response?.status || 0}）。`);
+      const error = new Error(payload.error || `本地附件服务请求失败（HTTP ${response?.status || 0}）。`);
+      error.code = String(payload.code || "PANEL_API_ERROR");
+      error.status = Number(response?.status || 0);
+      error.details = payload.details;
+      throw error;
     }
     return payload;
   }
@@ -3511,6 +3691,7 @@
     bindings[normalizedIssueKey] = {
       ...binding,
       firstMessageStatus: status,
+      freshDesktopThread: status === "sent" ? false : bindingNeedsInitialDesktopTurn(binding),
       firstMessageError: error ? String(error) : "",
       firstMessageUpdatedAt: new Date().toISOString()
     };
@@ -3538,12 +3719,23 @@
   async function submitStructuredIssuePrompt(threadId, prompt, {
     issue,
     skill = null,
-    projectId = ""
+    projectId = "",
+    preparedPayload = null,
+    runtimeOwner = "",
+    allowRuntimeFallback = true,
+    knownLoadedThread = false,
+    hostId = "local"
   } = {}) {
     try {
-      const payload = await structuredIssuePromptPayload(issue, prompt, skill, projectId);
-      const started = await startCodexThreadTurn(threadId, payload.message, {
+      const payload = preparedPayload
+        || await structuredIssuePromptPayload(issue, prompt, skill, projectId);
+      const currentBinding = readBindings()[issue?.key];
+      const started = await codexCommands.sendAnalysisMessage(threadId, payload.message, {
         allowProvisional: true,
+        knownLoadedThread,
+        hostId,
+        runtimeOwner: runtimeOwner || currentBinding?.runtimeOwner,
+        allowFallback: allowRuntimeFallback,
         attachments: payload.attachments,
         skills: payload.skills
       });
@@ -3572,6 +3764,77 @@
       });
       return null;
     }
+  }
+
+  function updateBindingRuntimeOwner(issueKey, runtimeOwner, hostReference) {
+    const normalizedIssueKey = String(issueKey || "").trim().toUpperCase();
+    const bindings = readBindings();
+    const binding = bindings[normalizedIssueKey];
+    if (!binding) return null;
+    const updated = {
+      ...binding,
+      runtimeOwner,
+      hostReference,
+      updatedAt: new Date().toISOString()
+    };
+    bindings[normalizedIssueKey] = updated;
+    if (!writeStoredObject(BINDINGS_KEY, bindings)) return binding;
+    sendBindings();
+    return updated;
+  }
+
+  async function waitForAppServerHandoff(threadId, timeoutMs = 12_000) {
+    const startedAt = Date.now();
+    let lastState = null;
+    let lastError = null;
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        lastState = await codexCommands.readConversation(threadId, {
+          runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER
+        });
+        if (lastState?.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP
+          || lastState?.handoffReady === true) return lastState;
+      } catch (error) {
+        lastError = error;
+      }
+      await new Promise((resolvePromise) => window.setTimeout(resolvePromise, 250));
+    }
+    const error = new Error(lastState?.busy
+      ? "首轮分析仍在独立 Codex 运行环境中执行。"
+      : `独立 Codex 尚未释放会话${lastError ? `：${lastError.message || lastError}` : "。"}`);
+    error.code = lastState?.busy ? "CODEX_THREAD_BUSY" : "CODEX_THREAD_HANDOFF_PENDING";
+    error.threadState = lastState;
+    throw error;
+  }
+
+  async function waitForLegacyConversationReady(threadId, timeoutMs = 12_000) {
+    const startedAt = Date.now();
+    let lastError = null;
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const state = await legacyCodexHost.readThread(threadId, { timeoutMs: 3_000 });
+        if (!state?.busy && state?.canAcceptDirectInput !== false) return state;
+      } catch (error) {
+        lastError = error;
+      }
+      await new Promise((resolvePromise) => window.setTimeout(resolvePromise, 250));
+    }
+    const error = new Error(`Codex 桌面端尚未完成会话接管${lastError ? `：${lastError.message || lastError}` : "。"}`);
+    error.code = "CODEX_DESKTOP_HANDOFF_TIMEOUT";
+    throw error;
+  }
+
+  function bindingNeedsInitialDesktopTurn(binding) {
+    if (binding?.freshDesktopThread === true) return true;
+    if (binding?.firstMessageStatus === "sent") return false;
+    return /not materialized yet|no rollout found|includeTurns is unavailable before first user message/i
+      .test(String(binding?.firstMessageError || ""));
+  }
+
+  function bindingHasUnavailableCreationWindow(binding) {
+    return binding?.firstMessageStatus !== "sent"
+      && /continue this conversation on the window where it was started/i
+        .test(String(binding?.firstMessageError || ""));
   }
 
   function composerAttachmentCount(composerInput) {
@@ -3741,23 +4004,40 @@
     const pending = readStoredObject(PENDING_BINDING_KEY);
     try {
       const payload = await structuredIssuePromptPayload(issue, prompt, skill, projectId);
+      const automated = issue?.__jiraCodexAutomated === true;
       const title = [`分析 ${issue?.key || "Jira"}`, issue?.title || ""]
         .filter(Boolean)
         .join(" ")
         .slice(0, 180);
-      const started = await startCodexConversation(payload.message, {
+      const projectWorkspace = availableProjects().find((project) => project.projectId === projectId);
+      const started = await codexCommands.createAnalysisConversation(payload.message, {
         projectId,
+        cwd: projectWorkspace?.projectPath || "",
         title,
+        desktopHandoff: !automated,
         attachments: payload.attachments,
         skills: payload.skills
       });
+      const desktopHandoff = started.desktopHandoff === true;
+      const firstMessagePending = started.firstMessagePending === true || desktopHandoff;
       const normalizedThreadId = normalizeCodexThreadId(started.threadId);
+      const knownLoadedThread = started.knownLoadedThread === true
+        && started.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP;
+      const freshDesktopThread = firstMessagePending
+        && started.desktopReady === true
+        && started.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP;
       const storedThreadId = started.hostId === "local"
+        || started.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER
         ? `local:${normalizedThreadId}`
         : normalizedThreadId;
       const binding = bindPendingIssueToThread(pending, storedThreadId, {
         threadTitle: title,
-        firstMessageStatus: "sent"
+        firstMessageStatus: firstMessagePending ? "pending" : "sent",
+        runtimeOwner: started.runtimeOwner || CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+        hostReference: started.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER
+          ? "codex-app-server"
+          : "current-codex-window",
+        freshDesktopThread
       });
       if (!binding) {
         window.localStorage.removeItem(PENDING_BINDING_KEY);
@@ -3765,22 +4045,103 @@
         sendPanelMessage("binding-error", {
           issueKey: issue?.key || "",
           bindingRetained: false,
-          message: `Codex 已创建会话并发送分析消息，但本地绑定保存失败。请通过“绑定已有会话”关联会话 ID：${normalizedThreadId}`
+          message: `Codex 已创建会话，但本地绑定保存失败。请通过“绑定已有会话”关联会话 ID：${normalizedThreadId}`
         });
         return;
       }
-      sendPanelMessage("issue-prompt-sent", { issueKey: issue?.key || "" });
       setConversationThreadHint(issue.key, binding);
       closePanel();
+      if (firstMessagePending) {
+        if (freshDesktopThread) {
+          const desktopBinding = updateBindingRuntimeOwner(
+            issue.key,
+            CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+            "current-codex-window"
+          ) || binding;
+          setConversationThreadHint(issue.key, desktopBinding);
+          const sent = await submitStructuredIssuePrompt(normalizedThreadId, prompt, {
+            issue,
+            skill,
+            projectId,
+            preparedPayload: payload,
+            runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+            allowRuntimeFallback: false,
+            knownLoadedThread: true,
+            hostId: started.hostId || "local"
+          });
+          if (!sent) return;
+          if (started.titlePending === true && title) {
+            void codexCommands.renameConversation(normalizedThreadId, title).catch(() => {});
+          }
+          try {
+            await codexCommands.openConversation(normalizedThreadId, {
+              knownLoadedThread: true,
+              hostId: sent.hostId || started.hostId || "local"
+            });
+            window.setTimeout(ensureConversationIssueFloat, 0);
+          } catch (error) {
+            openPanel();
+            sendPanelMessage("binding-error", {
+              issueKey: issue?.key || "",
+              bindingRetained: true,
+              message: `首条分析已经发送，但暂时无法跳转到新会话：${error.message || error}。绑定已经保留，可直接再次打开。`
+            });
+          }
+          return;
+        }
+        try {
+          if (started.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER
+            && started.desktopReady !== true) {
+            await waitForAppServerHandoff(normalizedThreadId);
+          }
+          await codexCommands.openConversation(normalizedThreadId);
+          const desktopBinding = updateBindingRuntimeOwner(
+            issue.key,
+            CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+            "current-codex-window"
+          ) || binding;
+          setConversationThreadHint(issue.key, desktopBinding);
+          await waitForLegacyConversationReady(normalizedThreadId);
+          const sent = await submitStructuredIssuePrompt(normalizedThreadId, prompt, {
+            issue,
+            skill,
+            projectId,
+            preparedPayload: payload,
+            runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+            allowRuntimeFallback: false
+          });
+          if (sent && started.titlePending === true && title) {
+            void codexCommands.renameConversation(normalizedThreadId, title).catch(() => {});
+          }
+        } catch (error) {
+          const bindingRetained = setFirstMessageStatus(issue?.key, "failed", error.message || error);
+          openPanel();
+          sendPanelMessage("binding-error", {
+            issueKey: issue?.key || "",
+            bindingRetained,
+            message: `Codex 会话已经创建并保留，但桌面端接管或首条消息发送失败：${error.message || error}。请稍后从当前 Jira 任务重试，不会重复创建会话。`
+          });
+        }
+        return;
+      }
+      sendPanelMessage("issue-prompt-sent", { issueKey: issue?.key || "" });
+      if (automated) return;
       try {
-        await navigateCodexThread(normalizedThreadId);
+        await codexCommands.openConversation(normalizedThreadId, knownLoadedThread ? {
+          knownLoadedThread: true,
+          hostId: started.hostId || "local"
+        } : {});
       } catch (error) {
-        openPanel();
-        sendPanelMessage("binding-error", {
-          issueKey: issue?.key || "",
-          bindingRetained: true,
-          message: `分析会话已创建并绑定，但暂时无法跳转：${error.message || error}`
-        });
+        if (knownLoadedThread) {
+          console.warn("[jira-poc] 新会话已由 Codex 打开，补充显示请求失败：", error);
+        } else {
+          openPanel();
+          sendPanelMessage("binding-error", {
+            issueKey: issue?.key || "",
+            bindingRetained: true,
+            message: `分析会话已创建并绑定，但暂时无法跳转：${error.message || error}`
+          });
+        }
       }
       window.setTimeout(ensureConversationIssueFloat, 0);
     } catch (error) {
@@ -3838,9 +4199,52 @@
   }
 
   async function openIssueConversation(issue, prompt, projectId, skill = null) {
-    const binding = readBindings()[issue.key];
+    let binding = readBindings()[issue.key];
     if (!binding?.threadId) {
       startIssue(issue, prompt, projectId, { skill });
+      return;
+    }
+    if (bindingHasUnavailableCreationWindow(binding)) {
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained: true,
+        message: "该绑定由旧版的分步建会话流程产生，创建窗口已无法接管，不能继续补发。请使用“更改关联 → 新建并绑定”；新会话成功前会保留当前绑定，成功后再自动替换。"
+      });
+      return;
+    }
+    if (binding.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER) {
+      try {
+        const state = await codexCommands.readConversation(binding.threadId, {
+          runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER
+        });
+        const ready = state.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP
+          || state.handoffReady === true;
+        if (!ready) {
+          sendPanelMessage("binding-success", {
+            issueKey: issue.key,
+            message: state.busy
+              ? "该任务的首轮分析仍在后台运行，完成后即可从这里打开。"
+              : "该会话正在从后台运行环境移交给 Codex 桌面端，请稍后重试。"
+          });
+          return;
+        }
+        setConversationThreadHint(issue.key, binding);
+        closePanel();
+        await codexCommands.openConversation(binding.threadId);
+        binding = updateBindingRuntimeOwner(
+          issue.key,
+          CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+          "current-codex-window"
+        ) || binding;
+        setConversationThreadHint(issue.key, binding);
+        window.setTimeout(ensureConversationIssueFloat, 0);
+      } catch (error) {
+        clearConversationThreadHint();
+        openPanel();
+        sendPanelMessage("binding-error", {
+          message: `无法接管已绑定的 Codex 对话“${binding.threadTitle || issue.key}”：${error.message || error}。绑定仍然保留，可以稍后重试。`
+        });
+      }
       return;
     }
     const thread = threadRows().find((row) => (
@@ -3854,7 +4258,7 @@
     }
     closePanel();
     try {
-      await navigateCodexThread(binding.threadId);
+      await codexCommands.openConversation(binding.threadId);
     } catch (error) {
       clearConversationThreadHint();
       openPanel();
@@ -3877,9 +4281,13 @@
     const thread = threadRows().find((row) => (
       normalizeCodexThreadId(row.getAttribute("data-app-action-sidebar-thread-id")) === normalizeCodexThreadId(normalizedThreadId)
     ));
+    let validatedRuntimeOwner = thread
+      ? CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP
+      : "";
     if (!thread) {
       try {
-        await readCodexThreadState(normalizedThreadId, { timeoutMs: 8_000 });
+        const validation = await codexCommands.readConversation(normalizedThreadId, { timeoutMs: 8_000 });
+        validatedRuntimeOwner = validation.runtimeOwner;
       } catch (error) {
         sendPanelMessage("binding-error", {
           issueKey: issue?.key || "",
@@ -3904,6 +4312,10 @@
     if (conflict) delete bindings[conflict[0]];
     bindings[issue.key] = {
       threadId: normalizedThreadId,
+      runtimeOwner: validatedRuntimeOwner || CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+      hostReference: validatedRuntimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER
+        ? "codex-app-server"
+        : "current-codex-window",
       uiThreadId: isProvisionalCodexThreadId(normalizedThreadId) ? normalizedThreadId : "",
       threadTitle: thread?.getAttribute("data-app-action-sidebar-thread-title") || issue.title || issue.key,
       issueTitle: issue.title || "",
@@ -3929,7 +4341,7 @@
     if (thread) thread.click();
     else {
       try {
-        await navigateCodexThread(normalizedThreadId);
+        await codexCommands.openConversation(normalizedThreadId);
       } catch (error) {
         openPanel();
         sendPanelMessage("binding-error", {
@@ -3948,8 +4360,79 @@
     window.setTimeout(ensureConversationIssueFloat, 0);
   }
 
+  async function clearIssueBinding(issueKey) {
+    const normalizedIssueKey = String(issueKey || "").trim().toUpperCase();
+    if (!normalizedIssueKey) {
+      sendPanelMessage("binding-error", {
+        issueKey: "",
+        bindingRetained: false,
+        message: "无法解除关联：Jira Issue Key 为空。"
+      });
+      return;
+    }
+    const originalBinding = readBindings()[normalizedIssueKey];
+    try {
+      if (bindingHydrationPromise) await bindingHydrationPromise.catch(() => {});
+      await flushBindingMutations();
+      pendingBindingUpserts.delete(normalizedIssueKey);
+      pendingBindingDeletes.delete(normalizedIssueKey);
+
+      const request = panelJson("/api/bindings/mutations", {
+        method: "PUT",
+        body: { upserts: {}, deletes: [normalizedIssueKey] }
+      });
+      bindingMutationInFlight = request;
+      let payload;
+      try {
+        payload = await request;
+        bindingPersistenceRevision = Number(payload?.revision || bindingPersistenceRevision);
+        bindingPersistenceError = "";
+      } finally {
+        if (bindingMutationInFlight === request) bindingMutationInFlight = null;
+      }
+
+      const bindings = readBindings();
+      delete bindings[normalizedIssueKey];
+      if (!writeStoredObject(BINDINGS_KEY, bindings, { persist: false })) {
+        throw new Error("服务端记录已清除，但本地兼容缓存更新失败；请重启后再检查。");
+      }
+      pendingBindingUpserts.delete(normalizedIssueKey);
+      pendingBindingDeletes.delete(normalizedIssueKey);
+
+      const pending = readStoredObject(PENDING_BINDING_KEY);
+      if (String(pending.issueKey || "").trim().toUpperCase() === normalizedIssueKey) {
+        window.localStorage.removeItem(PENDING_BINDING_KEY);
+      }
+      for (const [threadId, aliasIssueKey] of conversationThreadAliases) {
+        if (aliasIssueKey === normalizedIssueKey) conversationThreadAliases.delete(threadId);
+      }
+      if (conversationThreadHint?.issueKey === normalizedIssueKey) clearConversationThreadHint();
+      if (conversationFloatState?.issueKey === normalizedIssueKey) {
+        removeSvnReviewModal();
+        removeConversationIssueFloat();
+      }
+      [originalBinding?.threadId, originalBinding?.uiThreadId]
+        .filter(Boolean)
+        .forEach((threadId) => collapsedConversationThreads.delete(String(threadId)));
+
+      sendBindings();
+      sendPanelMessage("binding-cleared", {
+        issueKey: normalizedIssueKey,
+        message: originalBinding
+          ? `已解除 ${normalizedIssueKey} 与 Codex 会话的关联；原会话仍然保留。`
+          : `${normalizedIssueKey} 当前已没有 Codex 会话关联。`
+      });
+    } catch (error) {
+      sendPanelMessage("binding-error", {
+        issueKey: normalizedIssueKey,
+        bindingRetained: Boolean(readBindings()[normalizedIssueKey]),
+        message: `解除关联失败：${error.message || error}。未删除或归档 Codex 会话。`
+      });
+    }
+  }
+
   async function retryIssuePrompt(issue, prompt, projectId = "", skill = null) {
-    const binding = readBindings()[issue?.key];
+    let binding = readBindings()[issue?.key];
     if (!binding?.threadId) {
       sendPanelMessage("binding-error", {
         issueKey: issue?.key || "",
@@ -3958,17 +4441,66 @@
       });
       return;
     }
+    if (bindingHasUnavailableCreationWindow(binding)) {
+      sendPanelMessage("binding-error", {
+        issueKey: issue?.key || "",
+        bindingRetained: true,
+        message: "该绑定由旧版的分步建会话流程产生，创建窗口已无法接管，不能继续补发。请使用“更改关联 → 新建并绑定”；新会话成功前会保留当前绑定，成功后再自动替换。"
+      });
+      return;
+    }
+    if (binding.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER) {
+      try {
+        const state = await codexCommands.readConversation(binding.threadId, {
+          runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER
+        });
+        if (state.runtimeOwner !== CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP
+          && state.handoffReady !== true) {
+          sendPanelMessage("binding-success", {
+            issueKey: issue.key,
+            message: state.busy
+              ? "该任务仍在后台分析中，不能重复发送首条消息。"
+              : "该会话仍在移交给 Codex 桌面端，请稍后重试。"
+          });
+          return;
+        }
+        closePanel();
+        await codexCommands.openConversation(binding.threadId);
+        binding = updateBindingRuntimeOwner(
+          issue.key,
+          CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+          "current-codex-window"
+        ) || binding;
+        await waitForLegacyConversationReady(binding.threadId);
+      } catch (error) {
+        openPanel();
+        sendPanelMessage("binding-error", {
+          issueKey: issue?.key || "",
+          bindingRetained: true,
+          message: `会话接管失败，尚未重复发送消息：${error.message || error}`
+        });
+        return;
+      }
+    }
+    const knownLoadedThread = bindingNeedsInitialDesktopTurn(binding);
     setFirstMessageStatus(issue.key, "pending");
     const started = await submitStructuredIssuePrompt(binding.threadId, prompt, {
       issue,
       skill,
-      projectId
+      projectId,
+      runtimeOwner: binding.runtimeOwner,
+      allowRuntimeFallback: binding.runtimeOwner !== CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+      knownLoadedThread,
+      hostId: "local"
     });
     if (!started) return;
     setConversationThreadHint(issue.key, readBindings()[issue.key] || binding);
     closePanel();
     try {
-      await navigateCodexThread(started.threadId || binding.threadId);
+      await codexCommands.openConversation(started.threadId || binding.threadId, {
+        knownLoadedThread,
+        hostId: started.hostId || "local"
+      });
     } catch {
       // The turn already started; navigation can be retried from the Jira panel.
     }
@@ -4129,6 +4661,9 @@
         confirmConflict: message.confirmConflict === true
       });
     }
+    if (message.type === "clear-task-binding") {
+      void clearIssueBinding(message.issueKey);
+    }
     if ((message.type === "associate-new-task" || message.type === "rebind-new-task") && message.issue) {
       startIssue(message.issue, message.prompt, message.projectId, { skill: message.skill });
     }
@@ -4213,6 +4748,12 @@
       conversationHintObserved: Boolean(conversationThreadHint?.observedThreadId),
       conversationAliasCount: conversationThreadAliases.size,
       bindingResolution: lastBindingResolution,
+      bindingPersistence: {
+        revision: bindingPersistenceRevision,
+        pending: pendingBindingUpserts.size + pendingBindingDeletes.size,
+        error: bindingPersistenceError
+      },
+      codexRuntime: codexCommands.snapshot(),
       theme: codexThemeName(),
       active
     };
@@ -4222,6 +4763,7 @@
     observer?.disconnect();
     themeObserver?.disconnect();
     if (bindingTimer) window.clearInterval(bindingTimer);
+    if (bindingMutationTimer) window.clearTimeout(bindingMutationTimer);
     if (bugMonitorTimer) window.clearInterval(bugMonitorTimer);
     window.removeEventListener("message", onMessage);
     document.removeEventListener("pointerdown", onDocumentPointerDown, true);
@@ -4264,6 +4806,7 @@
   bugMonitorTimer = window.setInterval(() => void runBugMonitor(), BUG_MONITOR_INTERVAL_MS);
   window.__jiraCodexPoc = { version: VERSION, ensure, open: openPanel, close: closePanel, state, destroy };
   ensure();
+  void hydrateBindingsFromService();
   window.setTimeout(() => void runBugMonitor(), 1_500);
   return state();
 })();

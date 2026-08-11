@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "productId": "jira-codex-panel",
+  "displayName": "Jira Codex 助手",
+  "publisher": "Jira Codex Assistant",
+  "components": [
+    {
+      "id": "local-service",
+      "required": true,
+      "path": "server.mjs"
+    },
+    {
+      "id": "panel-ui",
+      "required": true,
+      "path": "public"
+    },
+    {
+      "id": "legacy-cdp-host",
+      "required": true,
+      "path": "injector.mjs"
+    },
+    {
+      "id": "codex-app-server-adapter",
+      "required": true,
+      "path": "lib/codex-app-server-client.mjs"
+    },
+    {
+      "id": "codex-runtime-gateway",
+      "required": true,
+      "path": "lib/codex-runtime-gateway.mjs"
+    },
+    {
+      "id": "codex-application-commands",
+      "required": true,
+      "path": "lib/codex-application-commands.mjs"
+    },
+    {
+      "id": "bundled-skills",
+      "required": true,
+      "path": "skills"
+    },
+    {
+      "id": "official-plugin",
+      "required": false,
+      "path": ".codex-plugin/plugin.json"
+    },
+    {
+      "id": "mcp-server",
+      "required": false,
+      "path": "mcp"
+    }
+  ]
+}

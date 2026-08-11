@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  createLegacyCodexHostAdapter,
   findCodexAppInitialAsset,
   findCodexRpcAsset,
   interruptCodexThreadTurn,
@@ -18,7 +19,10 @@ import {
 function createBridgeHarness({
   turnStatus = "completed",
   canAcceptDirectInput = true,
-  sidebarThreadId = ""
+  sidebarThreadId = "",
+  latestHostBridge = false,
+  threadStatus = "idle",
+  threadPath = "C:\\Users\\tester\\.codex\\sessions\\rollout.jsonl"
 } = {}) {
   const calls = [];
   const threadId = "019fcbb6-c322-7250-9b19-4645a37103c9";
@@ -29,9 +33,21 @@ function createBridgeHarness({
         thread: {
           id: threadId,
           canAcceptDirectInput,
+          status: { type: threadStatus },
+          path: threadPath,
           turns: [{ id: "turn-current", status: turnStatus }]
         }
       };
+    }
+    if (payload?.method === "thread/start") {
+      return { thread: { id: threadId, status: { type: "idle" }, path: threadPath } };
+    }
+    if (payload?.method === "thread/name/set") return {};
+    if (payload?.method === "thread/unarchive") {
+      return { thread: { id: threadId, status: { type: "notLoaded" }, path: threadPath } };
+    }
+    if (payload?.method === "thread/resume") {
+      return { thread: { id: threadId, status: { type: "idle" }, path: threadPath } };
     }
     if (payload?.method === "skills/list") {
       return {
@@ -56,7 +72,7 @@ function createBridgeHarness({
   function tp(type, payload) {
     return sendRequest(type, payload);
   }
-  async function vp(type, payload) {
+  async function handleHostRequest(type, payload) {
     calls.push({ channel: "host", type, payload });
     if (type === "get-global-state" && payload?.params?.key === "local-projects") {
       return {
@@ -77,6 +93,22 @@ function createBridgeHarness({
       };
     }
     throw new Error(`unexpected host request: ${type}`);
+  }
+  async function vp(...args) {
+    const [type, payload] = args;
+    const { params, select, signal, source } = payload ?? {};
+    void select;
+    void signal;
+    void source;
+    return handleHostRequest(type, { ...payload, params });
+  }
+  async function hm(...args) {
+    const [type, payload] = args;
+    const { params, select, signal, source } = payload ?? {};
+    void select;
+    void signal;
+    void source;
+    return handleHostRequest(type, { ...payload, params });
   }
   const options = {
     documentRef: { scripts: [{ src: "app://-/assets/index-hash.js" }] },
@@ -114,13 +146,26 @@ function createBridgeHarness({
       if (url.endsWith("app-initial-hash.js")) {
         const hostileProxy = function hostileProxy() {};
         hostileProxy.toString = () => { throw new Error("proxy cannot be stringified"); };
-        return { A0: hostileProxy, Mht: vp, Xht: tp };
+        return { A0: hostileProxy, Mht: latestHostBridge ? hm : vp, Xht: tp };
       }
       throw new Error(`unexpected module: ${url}`);
     }
   };
   return { calls, options, threadId };
 }
+
+test("最新版 Codex 的 hm 主机请求桥接可按语义识别", async () => {
+  const harness = createBridgeHarness({ latestHostBridge: true });
+  await startCodexConversation("分析 Jira CT-13350", {
+    ...harness.options,
+    projectId: "local-project"
+  });
+  assert.equal(
+    harness.calls.some((call) => call.channel === "host" && call.type === "get-global-state"),
+    true
+  );
+  assert.equal(harness.calls.some((call) => call.type === "start-conversation"), true);
+});
 
 test("Codex 会话 ID 会移除本地主机前缀", () => {
   assert.equal(
@@ -130,6 +175,22 @@ test("Codex 会话 ID 会移除本地主机前缀", () => {
   assert.equal(normalizeCodexThreadId("remote-thread-id"), "remote-thread-id");
   assert.equal(isProvisionalCodexThreadId("local:client-new-thread:temporary-id"), true);
   assert.equal(isProvisionalCodexThreadId("local:019fcbb6-c322-7250-9b19-4645a37103c9"), false);
+});
+
+test("legacy desktop behavior is exposed through one host adapter", async () => {
+  const harness = createBridgeHarness();
+  const host = createLegacyCodexHostAdapter(harness.options);
+  const capabilities = host.getCapabilities();
+  assert.equal(host.id, "legacy-desktop");
+  assert.equal(capabilities.capabilities.navigateThread, true);
+  assert.equal(capabilities.capabilities.resolveConversationTarget, true);
+  assert.equal(
+    (await host.resolveConversationTarget("local-project", "analyze")).cwd,
+    "F:\\football\\server_v3\\server\\captain_tsubasa_server"
+  );
+  assert.equal((await host.readThread(harness.threadId)).threadId, harness.threadId);
+  assert.equal((await host.startTurn(harness.threadId, "review")).turnId, "turn-review");
+  assert.equal((await host.renameThread(harness.threadId, "分析 CT-1")).name, "分析 CT-1");
 });
 
 test("新建会话侧栏临时 ID 会解析为 Codex 当前正式会话 UUID", async () => {
@@ -192,6 +253,23 @@ test("Codex 当前会话桥接可读取状态并启动真实审查 turn", async 
     path: "C:\\review\\02-svn-changes.diff",
     fsPath: "C:\\review\\02-svn-changes.diff"
   }]);
+});
+
+test("桌面 App Server 刚创建的新会话不读取未生成的 rollout，直接启动首个 turn", async () => {
+  const harness = createBridgeHarness();
+  const started = await startCodexThreadTurn(harness.threadId, "分析 Jira", {
+    ...harness.options,
+    knownLoadedThread: true,
+    hostId: "local"
+  });
+
+  assert.equal(started.threadId, harness.threadId);
+  assert.equal(started.turnId, "turn-review");
+  assert.equal(harness.calls.some((call) => call.payload?.method === "thread/read"), false);
+  assert.equal(harness.calls.some((call) => call.request?.action?.type === "app.get_summary"), false);
+  const startCall = harness.calls.find((call) => call.type === "start-turn-for-host");
+  assert.equal(startCall.payload.hostId, "local");
+  assert.equal(startCall.payload.conversationId, harness.threadId);
 });
 
 test("Codex 技能列表通过 app-server 获取并规范化", async () => {
@@ -265,6 +343,26 @@ test("创建 Jira 新会话不依赖侧栏 ID，并一次提交项目、技能�
   assert.equal(startCall.payload.initialTitle, "分析 CT-13350 收藏票优化");
 });
 
+test("人工 Jira 会话通过桌面命令原子创建并发送结构化首条消息", async () => {
+  const harness = createBridgeHarness();
+  const started = await startCodexConversation("分析 Jira CT-13350", {
+    ...harness.options,
+    projectId: "local-project",
+    title: "分析 CT-13350 收藏票优化",
+    desktopHandoff: true
+  });
+  assert.equal(started.threadId, harness.threadId);
+  assert.equal(started.firstMessagePending, undefined);
+  assert.equal(started.desktopReady, true);
+  assert.equal(started.knownLoadedThread, true);
+  const startCall = harness.calls.find((call) => call.type === "start-conversation");
+  assert.equal(startCall.payload.cwd, "F:\\football\\server_v3\\server\\captain_tsubasa_server");
+  assert.equal(startCall.payload.input[0].text, "分析 Jira CT-13350");
+  assert.equal(startCall.payload.initialTitle, "分析 CT-13350 收藏票优化");
+  assert.equal(harness.calls.some((call) => call.payload?.method === "thread/start"), false);
+  assert.equal(harness.calls.some((call) => call.payload?.method === "thread/name/set"), false);
+});
+
 test("已有会话中的图片同样按 Codex 原生视觉输入发送", async () => {
   const harness = createBridgeHarness();
   await startCodexThreadTurn(harness.threadId, "识别截图", {
@@ -322,40 +420,52 @@ test("Codex 当前会话忙碌时快速失败，运行中的审查可按真实 t
 });
 
 test("侧栏未渲染目标时可通过 Codex 原生服务按会话 ID 导航", async () => {
-  const calls = [];
+  const harness = createBridgeHarness({ threadStatus: "notLoaded" });
   const normalizedThreadId = await navigateCodexThread(
     "local:019fcbb6-c322-7250-9b19-4645a37103c9",
-    {
-      documentRef: {
-        scripts: [{ src: "app://-/assets/index-DhkQKCd_.js" }]
-      },
-      fetchFn: async (url) => {
-        assert.equal(url, "app://-/assets/index-DhkQKCd_.js");
-        return {
-          ok: true,
-          text: async () => 'import("./rpc-iron1uwk.js");'
-        };
-      },
-      importModule: async (url) => {
-        assert.equal(url, "app://-/assets/rpc-iron1uwk.js");
-        return {
-          appServices: {
-            appActions: {
-              runInPrimaryWindow: async (request) => calls.push(request)
-            }
-          }
-        };
-      }
-    }
+    harness.options
   );
 
   assert.equal(normalizedThreadId, "019fcbb6-c322-7250-9b19-4645a37103c9");
-  assert.deepEqual(calls, [{
+  assert.deepEqual(
+    harness.calls.filter((call) => call.payload?.method).map((call) => call.payload.method),
+    ["thread/read", "thread/resume"]
+  );
+  assert.deepEqual(harness.calls.at(-1).request, {
     action: {
       kind: "codex",
       type: "windows.show_thread",
       windowId: "current",
       threadId: "019fcbb6-c322-7250-9b19-4645a37103c9"
     }
-  }]);
+  });
+});
+
+test("刚启动首个 turn 的新会话直接显示，不执行 read 或 resume", async () => {
+  const harness = createBridgeHarness();
+  const normalizedThreadId = await navigateCodexThread(harness.threadId, {
+    ...harness.options,
+    knownLoadedThread: true,
+    hostId: "local"
+  });
+
+  assert.equal(normalizedThreadId, harness.threadId);
+  assert.deepEqual(
+    harness.calls.filter((call) => call.payload?.method).map((call) => call.payload.method),
+    []
+  );
+  assert.equal(harness.calls.some((call) => call.request?.action?.type === "app.get_summary"), false);
+  assert.equal(harness.calls.at(-1).request.action.type, "windows.show_thread");
+});
+
+test("按 ID 打开误归档会话时先恢复，再由桌面 App Server 接管", async () => {
+  const harness = createBridgeHarness({
+    threadStatus: "notLoaded",
+    threadPath: "C:\\Users\\tester\\.codex\\archived_sessions\\rollout.jsonl"
+  });
+  await navigateCodexThread(harness.threadId, harness.options);
+  assert.deepEqual(
+    harness.calls.filter((call) => call.payload?.method).map((call) => call.payload.method),
+    ["thread/read", "thread/unarchive", "thread/resume"]
+  );
 });

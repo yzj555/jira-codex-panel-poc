@@ -227,6 +227,68 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
     assert.equal(publicPayload.config.configured, true);
     assert.equal("token" in publicPayload.config, false);
 
+    const importedBindings = await fetch(`${baseUrl}/api/bindings/import`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        bindings: {
+          "REAL-9": {
+            threadId: "019fc6eb-2d03-7a62-be45-840481d26b19",
+            title: "legacy renderer binding"
+          }
+        }
+      })
+    }).then((response) => response.json());
+    assert.equal(importedBindings.revision, 1);
+    assert.equal(importedBindings.bindings["REAL-9"].runtimeOwner, "legacy-desktop");
+
+    const mutatedBindings = await fetch(`${baseUrl}/api/bindings/mutations`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        deletes: ["REAL-9"],
+        upserts: {
+          "REAL-10": {
+            threadId: "019fc6eb-2d03-7a62-be45-840481d26b20",
+            runtimeOwner: "standalone-appserver",
+            hostReference: "future-official-plugin"
+          }
+        }
+      })
+    }).then((response) => response.json());
+    assert.equal(mutatedBindings.revision, 2);
+    assert.equal("REAL-9" in mutatedBindings.bindings, false);
+    assert.equal(mutatedBindings.bindings["REAL-10"].runtimeOwner, "standalone-appserver");
+
+    const persistedBindings = await fetch(`${baseUrl}/api/bindings`).then((response) => response.json());
+    assert.deepEqual(persistedBindings, mutatedBindings);
+
+    const migrationBody = JSON.stringify({
+      bindings: Object.fromEntries(Array.from({ length: 80 }, (_, index) => [
+        `REAL-${1_000 + index}`,
+        {
+          threadId: `thread-migrated-${index}`,
+          legacyMetadata: "x".repeat(1_000)
+        }
+      ]))
+    });
+    assert.ok(Buffer.byteLength(migrationBody, "utf8") > 64 * 1_024);
+    const migrationResponse = await fetch(`${baseUrl}/api/bindings/import`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: migrationBody
+    });
+    const migrationResponseText = await migrationResponse.text();
+    assert.equal(migrationResponse.status, 200, migrationResponseText);
+    const migratedBindings = JSON.parse(migrationResponseText);
+    assert.equal(Object.keys(migratedBindings.bindings).length, 81);
+
+    const runtimeCapabilities = await fetch(`${baseUrl}/api/codex/runtime/capabilities`)
+      .then((response) => response.json());
+    assert.equal(runtimeCapabilities.runtimeOwner, "standalone-appserver");
+    assert.equal(runtimeCapabilities.capabilities.readThread, true);
+    assert.equal(runtimeCapabilities.capabilities.navigateThread, false);
+
     const initialAutomation = await fetch(`${baseUrl}/api/automation/status`).then((response) => response.json());
     assert.equal(initialAutomation.monitorEnabled, false);
     assert.equal(initialAutomation.wecomConfigured, false);

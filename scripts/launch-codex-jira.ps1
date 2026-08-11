@@ -10,6 +10,21 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $runtimeDirectory = Join-Path $projectRoot '.runtime'
 $userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc'
+$installMetadataPath = @(
+  (Join-Path $projectRoot 'install-state.json'),
+  (Join-Path $projectRoot 'install-metadata.json')
+) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if ($installMetadataPath) {
+  try {
+    $installMetadata = Get-Content -Raw -LiteralPath $installMetadataPath | ConvertFrom-Json
+    $configuredAppServerCommand = [string]$installMetadata.codexAppServerCommand
+    if ($configuredAppServerCommand -and (Test-Path -LiteralPath $configuredAppServerCommand)) {
+      $env:JIRA_CODEX_APP_SERVER_COMMAND = $configuredAppServerCommand
+    }
+  } catch {
+    Write-Warning "无法读取 App Server 安装信息，将使用自动发现：$($_.Exception.Message)"
+  }
+}
 if (-not $ProfileDirectory) {
   $ProfileDirectory = Join-Path $userDataRoot 'codex-profile'
 }

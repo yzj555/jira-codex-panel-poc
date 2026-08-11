@@ -79,6 +79,7 @@ function createHarness({
   findReviewTurn = null,
   externalDiffLauncher = null,
   commitLogMode: initialCommitLogMode = "record",
+  commitLogMessageTransform = (value) => value,
   now = () => Date.now()
 } = {}) {
   const calls = [];
@@ -121,7 +122,7 @@ function createHarness({
         revision,
         author: "tester",
         date: new Date(now()).toISOString(),
-        message: (await readFile(messageFile, "utf8")).trim(),
+        message: commitLogMessageTransform((await readFile(messageFile, "utf8")).trim()),
         paths: args.slice(args.indexOf("--") + 1)
       };
       if (commitLogMode === "record") logEntries.unshift(entry);
@@ -593,6 +594,115 @@ test("SVN 命令回执无法唯一核实时保持未知状态，并可稍后按�
   const reconciled = await harness.manager.reconcileCommit(created.review.id);
   assert.equal(reconciled.status, "committed");
   assert.equal(reconciled.commit.revision, "121");
+});
+
+test("SVN 日志将提交说明换行为 CRLF 时仍能准确确认提交", async () => {
+  const harness = createHarness({
+    commitLogMessageTransform: (value) => value.replace(/\n/g, "\r\n")
+  });
+  const created = await harness.manager.createReview({
+    threadId: "019fcaa1-7ac6-7031-bcc5-3f85a3143ca4",
+    issue,
+    selectedPaths: ["src/player.go"],
+    codexReviewEnabled: false
+  });
+  const confirmation = await harness.manager.confirm(created.review.id, {
+    issue,
+    issueKey: issue.key,
+    reviewed: true
+  });
+  const committed = await harness.manager.commit(created.review.id, {
+    issue,
+    confirmationToken: confirmation.confirmationToken
+  });
+  assert.equal(committed.status, "committed");
+  assert.equal(committed.commit.revision, "121");
+});
+
+test("自动日志核对失败后允许人工确认已提交并登记 revision", async () => {
+  const harness = createHarness({ commitLogMode: "omit" });
+  const created = await harness.manager.createReview({
+    threadId: "019fcaa1-7ac6-7031-bcc5-3f85a3143ca4",
+    issue,
+    selectedPaths: ["src/player.go"],
+    codexReviewEnabled: false
+  });
+  const confirmation = await harness.manager.confirm(created.review.id, {
+    issue,
+    issueKey: issue.key,
+    reviewed: true
+  });
+  await assert.rejects(
+    harness.manager.commit(created.review.id, {
+      issue,
+      confirmationToken: confirmation.confirmationToken
+    }),
+    (error) => error.code === "SVN_COMMIT_RESULT_AMBIGUOUS"
+  );
+  await assert.rejects(
+    harness.manager.confirmCommitted(created.review.id, {
+      acknowledged: false,
+      revision: "121"
+    }),
+    (error) => error.code === "SVN_COMMIT_RESULT_ACK_REQUIRED"
+  );
+  const committed = await harness.manager.confirmCommitted(created.review.id, {
+    acknowledged: true,
+    revision: "r121"
+  });
+  assert.equal(committed.status, "committed");
+  assert.equal(committed.commit.revision, "121");
+  assert.equal(committed.commitReceipt.manuallyConfirmedRevision, "121");
+});
+
+test("旧版因 CRLF 差异误判并放弃的成功提交会从完整回执恢复", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-codex-commit-line-ending-recovery-"));
+  try {
+    const stateFile = join(directory, "svn-reviews.json");
+    const harness = createHarness({
+      reviewStateFile: stateFile,
+      commitLogMode: "omit"
+    });
+    const created = await harness.manager.createReview({
+      threadId: "019fcaa1-7ac6-7031-bcc5-3f85a3143ca4",
+      issue,
+      selectedPaths: ["src/player.go"],
+      codexReviewEnabled: false
+    });
+    const confirmation = await harness.manager.confirm(created.review.id, {
+      issue,
+      issueKey: issue.key,
+      reviewed: true
+    });
+    await assert.rejects(
+      harness.manager.commit(created.review.id, {
+        issue,
+        confirmationToken: confirmation.confirmationToken
+      }),
+      (error) => error.code === "SVN_COMMIT_RESULT_AMBIGUOUS"
+    );
+    const state = JSON.parse(await readFile(stateFile, "utf8"));
+    const persisted = state.reviews.find((review) => review.id === created.review.id);
+    persisted.status = "abandoned";
+    persisted.abandonedAt = new Date().toISOString();
+    persisted.abandonMessage = "旧版界面只能放弃异常草稿。";
+    const logMessage = persisted.message.replace(/\n/g, "\r\n");
+    persisted.commitReceipt.verification.output = `<?xml version="1.0"?><log><logentry revision="121">
+      <author>tester</author><date>${new Date().toISOString()}</date>
+      <paths><path action="M">/src/player.go</path></paths><msg>${logMessage}</msg>
+    </logentry></log>`;
+    await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+
+    const restarted = harness.createManager();
+    await restarted.initialize();
+    const restored = restarted.getReview(created.review.id);
+    assert.equal(restored.status, "committed");
+    assert.equal(restored.commit.revision, "121");
+    assert.equal(restored.commitReceipt.commitResultRecoveryReason, "normalized_log_message");
+    assert.equal(restored.abandonedAt, "");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("双击差异只对当前项目文件调用 TortoiseSVN 启动器", async () => {

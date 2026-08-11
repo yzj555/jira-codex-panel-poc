@@ -79,6 +79,10 @@ const rebindDialog = document.querySelector("#rebind-dialog");
 const rebindBackdrop = document.querySelector("#rebind-backdrop");
 const rebindForm = document.querySelector("#rebind-form");
 const rebindStatus = document.querySelector("#rebind-status");
+const clearBindingDialog = document.querySelector("#clear-binding-dialog");
+const clearBindingBackdrop = document.querySelector("#clear-binding-backdrop");
+const clearBindingStatus = document.querySelector("#clear-binding-status");
+const confirmClearBinding = document.querySelector("#confirm-clear-binding");
 const attachmentPreviewDialog = document.querySelector("#attachment-preview-dialog");
 const attachmentPreviewBackdrop = document.querySelector("#attachment-preview-backdrop");
 const attachmentPreviewBody = document.querySelector("#attachment-preview-body");
@@ -182,6 +186,7 @@ let transitionRequestId = 0;
 let editingTemplateKind = "";
 let templateDrafts = defaultTemplateDrafts();
 let associationPendingIssueKey = "";
+let clearingBindingIssueKey = "";
 let activeSettingsSection = "jira";
 let taskSyncTimer = 0;
 let sheetsSyncTimer = 0;
@@ -1326,6 +1331,7 @@ function openDetails(issue) {
 function updatePrimaryAction(issue) {
   const action = document.querySelector("#primary-action");
   const rebindAction = document.querySelector("#rebind-action");
+  const clearBindingAction = document.querySelector("#clear-binding-action");
   const bindingSummary = document.querySelector("#binding-summary");
   const bindingThreadTitle = document.querySelector("#binding-thread-title");
   const canProcess = issue.status === "todo" || issue.status === "in_progress";
@@ -1334,6 +1340,9 @@ function updatePrimaryAction(issue) {
   bindingThreadTitle.textContent = binding?.threadTitle || "Codex 对话";
   bindingThreadTitle.title = binding?.threadTitle || "";
   rebindAction.hidden = !(canProcess && binding);
+  clearBindingAction.hidden = !binding;
+  clearBindingAction.disabled = Boolean(clearingBindingIssueKey);
+  clearBindingAction.textContent = clearingBindingIssueKey === issue.key ? "正在解除…" : "解除关联";
   const firstMessageFailed = binding?.firstMessageStatus === "failed";
   const firstMessagePending = binding?.firstMessageStatus === "pending";
   action.textContent = !canProcess
@@ -1349,8 +1358,35 @@ function updatePrimaryAction(issue) {
   action.classList.toggle("secondary", !canProcess);
 }
 
+function setClearBindingStatus(message, kind = "error") {
+  clearBindingStatus.className = `settings-status ${kind}`;
+  clearBindingStatus.textContent = message;
+  clearBindingStatus.hidden = !message;
+}
+
+function openClearBindingDialog() {
+  const issue = state.selectedIssue;
+  const binding = issue ? state.bindings[issue.key] : null;
+  if (!issue || !binding) return;
+  document.querySelector("#clear-binding-issue-key").textContent = issue.key;
+  document.querySelector("#clear-binding-thread-title").textContent = binding.threadTitle || binding.threadId || "Codex 对话";
+  setClearBindingStatus("");
+  confirmClearBinding.disabled = false;
+  confirmClearBinding.textContent = "确认解除关联";
+  clearBindingDialog.hidden = false;
+  clearBindingBackdrop.hidden = false;
+  clearBindingDialog.focus();
+}
+
+function closeClearBindingDialog() {
+  clearBindingDialog.hidden = true;
+  clearBindingBackdrop.hidden = true;
+  setClearBindingStatus("");
+}
+
 function closeDetails() {
   if (!attachmentPreviewDialog.hidden) closeAttachmentPreview();
+  closeClearBindingDialog();
   closeRebindDialog();
   transitionRequestId += 1;
   drawer.hidden = true;
@@ -2337,6 +2373,24 @@ document.querySelector("#rebind-action").addEventListener("click", () => {
   if (!state.bindings[state.selectedIssue.key]) return;
   openRebindDialog();
 });
+document.querySelector("#clear-binding-action").addEventListener("click", openClearBindingDialog);
+document.querySelector("#close-clear-binding").addEventListener("click", closeClearBindingDialog);
+document.querySelector("#cancel-clear-binding").addEventListener("click", closeClearBindingDialog);
+clearBindingBackdrop.addEventListener("click", closeClearBindingDialog);
+confirmClearBinding.addEventListener("click", () => {
+  const issue = state.selectedIssue;
+  if (!issue || !state.bindings[issue.key] || clearingBindingIssueKey) return;
+  clearingBindingIssueKey = issue.key;
+  confirmClearBinding.disabled = true;
+  confirmClearBinding.textContent = "正在解除…";
+  setClearBindingStatus("正在同步清除本机保存的会话绑定…", "info");
+  updatePrimaryAction(issue);
+  window.parent.postMessage({
+    source: "jira-codex-panel-poc",
+    type: "clear-task-binding",
+    issueKey: issue.key
+  }, "*");
+});
 document.querySelector("#rebind-thread-id").addEventListener("input", updateRebindThreadPreview);
 document.querySelector("#bind-current-thread").addEventListener("click", () => {
   const currentThread = state.threads.find((thread) => thread.active);
@@ -2458,6 +2512,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!templateEditorDialog.hidden) closeTemplateEditor();
   else if (!attachmentPreviewDialog.hidden) closeAttachmentPreview();
+  else if (!clearBindingDialog.hidden) closeClearBindingDialog();
   else if (!rebindDialog.hidden) closeRebindDialog();
   else if (!settingsDialog.hidden) closeSettings();
   else if (!drawer.hidden) closeDetails();
@@ -2491,7 +2546,14 @@ window.addEventListener("message", (event) => {
   }
   if (message.type === "binding-error" && message.message) {
     const issueKey = String(message.issueKey || associationPendingIssueKey || "").toUpperCase();
-    if (!message.bindingRetained && state.selectedIssue?.key === issueKey) {
+    if (clearingBindingIssueKey && clearingBindingIssueKey === issueKey) {
+      clearingBindingIssueKey = "";
+      confirmClearBinding.disabled = false;
+      confirmClearBinding.textContent = "重试解除关联";
+      if (clearBindingDialog.hidden) showToast(message.message, 5000);
+      else setClearBindingStatus(message.message);
+      if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
+    } else if (!message.bindingRetained && state.selectedIssue?.key === issueKey) {
       openRebindDialog({ preferredMode: "new" });
       setRebindStatus(message.message);
     } else if (!rebindDialog.hidden) setRebindStatus(message.message);
@@ -2501,6 +2563,15 @@ window.addEventListener("message", (event) => {
   if (message.type === "binding-success") {
     associationPendingIssueKey = "";
     if (message.message) showToast(message.message, 3600);
+  }
+  if (message.type === "binding-cleared") {
+    const issueKey = String(message.issueKey || clearingBindingIssueKey || "").toUpperCase();
+    if (issueKey) delete state.bindings[issueKey];
+    clearingBindingIssueKey = "";
+    closeClearBindingDialog();
+    render();
+    if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
+    if (message.message) showToast(message.message, 4200);
   }
   if (message.type === "issue-prompt-sent" && message.issueKey) {
     saveAssociationDraft(message.issueKey, "");

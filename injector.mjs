@@ -12,9 +12,10 @@ const cdpPort = Number(process.env.CODEX_CDP_PORT || 47824);
 const panelUrl = process.env.JIRA_POC_PANEL_URL || "http://127.0.0.1:47823/";
 const bridgeBindingName = "__jiraCodexNodeRequest";
 const bridgeToken = randomUUID();
-const [clientSource, navigationSource, panelHtml, panelStyles, panelAppSource, promptBuilderSource, issueViewsSource] = await Promise.all([
+const [clientSource, navigationSource, applicationCommandsSource, panelHtml, panelStyles, panelAppSource, promptBuilderSource, issueViewsSource] = await Promise.all([
   readFile(join(root, "inject", "client.js"), "utf8"),
   readFile(join(root, "lib", "codex-navigation.mjs"), "utf8"),
+  readFile(join(root, "lib", "codex-application-commands.mjs"), "utf8"),
   readFile(join(root, "public", "index.html"), "utf8"),
   readFile(join(root, "public", "styles.css"), "utf8"),
   readFile(join(root, "public", "app.js"), "utf8"),
@@ -29,6 +30,10 @@ const promptHelpers = promptBuilderSource.replace(
   /\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g,
   ""
 );
+const applicationCommandHelpers = applicationCommandsSource.replace(
+  /\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g,
+  ""
+);
 const clientWithNavigation = clientSource.replace(
   "/*__JIRA_CODEX_NAVIGATION_HELPERS__*/",
   navigationHelpers
@@ -36,11 +41,18 @@ const clientWithNavigation = clientSource.replace(
 if (clientWithNavigation === clientSource) {
   throw new Error("Injector client is missing the Codex navigation helper marker.");
 }
-const compiledClientSource = clientWithNavigation.replace(
+const clientWithApplicationCommands = clientWithNavigation.replace(
+  "/*__JIRA_CODEX_APPLICATION_COMMANDS__*/",
+  applicationCommandHelpers
+);
+if (clientWithApplicationCommands === clientWithNavigation) {
+  throw new Error("Injector client is missing the Codex Application Commands marker.");
+}
+const compiledClientSource = clientWithApplicationCommands.replace(
   "/*__JIRA_CODEX_PROMPT_HELPERS__*/",
   promptHelpers
 );
-if (compiledClientSource === clientWithNavigation) {
+if (compiledClientSource === clientWithApplicationCommands) {
   throw new Error("Injector client is missing the Jira prompt helper marker.");
 }
 const panelDocument = createEmbeddedPanelDocument({

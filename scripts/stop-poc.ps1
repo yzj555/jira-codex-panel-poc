@@ -1,6 +1,18 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $runtimeDirectory = Join-Path $projectRoot '.runtime'
+$processSnapshot = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+
+function Stop-ValidatedProcessTree {
+  param(
+    [int]$TargetProcessId,
+    [object[]]$Snapshot
+  )
+  foreach ($child in @($Snapshot | Where-Object { $_.ParentProcessId -eq $TargetProcessId })) {
+    Stop-ValidatedProcessTree -TargetProcessId $child.ProcessId -Snapshot $Snapshot
+  }
+  Stop-Process -Id $TargetProcessId -ErrorAction SilentlyContinue
+}
 
 foreach ($name in @('server', 'injector')) {
   $pidFile = Join-Path $runtimeDirectory "$name.pid"
@@ -9,7 +21,7 @@ foreach ($name in @('server', 'injector')) {
   $process = Get-CimInstance Win32_Process -Filter "ProcessId = $savedPid" -ErrorAction SilentlyContinue
   $expectedScript = if ($name -eq 'server') { 'server.mjs' } else { 'injector.mjs' }
   if ($process -and $process.CommandLine -like "*$expectedScript*") {
-    Stop-Process -Id $savedPid
+    Stop-ValidatedProcessTree -TargetProcessId ([int]$savedPid) -Snapshot $processSnapshot
     Write-Host "Stopped $name, PID=$savedPid"
   }
   Remove-Item -LiteralPath $pidFile -Force

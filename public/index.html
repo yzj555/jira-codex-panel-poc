@@ -122,6 +122,7 @@
           <strong id="binding-thread-title"></strong>
         </div>
         <div class="issue-action-group">
+          <button id="clear-binding-action" class="clear-binding-action" type="button" hidden>解除关联</button>
           <button id="rebind-action" class="rebind-action" type="button" hidden>更改关联</button>
           <button id="primary-action" class="primary-action" type="button">开始处理</button>
         </div>
@@ -189,6 +190,29 @@
           <button id="confirm-rebind" class="save-button" type="submit">绑定并打开对话</button>
         </footer>
       </form>
+    </section>
+
+    <div id="clear-binding-backdrop" class="binding-reset-backdrop" hidden></div>
+    <section id="clear-binding-dialog" class="binding-reset-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-binding-title" tabindex="-1" hidden>
+      <header class="binding-reset-head">
+        <div>
+          <div class="eyebrow">CODEX CONVERSATION</div>
+          <h2 id="clear-binding-title">解除会话关联</h2>
+        </div>
+        <button id="close-clear-binding" class="icon-button" type="button" aria-label="关闭解除关联确认">×</button>
+      </header>
+      <div class="binding-reset-body">
+        <p>确定清除 <strong id="clear-binding-issue-key"></strong> 与 Codex 对话“<strong id="clear-binding-thread-title"></strong>”的绑定关系吗？</p>
+        <div class="binding-reset-scope">
+          <strong>只清除关联记录</strong>
+          <span>不会删除或归档 Codex 对话，也不会修改 Jira 状态、SVN 记录或补充说明草稿。</span>
+        </div>
+        <div id="clear-binding-status" class="settings-status" role="status" hidden></div>
+      </div>
+      <footer class="binding-reset-actions">
+        <button id="cancel-clear-binding" class="plain-button" type="button">取消</button>
+        <button id="confirm-clear-binding" class="danger-button" type="button">确认解除关联</button>
+      </footer>
     </section>
 
     <div id="settings-backdrop" class="settings-backdrop" hidden></div>

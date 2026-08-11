@@ -1,6 +1,6 @@
 # Jira Codex 任务面板
 
-> 当前版本：`0.26.16`<br>
+> 当前版本：`0.28.6`<br>
 > 运行环境：Windows Codex Desktop + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 
@@ -15,6 +15,7 @@ Jira Codex 任务面板把 Jira 待办、JXL Sheets 和 Codex 对话连接到同
 - Windows 版 Codex（Microsoft Store 包名 `OpenAI.Codex`）。
 - Windows PowerShell 5 或更高版本。
 - Node.js 22 或更高版本。
+- npm（通常随 Node.js 安装）；安装器用它准备官方独立 Codex CLI，供已文档化的 App Server 接口使用。
 - SVN 命令行客户端 1.8 或更高版本，并已通过当前 Windows 用户的 SVN 凭据缓存取得目标仓库权限。
 - TortoiseSVN 为可选项；安装后可以从文件树双击打开原生差异窗口，未安装时仍可使用内置差异预览。
 - Jira Data Center 地址及当前用户的 Personal Access Token（PAT）。
@@ -27,7 +28,7 @@ Jira Codex 任务面板把 Jira 待办、JXL Sheets 和 Codex 对话连接到同
 ~~~powershell
 git clone https://github.com/yzj555/jira-codex-panel-poc.git
 cd jira-codex-panel-poc
-powershell -ExecutionPolicy Bypass -File .\installer\install.ps1
+& .\installer\lifecycle.ps1 -Action Auto
 ~~~
 
 安装完成后：
@@ -38,6 +39,10 @@ powershell -ExecutionPolicy Bypass -File .\installer\install.ps1
 4. 点击“保存并连接”，开始读取当前用户的 Jira 任务。
 
 > 安装器创建的“Codex”快捷方式已经包含面板需要的启动参数。Microsoft Store 原始入口无法被安全修改；从原始入口启动的普通 Codex 不会加载 Jira 面板。
+
+安装器默认执行一次 `npm install -g @openai/codex@latest`（已有独立 CLI 时不会重复安装），并记录真实的 npm vendor 可执行文件路径。该 CLI 只作为本地 App Server 控制面使用，不替换 Microsoft Store 桌面应用；安装失败时面板会明确降级到桌面兼容桥接，不影响 Jira 面板基本启动。若不希望安装，可传入 `-InstallCodexCli:$false`。
+
+Plugin、MCP、本地服务、App Server Adapter 和当前 CDP 兼容层都属于同一个“Jira Codex 助手”。用户不需要分别维护这些组件；统一生命周期入口负责安装、覆盖升级、修复、状态检查和卸载。当前 `0.28.6` 已交付 Application Commands、Runtime 自动选择和统一生命周期；官方 Plugin 与 MCP 在组件清单中保持“可选且未安装”，后续加入真实组件后仍沿用同一入口。
 
 ## 页面说明
 
@@ -140,7 +145,7 @@ Issue 详情包括：
 
 绑定已有会话时，可以选择当前或侧栏会话，也可以直接输入会话 ID。系统只验证并保存关联后跳转，不会自动插入 Jira 消息。若目标会话已关联其他 Issue，必须人工确认后才会转移关联。
 
-新会话已经创建但首条消息发送失败时，会保留会话绑定和补充说明，并提供原地重试，不会自动再创建重复会话。
+“新建并绑定”会在同一个 Codex 桌面命令中完成会话创建和首条消息提交，只有命令成功返回正式会话 ID 后才替换旧关联。新会话返回后直接使用 Codex 已加载的内存状态显示，不会立即读取仍可能为空的 rollout 文件。若操作失败，旧关联和补充说明都会保留，可直接重试。旧版本分步创建且已经失去创建窗口的空会话无法安全补发，面板会立即提示重新执行“更改关联 → 新建并绑定”，不再长时间等待后报错。
 
 ### 已绑定的任务
 
@@ -149,6 +154,8 @@ Issue 详情包括：
 - 如果目标会话已经显示在侧栏，直接点击对应会话。
 - 如果目标会话不在当前侧栏，通过 Codex 原生任务导航按会话 ID 打开。
 - 不会再次发送首条消息。
+
+任务详情同时提供“解除关联”。二次确认后会从本地服务主存储和 Codex 页面兼容缓存中清除该 Issue 的绑定，并移除当前会话中的 Jira 浮窗与临时关联提示；原 Codex 对话不会被删除或归档，Jira 状态、SVN 记录和未发送的补充说明草稿也不会改变。解除后，该任务立即恢复为可重新关联状态；已完成任务也允许修正错误绑定。
 
 ### 会话右侧 Jira 浮窗
 
@@ -179,15 +186,15 @@ Issue 详情包括：
 5. 文件选择区顶部的“本次提交方式”默认选中“人工审核”，Codex 辅助审查需要用户主动选择。选择后，面板把三份审核材料作为原生文件附件，通过 Codex 当前会话启动一个真实审查 turn；不会创建独立任务，也不会操作或清空输入框。该审查可能耗时较长，必须等待审查完成，或主动取消并降级为人工审核，之后才能继续提交。若会话正忙会立即失败，不会排队抢占正在执行的工作。
 6. 审查启动后，Jira 浮窗显示“挂起 · Codex 检查中”。本地服务按 `reviewId + snapshotHash + turnId` 跟踪当前会话日志；用户可以等待结果，也可以随时中断 turn 并降级为人工审核。投递失败、执行失败和超时都提供相同的人工降级入口，晚到结果不会覆盖取消后的人工状态。
 7. Codex 按证据重新拆解需求覆盖，检查实现完整性和准确性、逐文件改动、调用方与被调用方、接口/事件/数据/配置/性能影响、历史 revision、工程合规性、潜在回归和测试证据，并明确列出无法核实的范围。审查仅提供建议，不会自动提交。
-8. 关闭或取消 Codex 审查后，用户基于不可变快照、完整差异和机械检查自行审核需求符合性与影响风险。机械检查或 Codex 结果为“阻断”时不能提交；“有警告”需要额外确认理解风险。
-9. 真正提交前必须人工勾选已完成审核；系统已从当前 Jira 上下文确定单号，不再要求手工重复输入 Issue Key。
-10. 本地服务重新校验 Jira 信息、本地状态、差异和远端更新状态；快照一致时才用 `svn` 命令对显式路径执行 commit。提交结束后还会读取 `svn log --xml`，只有找到唯一匹配的 revision 才显示成功回执。
+8. 关闭或取消 Codex 审查后，用户基于不可变快照、完整差异和机械检查自行审核需求符合性与影响风险。机械检查或 Codex 结果为“阻断”时不能提交；存在警告或跨任务文件重叠时，会合并显示在最终确认文案中。
+9. 真正提交前只需勾选一次合并确认，表示已完成改动审核并理解当前列出的风险，再点击提交按钮；系统已从当前 Jira 上下文确定单号，不再要求手工重复输入 Issue Key。
+10. 本地服务重新校验 Jira 信息、本地状态、差异和远端更新状态；快照一致时才用 `svn` 命令对显式路径执行 commit。提交结束后读取 `svn log --xml`，统一不同平台的换行格式后核对 revision 和提交说明；自动核对仍失败时，可在人工查看 SVN 日志后登记实际 revision，不会再次执行 commit。
 
 当前会话的 Codex 审查 turn 默认只能读取审核材料与项目代码。材料不可读时允许降级使用只读代码检索，以及 `svn info`、`svn status`、`svn diff`、`svn cat`；禁止一切 SVN 写操作和文件修改。无法取得稳定差异或完整上下文时必须阻断，不能猜测通过。
 
 任何文件内容、SVN 属性、选择路径、提交说明、审核模式、Jira 标题/描述/修复版本或仓库状态发生变化，原审核都会失效。所选文件还会记录 SHA-256 内容指纹，因此二进制文件即使 `svn diff` 只返回通用提示也能被复检。
 
-审核记录会原子写入当前用户数据目录的 `svn-reviews.json`。服务或 Codex 重启后会恢复未过期的审核、当前会话 ID、Turn ID、完成结果和已提交历史，并继续轮询运行中的审查；旧材料只会在原绑定会话中按 `reviewId + snapshotHash` 补关联。人工确认产生的一次性令牌只保存在内存中，有效期 90 秒，调用一次后立即作废；服务重启后必须重新人工确认。若 `svn commit` 的命令退出状态、输出或服务重启导致结果不明确，记录会进入“提交结果待核对”，禁止自动重试；用户可以重新读取 SVN 日志确认，或在人工核对仓库后放弃该草稿。
+审核记录会原子写入当前用户数据目录的 `svn-reviews.json`。服务或 Codex 重启后会恢复未过期的审核、当前会话 ID、Turn ID、完成结果和已提交历史，并继续轮询运行中的审查；旧材料只会在原绑定会话中按 `reviewId + snapshotHash` 补关联。人工确认产生的一次性令牌只保存在内存中，有效期 90 秒，调用一次后立即作废；服务重启后必须重新人工确认。若 `svn commit` 的命令退出状态、输出或服务重启导致结果不明确，记录会进入“提交结果待核对”，禁止自动重试；用户可以重新读取 SVN 日志，或人工核实并登记实际 revision。只有确认本次操作没有产生有效提交时，才应放弃草稿。
 
 已取消、已完成、人工审核、失败、超时、阻断或失效的草稿都提供“返回文件选择并重新扫描”。该操作会明确废弃当前面板草稿并重新读取工作副本，不会撤销或修改 Jira、SVN 中已经提交的内容；因此关闭再打开面板时也不会重新恢复旧草稿。已成功提交的记录则通过“新建下一次提交”进入同样的最新状态扫描。
 
@@ -305,9 +312,13 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 - 将运行文件复制到 `%LOCALAPPDATA%\Programs\JiraCodexPanel`。
 - 创建桌面和开始菜单“Codex”快捷方式。
 - 为 Codex 配置本机 CDP 端口和隔离用户目录。
+- 检测并默认安装官方 npm Codex CLI，保存独立 App Server 命令路径；不会尝试直接执行 Store 包内部受保护的 `codex.exe`。
 - 启动仅监听回环地址的面板服务和注入器。
 - 默认不创建登录自启，避免和 Microsoft Store 原入口同时打开两个实例。
 - 升级时保留 Jira PAT、企业微信 Webhook、会话绑定和个人设置。
+- 写入 `install-state.json` 组件清单，并在 Windows“已安装的应用”中只登记一个“Jira Codex 助手”。
+- 创建开始菜单“维护 Jira Codex 助手”入口，统一提供修复、普通卸载和完全清除。
+- “查看安装状态”会实时复检必需组件、快捷方式与卸载注册项；不会只回显安装时的旧快照。
 
 如果普通 Codex 已经运行，启动器会询问是否正常关闭并重新启动；不会强制结束 Codex。正在执行的 Codex 任务可能因重启中断，请在确认前保存当前工作。
 
@@ -315,35 +326,40 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 在新版本项目目录中重新运行 `install.cmd` 或安装命令即可。安装器会停止旧的本地服务、覆盖程序文件并保留当前用户数据。
 
+修复当前安装：
+
+~~~powershell
+& "$env:LOCALAPPDATA\Programs\JiraCodexPanel\installer\lifecycle.ps1" -Action Repair
+~~~
+
 ### 可选：登录自启
 
 ~~~powershell
-powershell -ExecutionPolicy Bypass -File .\installer\install.ps1 `
-  -StartAtLogon:$true
+& .\installer\lifecycle.ps1 -Action Install -StartAtLogon $true
 ~~~
 
 不建议同时使用登录自启和 Microsoft Store 原始 Codex 入口。
 
 ### 卸载
 
-开始菜单中提供“卸载 Jira Codex 任务面板”。默认只删除程序和快捷方式，保留 PAT、绑定与个人配置。
+可以从 Windows“已安装的应用”中的“Jira Codex 助手”卸载，也可以打开开始菜单“维护 Jira Codex 助手”。普通卸载删除所有程序组件、快捷方式和注册项，但保留 PAT、绑定与个人配置。
 
 彻底删除用户数据：
 
 ~~~powershell
-powershell -ExecutionPolicy Bypass -File `
-  "$env:LOCALAPPDATA\Programs\JiraCodexPanel\installer\uninstall.ps1" `
-  -PurgeUserData
+& "$env:LOCALAPPDATA\Programs\JiraCodexPanel\installer\lifecycle.ps1" -Action Purge
 ~~~
 
-卸载不会删除已经创建的 Codex 对话。
+卸载不会删除已经创建的 Codex 对话，也不会卸载可能被其他工具共用的全局 `@openai/codex` CLI。
 
 ## 本地数据与端口
 
 | 内容 | 默认位置或地址 |
 | --- | --- |
 | 安装目录 | `%LOCALAPPDATA%\Programs\JiraCodexPanel` |
+| 安装状态与组件清单 | `%LOCALAPPDATA%\Programs\JiraCodexPanel\install-state.json` |
 | 用户配置 | `%LOCALAPPDATA%\jira-codex-panel-poc\config.json` |
+| Jira 与 Codex 会话绑定 | `%LOCALAPPDATA%\jira-codex-panel-poc\issue-bindings.json` |
 | 隔离 Codex 数据 | `%LOCALAPPDATA%\jira-codex-panel-poc\codex-profile` |
 | Jira 附件缓存 | `%LOCALAPPDATA%\jira-codex-panel-poc\attachments` |
 | SVN 基线与审核状态 | `%LOCALAPPDATA%\jira-codex-panel-poc\svn-baselines.json`、`svn-reviews.json` |
@@ -355,7 +371,7 @@ powershell -ExecutionPolicy Bypass -File `
 
 Jira PAT 和企业微信 Webhook 使用 Windows DPAPI 加密后保存，只能由写入它们的 Windows 用户解密。公开配置接口不会返回这两个密钥。
 
-会话绑定保存在隔离 Codex 配置的本地存储中。每位 Windows 用户和每个隔离配置目录相互独立。
+会话绑定由本地服务持久化，Codex 页面 `localStorage` 只保留兼容缓存。升级后会自动导入旧绑定，并记录绑定所属的 Codex Runtime；每位 Windows 用户仍然彼此独立。
 
 ## 开发运行
 
@@ -382,6 +398,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-poc.ps1
 npm test
 ~~~
 
+只读检测 App Server（不会创建任务或发送消息）：
+
+~~~powershell
+npm run codex:probe
+~~~
+
+验证浏览器 Runtime Adapter、本地 HTTP API、会话读取和 App Server 的完整只读链路可执行 `npm run codex:probe:http`。若开发机只有 Microsoft Store 版 Codex，这两个命令会提示安装独立 CLI。也可以通过 `JIRA_CODEX_APP_SERVER_COMMAND` 指向 npm 包内真实的 `codex.exe`。
+
 测试覆盖 Jira 认证与字段映射、单 Issue 详情、任务分类、Sheets 排序筛选、JXL 权限、附件缓存、需求/Bug 模板迁移、Codex 技能发现与结构化输入、内嵌文档、会话浮窗注入、会话导航、配置加密、自动分析结果推送，以及 SVN 状态解析、审核快照、人工确认和显式路径提交。
 
 ### 截图
@@ -402,9 +426,16 @@ flowchart LR
     Injector["injector.mjs"] <--> Codex
     Injector --> Panel["Codex 内嵌 Jira 面板<br/>srcdoc"]
     Injector --> Float["对话右侧 Jira 浮窗"]
+    Panel --> Commands["Application Commands<br/>业务命令层"]
+    Float --> Commands
+    Commands --> Selector["Runtime Selector<br/>能力与归属路由"]
+    Selector -->|官方能力优先| Server
+    Selector -->|兼容降级 / 原生导航| Legacy["Legacy Desktop Host"]
+    Legacy <--> Codex
     Panel <-->|受限请求桥接| Injector
     Float <-->|受限请求桥接| Injector
     Injector <-->|127.0.0.1| Server["本地服务<br/>server.mjs :47823"]
+    Server <-->|官方 JSON-RPC / stdio| AppServer["独立 Codex App Server<br/>npm CLI"]
     Server --> Jira["Jira Data Center / JXL"]
     Server --> UserData["DPAPI 配置<br/>附件缓存 / 自动任务状态"]
     Server --> Sessions["Codex 本地会话日志"]
@@ -413,6 +444,12 @@ flowchart LR
 ~~~
 
 Codex 的内容安全策略不允许主页面直接加载本机 HTTP iframe，因此安装版会把 HTML、CSS 和脚本组装成 `srcdoc` 内嵌文档。面板请求经注入器使用每次启动生成的临时令牌桥接到本地服务。
+
+当前采用渐进式混合架构。界面只调用 Application Commands，不再直接依赖某一种 Codex Host；Runtime Selector 根据会话归属、附件类型和能力矩阵选择执行通道。Skill、会话读取、项目目录明确的新会话和普通分析 turn 优先使用官方 App Server；App Server 未安装或启动前失败时自动降级到 Legacy Desktop Host。无项目普通会话、非图片附件、原生窗口导航等 App Server 尚不能完整承载的能力仍走 Legacy Host。
+
+只读命令可以在任一 Runtime 失败后安全降级。创建会话和发送消息只会在能够确认请求尚未产生副作用时降级；超时、`CODEX_TURN_START_FAILED` 等结果不确定的错误不会自动重试，以免创建重复会话或发送重复消息。绑定数据会保存 `runtimeOwner`，后续操作优先回到原 Runtime。新版 Codex 项目行中的本地 `path/rootPaths` 会直接提供给 App Server；提取不到时才使用旧工作区桥接。侧栏入口、详情弹窗、会话右侧浮窗及原生窗口导航仍必须运行在 Codex Desktop 页面内，因此 CDP 注入暂时不能完全移除。
+
+App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.com/docs/app-server) 实现；项目内部的 Adapter 和命令层负责隔离实验协议变化。
 
 主要文件：
 
@@ -426,12 +463,18 @@ Codex 的内容安全策略不允许主页面直接加载本机 HTTP iframe，�
 | `inject/client.js` | Codex 侧栏入口、页面切换、会话绑定、右侧 Jira 浮窗、SVN 审核界面、附件挂载和自动 Bug 监控 |
 | `public/` | Jira 工作台界面、详情、Sheets 和消息模板 |
 | `skills/jira-first-turn-analysis/` | 不进入可见消息正文的首轮只读分析边界和输出要求 |
-| `lib/codex-navigation.mjs` | 按会话 ID 调用 Codex 原生导航，发现可用 Skill，并读取、启动或中断当前会话 turn |
+| `lib/codex-navigation.mjs` | Codex Desktop 兼容宿主适配器：导航、Skill 发现，以及读取、启动或中断当前会话 turn |
+| `lib/codex-app-server-client.mjs` | 官方 App Server JSON-RPC 客户端、npm CLI 自动发现、只读能力探测及明确降级状态 |
+| `lib/codex-runtime-gateway.mjs` | 面向面板业务的稳定 Runtime 能力接口，隔离 App Server 协议细节并标记会话归属 |
+| `lib/codex-application-commands.mjs` | Application Commands、浏览器 App Server Adapter、Runtime 能力选择、安全降级和诊断快照 |
+| `lib/issue-binding-store.mjs` | 本地服务端会话绑定主存储，负责旧 `localStorage` 绑定迁移和 Runtime 归属持久化 |
 | `lib/codex-session-reader.mjs` | 从 Codex 会话日志读取项目目录、任务完成结果，并按会话、审核 ID 与快照恢复审查 turn |
 | `lib/automation-manager.mjs` | 自动分析状态、串行跟踪和企业微信推送 |
 | `lib/svn-review-manager.mjs` | SVN 只读检查、审核状态持久化、可选 Codex 审核、人工确认令牌、提交前复检和显式路径 commit |
 | `lib/panel-document.mjs` | 生成不依赖外部 iframe 的内嵌面板文档 |
-| `installer/` | 当前用户安装、快捷方式和安全卸载 |
+| `installer/lifecycle.ps1` | 产品唯一生命周期入口：安装、覆盖升级、修复、状态检查、卸载和完全清除 |
+| `installer/product-manifest.json` | 同一产品下的组件清单；当前兼容层与后续官方 Plugin/MCP 共用一套生命周期 |
+| `installer/install.ps1`、`installer/uninstall.ps1` | 由统一入口调用的底层安装与清理执行器 |
 
 ## 常见问题
 
@@ -455,6 +498,10 @@ Codex 的内容安全策略不允许主页面直接加载本机 HTTP iframe，�
 
 在 Issue 详情中点击“更改关联”。可以绑定当前或侧栏中的已有会话、直接输入会话 ID，也可以新建会话。绑定已有会话不会发送消息。
 
+### App Server 显示不可用
+
+先执行 `npm run codex:probe`。如果错误指向 `WindowsApps`、`EPERM` 或 `EACCES`，说明系统命令解析到了 Store 包内部受保护的程序；重新运行安装器，或手工执行 `npm install -g @openai/codex@latest`。面板不会因此阻塞，只读查询、Skill、会话验证和安全的新会话操作会按能力回退到桌面兼容通道。
+
 ### 没有显示 JXL Sheet
 
 确认当前 Jira 用户拥有对应项目和 Sheet 的访问权限，并确认 Sheet 使用 JQL 范围。非 JQL 范围只能在 JXL 中打开。
@@ -474,11 +521,11 @@ Codex 的内容安全策略不允许主页面直接加载本机 HTTP iframe，�
 - Jira 写操作仅限用户在 Issue 详情或会话浮窗中二次确认的状态流转；没有修改摘要、描述、评论或附件的接口。
 - SVN 是直接写入远端仓库的操作：只有审核未阻断、快照仍一致且用户人工勾选确认后才可执行。Codex 审查可以关闭或取消，但关闭后必须由用户明确确认已完成人工审核；Codex 审查 turn 本身永远不会触发 commit。
 - SVN commit 只接收审核快照中的显式相对路径，不会以整个工作副本 `.` 作为提交目标，也不会保存 SVN 凭据。
-- 提交命令结束不等于成功：必须通过 SVN 日志唯一确认 revision；结果不明确时禁止自动重试，并要求人工核对。
+- 提交命令结束不等于成功：系统优先通过 SVN 日志唯一确认 revision；结果不明确时禁止自动重试。人工核实仓库后可以登记实际 revision，或在确认未提交时放弃草稿。
 - 同一 Jira 可以多次提交，SVN 提交记录与 Jira 状态完全解耦。
 - 状态流转提交前会重新校验 Jira 当前可用 transitions；要求额外字段的操作只能在 Jira 原页面完成。
 - 企业微信推送是另一项可选外部写操作，只有配置 Webhook 并启用自动分析后才会发生。
-- 这是非官方 Codex 注入方案，依赖客户端内部 DOM 和 RPC 资源；Codex 升级后可能需要更新适配。
+- App Server 控制面使用官方文档描述的 JSON-RPC 协议，但官方目前仍将 `app-server` 标为实验能力，因此协议变化被限制在 Runtime Adapter 内；Codex Desktop 当前没有公开 Jira 面板 UI 扩展位，侧栏和浮窗仍属于非官方 CDP 注入，客户端升级后可能需要更新 DOM 或桌面桥接适配。
 - CDP 没有面向其他本机进程的身份认证，只应在可信设备上使用，不要将 `47823` 或 `47824` 转发到局域网或公网。
 - 面板请求桥接限制目标来源、HTTP 方法、请求头和传输大小，它不是通用网络代理。
 - 当前产品配置固定为 Jira Data Center，不提供 Jira Cloud 切换。

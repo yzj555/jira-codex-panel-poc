@@ -15,20 +15,41 @@ import { JiraApiError, createJiraClient } from "./jira-client.mjs";
 import { createJxlClient } from "./jxl-client.mjs";
 import { materializeAttachment } from "./lib/attachment-cache.mjs";
 import { createAutomationManager } from "./lib/automation-manager.mjs";
+import {
+  CodexAppServerError,
+  createCodexAppServerClient
+} from "./lib/codex-app-server-client.mjs";
+import { createCodexRuntimeGateway } from "./lib/codex-runtime-gateway.mjs";
 import { createCodexSessionReader } from "./lib/codex-session-reader.mjs";
+import {
+  createIssueBindingStore,
+  IssueBindingStoreError
+} from "./lib/issue-binding-store.mjs";
 import {
   buildSvnCommitMessage,
   createSvnReviewManager,
   SvnReviewError
 } from "./lib/svn-review-manager.mjs";
 
-const VERSION = "0.26.16";
+const VERSION = "0.28.6";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(root, "public");
 const configStore = createConfigStore();
+const codexAppServer = createCodexAppServerClient({
+  clientInfo: {
+    name: "jira_codex_panel",
+    title: "Jira Codex Panel",
+    version: VERSION
+  }
+});
+const codexRuntime = createCodexRuntimeGateway({ appServer: codexAppServer });
 const attachmentCacheRoot = join(dirname(configStore.configFile), "attachments");
+const issueBindings = createIssueBindingStore({
+  file: process.env.JIRA_CODEX_BINDINGS_FILE
+    || join(dirname(configStore.configFile), "issue-bindings.json")
+});
 const jira = createJiraClient();
 const boardIssueTypeCache = new Map();
 const collaboratorFieldCache = new Map();
@@ -50,6 +71,31 @@ const svnReviews = createSvnReviewManager({
   reviewArtifactsRoot: process.env.JIRA_CODEX_SVN_REVIEW_ARTIFACTS_DIR
     || join(attachmentCacheRoot, "svn-reviews")
 });
+
+function normalizeAppServerSkills(result) {
+  const groups = [result?.data, result?.result?.data, result?.skills, result?.result?.skills]
+    .find((value) => Array.isArray(value)) || [];
+  const unique = new Map();
+  for (const group of groups) {
+    const skills = Array.isArray(group?.skills) ? group.skills : group?.name ? [group] : [];
+    for (const skill of skills) {
+      const name = String(skill?.name || "").trim();
+      const path = String(skill?.path || "").trim();
+      if (!name || !path || unique.has(path.toLowerCase())) continue;
+      unique.set(path.toLowerCase(), {
+        name,
+        path,
+        scope: String(skill?.scope || ""),
+        enabled: skill?.enabled !== false,
+        description: String(skill?.description || skill?.shortDescription || ""),
+        shortDescription: String(skill?.shortDescription || skill?.interface?.short_description || "")
+      });
+    }
+  }
+  return Array.from(unique.values()).sort((left, right) => (
+    left.name.localeCompare(right.name) || left.path.localeCompare(right.path)
+  ));
+}
 
 function boardCollaboratorJqlField(boardSources) {
   const fieldId = String(boardSources?.collaboratorFieldId || "").trim();
@@ -245,13 +291,13 @@ function json(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
-async function readJson(request) {
+async function readJson(request, { maxBytes = 64 * 1024 } = {}) {
   const chunks = [];
   let bytes = 0;
   for await (const chunk of request) {
     bytes += chunk.length;
-    if (bytes > 64 * 1024) {
-      throw new ConfigurationError("配置请求内容过大。", { code: "REQUEST_TOO_LARGE", statusCode: 413 });
+    if (bytes > maxBytes) {
+      throw new ConfigurationError("请求内容过大。", { code: "REQUEST_TOO_LARGE", statusCode: 413 });
     }
     chunks.push(chunk);
   }
@@ -277,14 +323,139 @@ async function handleApi(request, response, url) {
     return json(response, 200, { config: await configStore.getPublic() });
   }
 
+  if (request.method === "GET" && url.pathname === "/api/bindings") {
+    return json(response, 200, await issueBindings.snapshot());
+  }
+
+  if (request.method === "PUT" && url.pathname === "/api/bindings/import") {
+    const input = await readJson(request, { maxBytes: 1024 * 1024 });
+    return json(response, 200, await issueBindings.importBindings(input.bindings));
+  }
+
+  if (request.method === "PUT" && url.pathname === "/api/bindings/mutations") {
+    const input = await readJson(request, { maxBytes: 1024 * 1024 });
+    return json(response, 200, await issueBindings.applyMutations(input));
+  }
+
   if (request.method === "GET" && url.pathname === "/api/codex/runtime") {
     return json(response, 200, {
       analysisSkill: {
         name: "jira-first-turn-analysis",
         path: join(root, "skills", "jira-first-turn-analysis", "SKILL.md"),
         scope: "app"
-      }
+      },
+      runtime: codexRuntime.snapshot(),
+      appServer: codexAppServer.snapshot()
     });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/codex/runtime/capabilities") {
+    return json(response, 200, codexRuntime.getCapabilities());
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/codex/app-server/status") {
+    return json(response, 200, { appServer: codexAppServer.snapshot() });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/codex/app-server/probe") {
+    const result = await codexRuntime.probe();
+    return json(response, 200, {
+      runtimeOwner: result.runtimeOwner,
+      appServer: result
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/codex/app-server/skills") {
+    const cwds = url.searchParams.getAll("cwd")
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    const result = await codexRuntime.listSkills({
+      cwds: cwds.length ? cwds : undefined,
+      forceReload: url.searchParams.get("forceReload") === "true"
+    });
+    return json(response, 200, {
+      skills: normalizeAppServerSkills(result),
+      appServer: codexAppServer.snapshot()
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/codex/app-server/threads") {
+    const requestedLimit = Number(url.searchParams.get("limit") || 50);
+    const result = await codexRuntime.listThreads({
+      cursor: url.searchParams.get("cursor") || undefined,
+      limit: Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 50,
+      archived: url.searchParams.get("archived") === "true",
+      searchTerm: url.searchParams.get("searchTerm") || undefined,
+      cwd: url.searchParams.get("cwd") || undefined
+    });
+    return json(response, 200, {
+      result: { ...result, runtimeOwner: codexRuntime.id },
+      appServer: codexAppServer.snapshot()
+    });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/codex/app-server/analysis") {
+    const input = await readJson(request);
+    const analysisOptions = {
+      message: input.message,
+      title: input.title,
+      cwd: input.cwd,
+      model: input.model,
+      effort: input.effort,
+      skills: input.skills,
+      attachments: input.attachments,
+      requireAllAttachments: true,
+      desktopHandoff: input.desktopHandoff === true
+    };
+    let result;
+    if (analysisOptions.desktopHandoff) {
+      const handoffClient = createCodexAppServerClient({
+        command: codexAppServer.snapshot().command,
+        clientInfo: {
+          name: "jira_codex_panel_handoff",
+          title: "Jira Codex Panel Desktop Handoff",
+          version: VERSION
+        }
+      });
+      try {
+        result = {
+          ...await handoffClient.startReadOnlyAnalysis(analysisOptions),
+          runtimeOwner: codexRuntime.id
+        };
+      } finally {
+        await handoffClient.close();
+      }
+    } else {
+      result = await codexRuntime.startReadOnlyAnalysis(analysisOptions);
+    }
+    return json(response, 200, { result, appServer: codexAppServer.snapshot() });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/codex/app-server/turns") {
+    const input = await readJson(request);
+    const result = await codexRuntime.startReadOnlyTurn(input.threadId, {
+      message: input.message,
+      cwd: input.cwd,
+      model: input.model,
+      effort: input.effort,
+      skills: input.skills,
+      attachments: input.attachments,
+      requireAllAttachments: true
+    });
+    return json(response, 200, { result, appServer: codexAppServer.snapshot() });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/codex/app-server/thread-state") {
+    const input = await readJson(request);
+    const result = await codexRuntime.readThread(input.threadId, { includeTurns: true });
+    return json(response, 200, { result, appServer: codexAppServer.snapshot() });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/codex/app-server/interrupt") {
+    const input = await readJson(request);
+    const result = await codexRuntime.interruptTurn(input.threadId, input.turnId);
+    return json(response, 200, { result, appServer: codexAppServer.snapshot() });
   }
 
   if (request.method === "PUT" && url.pathname === "/api/config") {
@@ -558,6 +729,19 @@ async function handleApi(request, response, url) {
     });
   }
 
+  const svnConfirmCommittedMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/confirm-committed$/i)
+    : null;
+  if (svnConfirmCommittedMatch) {
+    const input = await readJson(request);
+    return json(response, 200, {
+      review: await svnReviews.confirmCommitted(svnConfirmCommittedMatch[1], {
+        acknowledged: input.acknowledged,
+        revision: input.revision
+      })
+    });
+  }
+
   const svnAbandonMatch = request.method === "POST"
     ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/abandon$/i)
     : null;
@@ -736,8 +920,10 @@ const server = createServer((request, response) => {
   handleRequest(request, response).catch((error) => {
     const known = error instanceof ConfigurationError
       || error instanceof JiraApiError
-      || error instanceof SvnReviewError;
-    const statusCode = known ? error.statusCode : 500;
+      || error instanceof SvnReviewError
+      || error instanceof IssueBindingStoreError
+      || error instanceof CodexAppServerError;
+    const statusCode = known ? error.statusCode || (error instanceof CodexAppServerError ? 503 : 500) : 500;
     console.error(`[jira-poc] ${request.method} ${request.url}: ${error.code || error.name}: ${error.message}`);
     if (response.headersSent) return response.destroy(error);
     json(response, statusCode, {
@@ -760,6 +946,7 @@ server.listen(port, host, () => {
 
 async function shutdown() {
   automation.stop();
+  await codexRuntime.close();
   await svnReviews.stop();
   server.close(() => process.exit(0));
 }

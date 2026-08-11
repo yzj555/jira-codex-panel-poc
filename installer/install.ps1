@@ -1,9 +1,13 @@
 ﻿[CmdletBinding(SupportsShouldProcess = $true)]
 param(
   [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Programs\JiraCodexPanel'),
+  [ValidateSet('Auto', 'Install', 'Update', 'Repair')]
+  [string]$Operation = 'Auto',
   [bool]$StartAtLogon = $false,
   [bool]$DesktopShortcut = $true,
   [bool]$LaunchAfterInstall = $true,
+  [bool]$InstallCodexCli = $true,
+  [string]$UninstallRegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JiraCodexAssistant',
   [string]$StartMenuDirectory = '',
   [string]$DesktopDirectory = '',
   [string]$StartupDirectory = ''
@@ -11,6 +15,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $productId = 'jira-codex-panel'
+$productName = 'Jira Codex 助手'
+$stateSchemaVersion = 2
+$uninstallRegistryPath = $UninstallRegistryPath
 $sourceRoot = Split-Path -Parent $PSScriptRoot
 $userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc'
 
@@ -65,7 +72,19 @@ function New-Shortcut {
 function Stop-TrackedRuntimeProcesses {
   param([string]$ApplicationRoot)
 
+  function Stop-ValidatedProcessTree {
+    param(
+      [int]$TargetProcessId,
+      [object[]]$ProcessSnapshot
+    )
+    foreach ($child in @($ProcessSnapshot | Where-Object { $_.ParentProcessId -eq $TargetProcessId })) {
+      Stop-ValidatedProcessTree -TargetProcessId $child.ProcessId -ProcessSnapshot $ProcessSnapshot
+    }
+    Stop-Process -Id $TargetProcessId -ErrorAction SilentlyContinue
+  }
+
   $runtimeDirectory = Join-Path $ApplicationRoot '.runtime'
+  $processSnapshot = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
   foreach ($processName in @('injector', 'server')) {
     $pidFile = Join-Path $runtimeDirectory "$processName.pid"
     if (-not (Test-Path -LiteralPath $pidFile)) { continue }
@@ -75,7 +94,7 @@ function Stop-TrackedRuntimeProcesses {
     if ($process -and $process.CommandLine -and
         $process.CommandLine.IndexOf($ApplicationRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
         $process.CommandLine.IndexOf($expectedScript, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-      Stop-Process -Id $savedPid -ErrorAction SilentlyContinue
+      Stop-ValidatedProcessTree -TargetProcessId ([int]$savedPid) -ProcessSnapshot $processSnapshot
       Write-Host "已停止旧的 $processName 进程，PID=$savedPid"
     }
     Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
@@ -98,8 +117,97 @@ function Remove-ManagedShortcut {
   }
 }
 
+function Remove-LegacyLifecycleShortcut {
+  param(
+    [string]$Path,
+    [string]$ExpectedRoot
+  )
+
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  try {
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($Path)
+    $arguments = [string]$shortcut.Arguments
+    if ($arguments.IndexOf($ExpectedRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        ($arguments.IndexOf('uninstall.ps1', [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+         $arguments.IndexOf('lifecycle.ps1', [System.StringComparison]::OrdinalIgnoreCase) -ge 0)) {
+      Remove-Item -LiteralPath $Path -Force
+    }
+  } catch {}
+}
+
+function Register-ProductUninstallEntry {
+  param(
+    [string]$RegistryPath,
+    [string]$DisplayName,
+    [string]$Version,
+    [string]$ApplicationRoot,
+    [string]$PowerShellPath,
+    [string]$LifecyclePath,
+    [string]$IconPath
+  )
+
+  $uninstallCommand = "`"$PowerShellPath`" -NoProfile -ExecutionPolicy Bypass -File `"$LifecyclePath`" -Action Uninstall -InstallRoot `"$ApplicationRoot`" -UninstallRegistryPath `"$RegistryPath`""
+  $quietUninstallCommand = "$uninstallCommand -Force"
+  $modifyCommand = "`"$PowerShellPath`" -NoProfile -ExecutionPolicy Bypass -File `"$LifecyclePath`" -Action Menu -InstallRoot `"$ApplicationRoot`" -UninstallRegistryPath `"$RegistryPath`""
+  New-Item -Path $RegistryPath -Force | Out-Null
+  $values = [ordered]@{
+    DisplayName = $DisplayName
+    DisplayVersion = $Version
+    Publisher = 'Jira Codex Assistant'
+    InstallLocation = $ApplicationRoot
+    DisplayIcon = $IconPath
+    UninstallString = $uninstallCommand
+    QuietUninstallString = $quietUninstallCommand
+    ModifyPath = $modifyCommand
+    InstallDate = (Get-Date).ToString('yyyyMMdd')
+    NoModify = 0
+    NoRepair = 0
+  }
+  foreach ($entry in $values.GetEnumerator()) {
+    New-ItemProperty -Path $RegistryPath -Name $entry.Key -Value $entry.Value -PropertyType $(
+      if ($entry.Value -is [int]) { 'DWord' } else { 'String' }
+    ) -Force | Out-Null
+  }
+}
+
+function Find-CodexCliExecutable {
+  param([System.Management.Automation.CommandInfo]$NpmCommand)
+
+  $roots = @()
+  if ($NpmCommand) {
+    try {
+      $npmRoot = @(& $NpmCommand.Source root -g 2>$null) | Select-Object -Last 1
+      if ($npmRoot) { $roots += [string]$npmRoot }
+    } catch {}
+  }
+  if ($env:npm_config_prefix) { $roots += (Join-Path $env:npm_config_prefix 'node_modules') }
+  if ($env:APPDATA) { $roots += (Join-Path $env:APPDATA 'npm\node_modules') }
+  foreach ($entry in ($env:Path -split ';')) {
+    if (-not $entry) { continue }
+    $roots += (Join-Path $entry 'node_modules')
+    if ((Split-Path -Leaf $entry) -eq 'node_modules') { $roots += $entry }
+  }
+
+  foreach ($root in @($roots | Where-Object { $_ } | Select-Object -Unique)) {
+    foreach ($relativePath in @(
+      '@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe',
+      '@openai\codex-win32-arm64\vendor\aarch64-pc-windows-msvc\bin\codex.exe',
+      '@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe',
+      '@openai\codex\node_modules\@openai\codex-win32-arm64\vendor\aarch64-pc-windows-msvc\bin\codex.exe'
+    )) {
+      $candidate = Join-Path $root $relativePath
+      if (Test-Path -LiteralPath $candidate) { return (Get-FullPath $candidate) }
+    }
+  }
+  return ''
+}
+
 if ($env:OS -ne 'Windows_NT') {
   throw '此安装器仅支持 Windows。'
+}
+if ($uninstallRegistryPath -notmatch '^HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\[A-Za-z0-9._-]+$') {
+  throw "卸载注册表路径不安全：$uninstallRegistryPath"
 }
 
 $InstallRoot = Assert-SafeInstallRoot $InstallRoot
@@ -112,6 +220,8 @@ $nodeVersion = [version]$nodeVersionText
 if ($nodeVersion.Major -lt 22) {
   throw "Node.js 版本过低：$nodeVersionText；需要 22 或更高版本。"
 }
+$npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
+if (-not $npmCommand) { $npmCommand = Get-Command npm -ErrorAction SilentlyContinue }
 
 $codexPackage = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $codexPackage) {
@@ -125,6 +235,16 @@ foreach ($relativePath in @($requiredFiles + $requiredDirectories)) {
     throw "安装源缺少必要文件：$relativePath"
   }
 }
+$productManifestPath = Join-Path $sourceRoot 'installer\product-manifest.json'
+$productManifest = Get-Content -Raw -LiteralPath $productManifestPath | ConvertFrom-Json
+if ($productManifest.productId -ne $productId) {
+  throw "产品清单标识不匹配：$productManifestPath"
+}
+foreach ($component in @($productManifest.components | Where-Object { $_.required })) {
+  if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot ([string]$component.path)))) {
+    throw "安装源缺少必要组件 $($component.id)：$($component.path)"
+  }
+}
 
 if (-not $StartMenuDirectory) { $StartMenuDirectory = [Environment]::GetFolderPath('Programs') }
 if (-not $DesktopDirectory) { $DesktopDirectory = [Environment]::GetFolderPath('DesktopDirectory') }
@@ -135,16 +255,47 @@ $desktopShortcutPath = Join-Path $DesktopDirectory 'Codex.lnk'
 $legacyStartMenuShortcut = Join-Path $StartMenuDirectory 'Codex（Jira 任务）.lnk'
 $legacyDesktopShortcut = Join-Path $DesktopDirectory 'Codex（Jira 任务）.lnk'
 $startupShortcut = Join-Path $StartupDirectory 'Jira Codex Panel Bootstrap.lnk'
-$uninstallShortcut = Join-Path $StartMenuDirectory '卸载 Jira Codex 任务面板.lnk'
+$maintenanceShortcut = Join-Path $StartMenuDirectory '维护 Jira Codex 助手.lnk'
+$legacyUninstallShortcut = Join-Path $StartMenuDirectory '卸载 Jira Codex 任务面板.lnk'
 $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $iconPath = Join-Path $codexPackage.InstallLocation 'app\ChatGPT.exe'
 if (-not (Test-Path -LiteralPath $iconPath)) { $iconPath = $powerShellPath }
 
-$action = if (Test-Path -LiteralPath (Join-Path $InstallRoot 'install-metadata.json')) { '升级' } else { '安装' }
-if (-not $PSCmdlet.ShouldProcess($InstallRoot, "$action Jira Codex 任务面板")) {
+$existingStatePath = @(
+  (Join-Path $InstallRoot 'install-state.json'),
+  (Join-Path $InstallRoot 'install-metadata.json')
+) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+$existingState = if ($existingStatePath) {
+  try { Get-Content -Raw -LiteralPath $existingStatePath | ConvertFrom-Json } catch { $null }
+} else { $null }
+if ($Operation -eq 'Auto') { $Operation = if ($existingState) { 'Update' } else { 'Install' } }
+$action = switch ($Operation) {
+  'Repair' { '修复' }
+  'Update' { '升级' }
+  default { '安装' }
+}
+if (-not $PSCmdlet.ShouldProcess($InstallRoot, "$action $productName")) {
   Write-Host "[WhatIf] 将把程序安装到：$InstallRoot"
   Write-Host "[WhatIf] 登录自启：$StartAtLogon；桌面快捷方式：$DesktopShortcut；安装后启动：$LaunchAfterInstall"
+  Write-Host "[WhatIf] 独立 Codex CLI：$InstallCodexCli（用于官方 App Server；失败时仍保留桌面兼容桥接）"
   return
+}
+
+$codexCliPath = Find-CodexCliExecutable -NpmCommand $npmCommand
+if (-not $codexCliPath -and $InstallCodexCli) {
+  if (-not $npmCommand) {
+    Write-Warning '未找到 npm，无法安装独立 Codex CLI；面板将继续使用桌面兼容桥接。'
+  } else {
+    Write-Host '正在安装当前用户 Node 环境的官方 Codex CLI，用于 App Server 稳定接口……'
+    & $npmCommand.Source install -g '@openai/codex@latest'
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "Codex CLI 安装失败（退出码 $LASTEXITCODE）；面板仍可通过桌面兼容桥接运行。"
+    }
+    $codexCliPath = Find-CodexCliExecutable -NpmCommand $npmCommand
+    if (-not $codexCliPath) {
+      Write-Warning '没有找到 npm 版 Codex CLI 的独立可执行文件；App Server 将保持降级状态。'
+    }
+  }
 }
 
 Stop-TrackedRuntimeProcesses -ApplicationRoot $InstallRoot
@@ -153,23 +304,50 @@ if ((Get-FullPath $sourceRoot) -ne (Get-FullPath $InstallRoot)) {
 }
 
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
-foreach ($file in $requiredFiles) {
-  Copy-Item -LiteralPath (Join-Path $sourceRoot $file) -Destination (Join-Path $InstallRoot $file) -Force
-}
-foreach ($directory in $requiredDirectories) {
-  $destinationDirectory = Join-Path $InstallRoot $directory
-  New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
-  Copy-Item -Path (Join-Path (Join-Path $sourceRoot $directory) '*') -Destination $destinationDirectory -Recurse -Force
+$sourceIsInstallRoot = (Get-FullPath $sourceRoot).TrimEnd('\') -eq (Get-FullPath $InstallRoot).TrimEnd('\')
+if (-not $sourceIsInstallRoot) {
+  foreach ($file in $requiredFiles) {
+    Copy-Item -LiteralPath (Join-Path $sourceRoot $file) -Destination (Join-Path $InstallRoot $file) -Force
+  }
+  foreach ($directory in $requiredDirectories) {
+    $destinationDirectory = Join-Path $InstallRoot $directory
+    New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+    Copy-Item -Path (Join-Path (Join-Path $sourceRoot $directory) '*') -Destination $destinationDirectory -Recurse -Force
+  }
+  foreach ($component in @($productManifest.components)) {
+    $relativePath = [string]$component.path
+    if (-not $relativePath) { continue }
+    $sourceComponent = Get-FullPath (Join-Path $sourceRoot $relativePath)
+    $destinationComponent = Get-FullPath (Join-Path $InstallRoot $relativePath)
+    $sourceBoundary = (Get-FullPath $sourceRoot).TrimEnd('\') + '\'
+    $destinationBoundary = (Get-FullPath $InstallRoot).TrimEnd('\') + '\'
+    if (-not $sourceComponent.StartsWith($sourceBoundary, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not $destinationComponent.StartsWith($destinationBoundary, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "组件路径超出产品目录，已拒绝复制：$relativePath"
+    }
+    if (-not (Test-Path -LiteralPath $sourceComponent)) { continue }
+    $sourceItem = Get-Item -LiteralPath $sourceComponent
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destinationComponent) -Force | Out-Null
+    if ($sourceItem.PSIsContainer) {
+      New-Item -ItemType Directory -Path $destinationComponent -Force | Out-Null
+      foreach ($child in @(Get-ChildItem -LiteralPath $sourceComponent -Force)) {
+        Copy-Item -LiteralPath $child.FullName -Destination $destinationComponent -Recurse -Force
+      }
+    } else {
+      Copy-Item -LiteralPath $sourceComponent -Destination $destinationComponent -Force
+    }
+  }
 }
 
 $launcherPath = Join-Path $InstallRoot 'scripts\launch-codex-jira.ps1'
-$uninstallerPath = Join-Path $InstallRoot 'installer\uninstall.ps1'
+$lifecyclePath = Join-Path $InstallRoot 'installer\lifecycle.ps1'
 $launcherArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPath`""
 $backgroundArguments = "$launcherArguments -Background"
-$uninstallArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$uninstallerPath`" -InstallRoot `"$InstallRoot`""
+$maintenanceArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$lifecyclePath`" -Action Menu -InstallRoot `"$InstallRoot`" -UninstallRegistryPath `"$uninstallRegistryPath`""
 
 New-Shortcut -Path $startMenuShortcut -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动带 Jira 任务面板的 Codex' -IconLocation $iconPath
-New-Shortcut -Path $uninstallShortcut -TargetPath $powerShellPath -Arguments $uninstallArguments -WorkingDirectory $env:TEMP -Description '卸载 Jira Codex 任务面板' -IconLocation $iconPath
+New-Shortcut -Path $maintenanceShortcut -TargetPath $powerShellPath -Arguments $maintenanceArguments -WorkingDirectory $InstallRoot -Description '修复或卸载 Jira Codex 助手' -IconLocation $iconPath
+Remove-LegacyLifecycleShortcut -Path $legacyUninstallShortcut -ExpectedRoot $InstallRoot
 Remove-ManagedShortcut -Path $legacyStartMenuShortcut -ExpectedRoot $InstallRoot
 
 if ($DesktopShortcut) {
@@ -187,17 +365,63 @@ if ($StartAtLogon) {
 
 New-Item -ItemType Directory -Path $userDataRoot -Force | Out-Null
 $packageJson = Get-Content -Raw -LiteralPath (Join-Path $InstallRoot 'package.json') | ConvertFrom-Json
+$installedComponents = @($productManifest.components | ForEach-Object {
+  $componentPath = Join-Path $InstallRoot ([string]$_.path)
+  [ordered]@{
+    id = [string]$_.id
+    required = [bool]$_.required
+    installed = Test-Path -LiteralPath $componentPath
+    path = [string]$_.path
+  }
+})
+$installedAt = if ($existingState -and $existingState.installedAt) {
+  [string]$existingState.installedAt
+} else {
+  (Get-Date).ToString('o')
+}
+$trackedShortcuts = @($startMenuShortcut, $maintenanceShortcut) `
+  + $(if ($DesktopShortcut) { @($desktopShortcutPath) } else { @() }) `
+  + $(if ($StartAtLogon) { @($startupShortcut) } else { @() })
 $metadata = [ordered]@{
+  schemaVersion = $stateSchemaVersion
   productId = $productId
+  productName = $productName
   version = $packageJson.version
-  installedAt = (Get-Date).ToString('o')
+  installedAt = $installedAt
+  updatedAt = (Get-Date).ToString('o')
+  lastOperation = $Operation.ToLowerInvariant()
   sourceRoot = $sourceRoot
   installRoot = $InstallRoot
   userDataRoot = $userDataRoot
+  codexAppServerCommand = $codexCliPath
+  codexAppServerInstallAttempted = $InstallCodexCli
   startAtLogon = $StartAtLogon
-  shortcuts = @($startMenuShortcut, $uninstallShortcut) + $(if ($DesktopShortcut) { @($desktopShortcutPath) } else { @() }) + $(if ($StartAtLogon) { @($startupShortcut) } else { @() })
+  desktopShortcut = $DesktopShortcut
+  startMenuDirectory = $StartMenuDirectory
+  desktopDirectory = $DesktopDirectory
+  startupDirectory = $StartupDirectory
+  lifecycleEntry = $lifecyclePath
+  uninstallRegistryPath = $uninstallRegistryPath
+  shortcuts = $trackedShortcuts
+  components = $installedComponents
+  ownedResources = [ordered]@{
+    shortcuts = $trackedShortcuts
+    registryKeys = @($uninstallRegistryPath)
+    programRoot = $InstallRoot
+    userDataRoot = $userDataRoot
+  }
 }
-$metadata | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $InstallRoot 'install-metadata.json') -Encoding UTF8
+$metadataJson = $metadata | ConvertTo-Json -Depth 8
+$metadataJson | Set-Content -LiteralPath (Join-Path $InstallRoot 'install-state.json') -Encoding UTF8
+$metadataJson | Set-Content -LiteralPath (Join-Path $InstallRoot 'install-metadata.json') -Encoding UTF8
+Register-ProductUninstallEntry `
+  -RegistryPath $uninstallRegistryPath `
+  -DisplayName $productName `
+  -Version $packageJson.version `
+  -ApplicationRoot $InstallRoot `
+  -PowerShellPath $powerShellPath `
+  -LifecyclePath $lifecyclePath `
+  -IconPath $iconPath
 
 $cdpReady = $false
 try {
@@ -211,9 +435,16 @@ $ordinaryCodexRunning = -not $cdpReady -and [bool](Get-CimInstance Win32_Process
 Write-Host ''
 Write-Host "${action}完成：$InstallRoot"
 Write-Host "开始菜单：$startMenuShortcut"
+Write-Host "统一维护入口：$maintenanceShortcut"
+Write-Host "Windows 已安装的应用：$productName"
 if ($DesktopShortcut) { Write-Host "桌面快捷方式：$desktopShortcutPath" }
 if ($StartAtLogon) { Write-Host '登录自启：已启用。' } else { Write-Host '登录自启：未启用，避免与商店版原入口同时打开两个实例。' }
 Write-Host "Jira Token：未写入安装目录，首次打开面板时由当前用户配置。"
+if ($codexCliPath) {
+  Write-Host "Codex App Server：已配置独立 CLI（$codexCliPath）。"
+} else {
+  Write-Warning 'Codex App Server：独立 CLI 不可用，当前版本会自动降级到桌面兼容桥接。'
+}
 if ($ordinaryCodexRunning) {
   Write-Warning '当前已有不带参数的 Codex 正在运行。首次启动快捷方式时会询问是否正常重启 Codex。'
 }

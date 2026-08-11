@@ -294,6 +294,9 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 .binding-summary { display: grid; min-width: 0; gap: 2px; color: #90969e; font-size: 9px; }
 .binding-summary strong { overflow: hidden; max-width: 320px; color: #505762; font-size: 11px; font-weight: 650; white-space: nowrap; text-overflow: ellipsis; }
 .issue-action-group { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.clear-binding-action { padding: 9px 13px; border: 1px solid #efcccc; border-radius: 9px; background: #fff7f7; color: #ad4444; font-size: 11px; font-weight: 650; cursor: pointer; }
+.clear-binding-action:hover { border-color: #dcaaaa; background: #fff1f1; }
+.clear-binding-action:disabled { opacity: .55; cursor: wait; }
 .rebind-action { padding: 9px 13px; border: 1px solid #cfd5dc; border-radius: 9px; background: #fff; color: #535d69; font-size: 11px; font-weight: 650; cursor: pointer; }
 .rebind-action:hover { border-color: #aeb8c4; background: #f7f8fa; }
 .primary-action { min-width: 210px; padding: 10px 14px; border: 0; border-radius: 9px; background: #202124; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -344,6 +347,18 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 .rebind-supplement-field { margin-top: 6px; }
 .rebind-supplement-field textarea { min-height: 96px; background: #fff; }
 .rebind-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 15px; border-top: 1px solid #eceef0; }
+
+.binding-reset-backdrop { position: fixed; inset: 0; z-index: 82; background: rgba(25, 28, 32, .38); backdrop-filter: blur(2px); }
+.binding-reset-dialog { position: fixed; z-index: 83; top: 50%; left: 50%; width: min(470px, calc(100vw - 36px)); transform: translate(-50%, -50%); border: 1px solid #dfe2e5; border-radius: 14px; outline: 0; background: #fff; box-shadow: 0 20px 60px rgba(24, 28, 33, .26); overflow: hidden; }
+.binding-reset-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 0; }
+.binding-reset-head h2 { margin: 0; font-size: 19px; letter-spacing: -.02em; }
+.binding-reset-body { display: grid; gap: 14px; padding: 17px 20px 20px; }
+.binding-reset-body > p { margin: 0; color: #535c67; font-size: 12px; line-height: 1.7; }
+.binding-reset-body > p strong { color: #25292e; }
+.binding-reset-scope { display: grid; gap: 5px; padding: 12px; border: 1px solid #efcccc; border-radius: 9px; background: #fff7f7; }
+.binding-reset-scope strong { color: #ad4444; font-size: 11px; }
+.binding-reset-scope span { color: #7a6262; font-size: 10px; line-height: 1.55; }
+.binding-reset-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 20px; border-top: 1px solid #eceef0; background: #fafbfc; }
 
 .settings-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(25, 28, 32, .38); backdrop-filter: blur(2px); }
 .settings-dialog { position: fixed; z-index: 100; top: 50%; left: 50%; display: grid; width: min(820px, calc(100vw - 48px)); height: min(760px, calc(100vh - 40px)); min-height: 520px; transform: translate(-50%, -50%); border: 1px solid #dfe2e5; border-radius: 14px; background: #fff; box-shadow: 0 24px 80px rgba(24, 28, 33, .22); overflow: hidden; }
@@ -399,6 +414,7 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 .plain-button, .danger-button, .save-button { padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 650; cursor: pointer; }
 .plain-button { border: 1px solid #dfe2e5; background: #fff; }
 .danger-button { border: 1px solid #efcccc; background: #fff7f7; color: #ad4444; }
+.danger-button:disabled { opacity: .55; cursor: wait; }
 .save-button { border: 1px solid #202124; background: #202124; color: #fff; }
 .save-button:disabled { opacity: .55; cursor: wait; }
 
@@ -487,6 +503,8 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 :root[data-theme] .sheet-reset-table:hover,
 :root[data-theme] .rebind-action:hover,
 :root[data-theme] .plain-button:hover { border-color: var(--panel-border-strong); background: var(--panel-hover); }
+:root[data-theme] .clear-binding-action { border-color: var(--panel-error); background: var(--panel-error-soft); color: var(--panel-error); }
+:root[data-theme] .clear-binding-action:hover { filter: brightness(.96); }
 
 :root[data-theme] .page-tabs { background: var(--panel-muted); }
 :root[data-theme] .page-tab { color: var(--panel-text-secondary); }
@@ -572,6 +590,7 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 :root[data-theme] .issue-modal,
 :root[data-theme] .attachment-preview-dialog,
 :root[data-theme] .rebind-dialog,
+:root[data-theme] .binding-reset-dialog,
 :root[data-theme] .settings-dialog,
 :root[data-theme] .template-editor-dialog { border-color: var(--panel-border-strong); background: var(--panel-elevated); box-shadow: 0 24px 80px rgba(0, 0, 0, .42); }
 :root[data-theme] .settings-section-tabs { border-color: var(--panel-border); }
@@ -580,6 +599,12 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 :root[data-theme] .settings-section-tab.active { border-bottom-color: var(--panel-accent); color: var(--panel-accent); background: var(--panel-accent-soft); }
 :root[data-theme] .issue-modal-head,
 :root[data-theme] .attachment-preview-head { border-color: var(--panel-border); background: var(--panel-elevated); }
+:root[data-theme] .binding-reset-head { background: var(--panel-elevated); }
+:root[data-theme] .binding-reset-body > p { color: var(--panel-text-secondary); }
+:root[data-theme] .binding-reset-body > p strong { color: var(--panel-text); }
+:root[data-theme] .binding-reset-scope { border-color: var(--panel-error); background: var(--panel-error-soft); }
+:root[data-theme] .binding-reset-scope strong { color: var(--panel-error); }
+:root[data-theme] .binding-reset-scope span { color: var(--panel-text-secondary); }
 :root[data-theme] .detail-section h3,
 :root[data-theme] .issue-sidebar h3,
 :root[data-theme] .metadata dd,
@@ -597,6 +622,7 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 :root[data-theme] .issue-modal-footer,
 :root[data-theme] .attachment-preview-footer,
 :root[data-theme] .rebind-actions,
+:root[data-theme] .binding-reset-actions,
 :root[data-theme] .settings-actions { border-color: var(--panel-border); background: var(--panel-surface-under); }
 :root[data-theme] .transition-controls button { border-color: var(--panel-accent); background: var(--panel-accent); color: var(--panel-on-accent); }
 :root[data-theme] .transition-controls button:hover { filter: brightness(.92); }
