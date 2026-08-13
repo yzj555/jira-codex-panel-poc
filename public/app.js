@@ -1,5 +1,4 @@
 import {
-  buildIssuePrompt,
   DEFAULT_BUG_MESSAGE_TEMPLATE,
   DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE,
   isBugIssue
@@ -18,6 +17,7 @@ const HOST_THEME_TOKEN_KEYS = [
   "accent-soft", "on-accent", "button", "on-button", "success", "success-soft",
   "error", "error-soft", "warning", "warning-soft"
 ];
+const SETTINGS_ONLY_VIEW = window.location.hash === "#settings";
 
 function safeHostThemeToken(value) {
   const normalized = String(value || "").trim();
@@ -79,6 +79,9 @@ const rebindDialog = document.querySelector("#rebind-dialog");
 const rebindBackdrop = document.querySelector("#rebind-backdrop");
 const rebindForm = document.querySelector("#rebind-form");
 const rebindStatus = document.querySelector("#rebind-status");
+const associationWait = document.querySelector("#association-wait");
+const associationWaitTitle = document.querySelector("#association-wait-title");
+const associationWaitDescription = document.querySelector("#association-wait-description");
 const clearBindingDialog = document.querySelector("#clear-binding-dialog");
 const clearBindingBackdrop = document.querySelector("#clear-binding-backdrop");
 const clearBindingStatus = document.querySelector("#clear-binding-status");
@@ -105,6 +108,7 @@ const DEFAULT_TEMPLATE_SKILLS = Object.freeze({
 const MAX_TEXT_PREVIEW_CHARACTERS = 500_000;
 const LAST_JXL_SHEET_STORAGE_KEY = "jira-codex-panel:last-jxl-sheet:v1";
 const ASSOCIATION_DRAFT_STORAGE_KEY = "jira-codex-panel:association-drafts:v1";
+const ASSOCIATION_WAIT_TIMEOUT_MS = 65_000;
 const SHEET_COLUMNS = [
   { key: "issue", label: "Issue", filter: "text", placeholder: "筛选 Key" },
   { key: "type", label: "类型", filter: "type" },
@@ -130,7 +134,9 @@ const statusDefinitions = [
 const state = {
   issues: [],
   bindings: {},
+  bindingsRevision: 0,
   threads: [],
+  currentThreadId: "",
   projects: [],
   boardFilters: [],
   boardFilterSelections: { requirement: [], bug: [] },
@@ -186,12 +192,17 @@ let transitionRequestId = 0;
 let editingTemplateKind = "";
 let templateDrafts = defaultTemplateDrafts();
 let associationPendingIssueKey = "";
+let associationWaitTimer = 0;
+let associationWaitActionLabel = "正在处理…";
+let associationWaitTitleText = "正在处理 Codex 会话…";
+let associationWaitDescriptionText = "操作确认成功后将自动跳转。";
 let clearingBindingIssueKey = "";
 let activeSettingsSection = "jira";
 let taskSyncTimer = 0;
 let sheetsSyncTimer = 0;
 let lastPanelActivationAt = 0;
 let initialLoadComplete = false;
+let searchRenderTimer = 0;
 
 class ApiError extends Error {
   constructor(message, payload = {}) {
@@ -209,6 +220,70 @@ function element(tagName, className, text) {
   return node;
 }
 
+function captureBoardScrollState() {
+  const sheet = board.querySelector(".sheet-table-wrap");
+  return {
+    boardTop: board.scrollTop,
+    lanes: Array.from(board.querySelectorAll(".task-lane[data-kind]"), (lane) => ({
+      kind: lane.dataset.kind,
+      top: lane.querySelector(".card-list")?.scrollTop || 0
+    })),
+    sheet: sheet ? { top: sheet.scrollTop, left: sheet.scrollLeft } : null
+  };
+}
+
+function captureBoardFocusState() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !board.contains(active)) return null;
+  if (active.dataset.filterKind !== undefined) {
+    return { type: "filter", kind: active.dataset.filterKind, status: active.dataset.filterStatus || "" };
+  }
+  const issueNode = active.closest?.("[data-issue-key]");
+  return issueNode?.dataset.issueKey ? { type: "issue", issueKey: issueNode.dataset.issueKey } : null;
+}
+
+function restoreBoardState(snapshot = {}, focusState = null) {
+  window.requestAnimationFrame(() => {
+    board.scrollTop = snapshot.boardTop || 0;
+    (snapshot.lanes || []).forEach(({ kind, top }) => {
+      const list = board.querySelector(`.task-lane[data-kind="${CSS.escape(kind)}"] .card-list`);
+      if (list) list.scrollTop = top;
+    });
+    const sheet = board.querySelector(".sheet-table-wrap");
+    if (sheet && snapshot.sheet) {
+      sheet.scrollTop = snapshot.sheet.top || 0;
+      sheet.scrollLeft = snapshot.sheet.left || 0;
+    }
+    const focusTarget = focusState?.type === "filter"
+      ? board.querySelector(`[data-filter-kind="${CSS.escape(focusState.kind)}"][data-filter-status="${CSS.escape(focusState.status)}"]`)
+      : focusState?.type === "issue"
+        ? board.querySelector(`[data-issue-key="${CSS.escape(focusState.issueKey)}"]`)
+        : null;
+    focusTarget?.focus?.({ preventScroll: true });
+  });
+}
+
+function renderPreservingBoardState() {
+  const scrollState = captureBoardScrollState();
+  const focusState = captureBoardFocusState();
+  render();
+  board.classList.add("suppress-entry-motion");
+  restoreBoardState(scrollState, focusState);
+}
+
+function icon(name, className = "") {
+  const paths = {
+    conversation: '<path d="M6.5 17.5 3.5 20v-5.1A7.5 7.5 0 1 1 7 18.8"/><path d="M8 9.5h8M8 13h5"/>',
+    attachment: '<path d="m8.5 12.5 5.9-5.9a3 3 0 0 1 4.2 4.2l-7.3 7.3a5 5 0 0 1-7.1-7.1l7-7"/>'
+  };
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", `ui-icon${className ? ` ${className}` : ""}`);
+  svg.innerHTML = paths[name] || "";
+  return svg;
+}
+
 async function api(path, options = {}) {
   const request = { cache: "no-store", ...options };
   if (request.body && typeof request.body !== "string") {
@@ -219,6 +294,145 @@ async function api(path, options = {}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new ApiError(payload.error || `HTTP ${response.status}`, payload);
   return payload;
+}
+
+function postHostMessage(type, payload = {}) {
+  if (window.parent === window) return;
+  window.parent.postMessage({ source: "jira-codex-panel-poc", type, ...payload }, "*");
+}
+
+function normalizeThreadList(payload) {
+  const currentThreadId = comparableThreadId(state.currentThreadId).toLowerCase();
+  return (Array.isArray(payload?.threads) ? payload.threads : [])
+    .map((thread) => {
+      const threadId = String(thread?.id || thread?.threadId || "").trim();
+      if (!threadId) return null;
+      return {
+        ...thread,
+        threadId,
+        threadTitle: String(thread?.title || thread?.threadTitle || thread?.name || threadId),
+        active: Boolean(currentThreadId && comparableThreadId(threadId).toLowerCase() === currentThreadId),
+        pinned: Boolean(thread?.pinned)
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeWorkspaceList(payload) {
+  return (Array.isArray(payload?.workspaces) ? payload.workspaces : [])
+    .map((workspace) => {
+      const projectId = String(workspace?.projectId || workspace?.id || workspace?.cwd || "").trim();
+      if (!projectId) return null;
+      return {
+        ...workspace,
+        projectId,
+        projectLabel: String(
+          workspace?.label
+          || workspace?.projectLabel
+          || workspace?.cwd
+          || workspace?.projectId
+          || workspace?.id
+        ).trim() || projectId
+      };
+    })
+    .filter(Boolean);
+}
+
+function applyBindingState(payload) {
+  const bindingState = payload?.bindingState && typeof payload.bindingState === "object"
+    ? payload.bindingState
+    : payload;
+  if (!bindingState || typeof bindingState !== "object") return;
+  const revision = Number(bindingState.revision ?? bindingState.bindingsRevision);
+  if (Number.isInteger(revision) && revision >= 0 && revision < state.bindingsRevision) return;
+  if (bindingState.bindings && typeof bindingState.bindings === "object") {
+    state.bindings = bindingState.bindings;
+  }
+  if (Number.isInteger(revision) && revision >= 0) state.bindingsRevision = revision;
+}
+
+function applyCurrentDesktopContext(message = {}) {
+  state.currentThreadId = String(message.currentThreadId || message.threadId || "").trim();
+  state.threads = normalizeThreadList({ threads: state.threads });
+  if (Array.isArray(message.projects)) {
+    state.projects = normalizeWorkspaceList({ workspaces: message.projects });
+    if (!settingsDialog.hidden) {
+      populateCodexProjectOptions(state.config?.codexProjectId || "", state.config?.codexProjectLabel || "");
+    }
+    void loadCodexSkillsForConfiguredProject();
+  }
+  if (!rebindDialog.hidden) {
+    const options = document.querySelector("#rebind-thread-options");
+    options.replaceChildren(...state.threads.map((thread) => {
+      const option = document.createElement("option");
+      option.value = thread.threadId;
+      const prefix = thread.active ? "当前 · " : thread.pinned ? "置顶 · " : "";
+      option.label = `${prefix}${thread.threadTitle || thread.threadId}`;
+      return option;
+    }));
+    const currentThread = state.threads.find((thread) => thread.active);
+    const currentButton = document.querySelector("#bind-current-thread");
+    currentButton.disabled = !currentThread;
+    currentButton.textContent = currentThread
+      ? `使用当前会话：${currentThread.threadTitle || currentThread.threadId}`
+      : "当前没有可绑定的会话";
+    updateRebindThreadPreview();
+  }
+}
+
+async function loadCodexSkillsForConfiguredProject(projectId = state.config?.codexProjectId || "") {
+  const configuredProjectId = String(projectId || "").trim();
+  const configuredWorkspace = state.projects.find((project) => [
+    project.projectId,
+    project.id,
+    project.projectId ? `project:${project.projectId}` : ""
+  ]
+    .map((value) => String(value || "").trim())
+    .includes(configuredProjectId));
+  const skillQuery = configuredWorkspace?.cwd
+    ? `?cwd=${encodeURIComponent(configuredWorkspace.cwd)}`
+    : "";
+  try {
+    const payload = await api(`/api/codex/app-server/skills${skillQuery}`);
+    state.skills = Array.isArray(payload?.skills) ? payload.skills : [];
+    state.skillsError = "";
+  } catch (error) {
+    state.skillsError = error?.message || "无法读取 Codex Skill 列表";
+  }
+  if (!settingsDialog.hidden) renderTemplateCards();
+}
+
+async function loadCodexPanelContext({ quiet = false } = {}) {
+  let bindingsAvailable = false;
+  let conversationsAvailable = false;
+  const presentProgress = () => {
+    if (!settingsDialog.hidden) {
+      populateCodexProjectOptions(state.config?.codexProjectId || "", state.config?.codexProjectLabel || "");
+      renderTemplateCards();
+    }
+    renderPreservingBoardState();
+    if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
+  };
+
+  const bindingTask = api("/api/bindings").then((payload) => {
+    applyBindingState(payload);
+    bindingsAvailable = true;
+    presentProgress();
+  });
+  const conversationTask = api("/api/codex/conversations?limit=200").then((payload) => {
+    state.threads = normalizeThreadList(payload);
+    conversationsAvailable = true;
+    presentProgress();
+  }).catch((error) => {
+    if (!quiet) showToast(`无法读取 Codex 会话：${error?.message || "App Server 暂不可用"}`, 5000);
+  });
+  const skillTask = loadCodexSkillsForConfiguredProject().then(presentProgress);
+
+  await Promise.allSettled([bindingTask, conversationTask, skillTask]);
+  return {
+    bindingsAvailable,
+    conversationsAvailable
+  };
 }
 
 function setHealth(kind, message) {
@@ -338,22 +552,6 @@ function templateEntryForIssue(issue) {
   return state.config?.promptTemplates?.[kind] || templateDraftsFromConfig(state.config)[kind];
 }
 
-function renderIssuePrompt(issue, { automated = false, supplementalDescription = "" } = {}) {
-  const entry = templateEntryForIssue(issue);
-  return buildIssuePrompt(issue, {
-    messageTemplate: entry?.content || defaultTemplateContent(isBugIssue(issue) ? "bug" : "requirement"),
-    supplementalDescription,
-    automated
-  });
-}
-
-function issueActionMessage(issue, { automated = false, supplementalDescription = "" } = {}) {
-  return {
-    prompt: renderIssuePrompt(issue, { automated, supplementalDescription }),
-    skill: normalizedSkillReference(templateEntryForIssue(issue)?.skill)
-  };
-}
-
 function formatDate(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -446,15 +644,55 @@ function formatBytes(value) {
 
 function initials(value) {
   const text = String(value || "?").trim();
-  return Array.from(text.replace(/\s+/g, "")).slice(-2).join("").toUpperCase() || "?";
+  const compact = text.replace(/\s+/g, "");
+  if (/\p{Script=Han}/u.test(compact)) return Array.from(compact).slice(-1).join("") || "?";
+  const words = text.split(/\s+/).filter(Boolean);
+  const letters = words.length > 1
+    ? words.slice(0, 2).map((word) => Array.from(word)[0]).join("")
+    : Array.from(compact).slice(0, 2).join("");
+  return letters.toUpperCase() || "?";
 }
 
 function createPersonChip(person) {
   const chip = element("span", "person-chip");
-  chip.append(element("i", "person-avatar", initials(person.displayName)));
-  chip.append(element("span", "", person.displayName));
+  const displayName = String(person?.displayName || person?.name || person?.key || "未知用户").trim();
+  chip.append(element("i", "person-avatar", initials(displayName)));
+  chip.append(element("span", "", displayName));
   if (person.active === false) chip.append(element("em", "", "停用"));
   return chip;
+}
+
+function normalizeCollaborators(collaborators = []) {
+  const seen = new Set();
+  return collaborators.filter((person) => {
+    const identity = String(person?.accountId || person?.key || person?.name || person?.displayName || "")
+      .trim()
+      .toLocaleLowerCase();
+    if (!identity || seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
+function renderRichText(target, value) {
+  const raw = String(value || "");
+  const normalized = raw
+    .replace(/\{color(?::[^}]*)?\}/gi, "")
+    .replace(/\{color\}/gi, "");
+  target.replaceChildren();
+  const urlPattern = /https?:\/\/[^\s<>，。；、）】"']+/g;
+  let offset = 0;
+  for (const match of normalized.matchAll(urlPattern)) {
+    if (match.index > offset) target.append(document.createTextNode(normalized.slice(offset, match.index)));
+    const link = document.createElement("a");
+    link.href = match[0];
+    link.target = "_blank";
+    link.rel = "noreferrer noopener";
+    link.textContent = match[0];
+    target.append(link);
+    offset = match.index + match[0].length;
+  }
+  if (offset < normalized.length) target.append(document.createTextNode(normalized.slice(offset)));
 }
 
 async function fetchAttachmentBlob(attachment) {
@@ -651,6 +889,7 @@ function createAttachmentCard(attachment) {
 
 function createCard(issue) {
   const card = element("article", "card");
+  card.dataset.issueKey = issue.key;
   card.tabIndex = 0;
   card.setAttribute("role", "button");
   card.setAttribute("aria-label", `查看 ${issue.key} ${issue.title}`);
@@ -662,19 +901,23 @@ function createCard(issue) {
     element("span", `card-status ${issue.status || ""}`, issue.statusName || statusLabel(issue.status))
   );
   top.append(identity);
-  top.append(element("span", `type-icon ${issue.type}`, issue.type === "bug" ? "B" : "R"));
   card.append(top, element("h3", "", issue.title));
 
   const meta = element("div", "card-meta");
   meta.append(element("span", `priority ${priorityClass(issue.priority)}`, issue.priority));
-  meta.append(element("span", "", `· ${issue.assignee}`));
+  meta.append(element("span", "card-assignee", issue.assignee));
   if (state.bindings[issue.key]) {
-    const conversation = element("span", "card-signal bound", "💬 已绑定");
+    const conversation = element("span", "card-signal bound");
+    conversation.append(icon("conversation"), document.createTextNode("已绑定"));
     conversation.title = state.bindings[issue.key].threadTitle || "已绑定 Codex 对话";
     meta.append(conversation);
   }
   if (issue.collaborators?.length) meta.append(element("span", "card-signal", `协 ${issue.collaborators.length}`));
-  if (issue.attachments?.length) meta.append(element("span", "card-signal", `📎 ${issue.attachments.length}`));
+  if (issue.attachments?.length) {
+    const attachment = element("span", "card-signal");
+    attachment.append(icon("attachment"), document.createTextNode(String(issue.attachments.length)));
+    meta.append(attachment);
+  }
   card.append(meta);
 
   const open = () => openDetails(issue);
@@ -689,6 +932,7 @@ function createCard(issue) {
 }
 
 function bindIssueOpen(node, issue) {
+  node.dataset.issueKey = issue.key;
   node.tabIndex = 0;
   node.setAttribute("aria-label", `查看 ${issue.key} ${issue.title}`);
   node.addEventListener("click", () => openDetails(issue));
@@ -714,17 +958,21 @@ function createLaneStatusFilter(type, issues, selectedStatuses) {
     .sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
   const allButton = element("button", "lane-status-button", `全部 ${issues.length}`);
   allButton.type = "button";
+  allButton.dataset.filterKind = type;
+  allButton.dataset.filterStatus = "";
   allButton.setAttribute("aria-pressed", String(selected.size === 0));
   allButton.classList.toggle("active", selected.size === 0);
   allButton.addEventListener("click", (event) => {
     event.stopPropagation();
     state.inboxStatusFilters[type] = [];
-    render();
+    renderPreservingBoardState();
   });
   filter.append(allButton);
   statusOptions.forEach((option) => {
     const button = element("button", "lane-status-button", `${option.label} ${option.count}`);
     button.type = "button";
+    button.dataset.filterKind = type;
+    button.dataset.filterStatus = option.id;
     button.title = `筛选状态：${option.label}`;
     button.setAttribute("aria-pressed", String(selected.has(option.id)));
     button.classList.toggle("active", selected.has(option.id));
@@ -734,7 +982,7 @@ function createLaneStatusFilter(type, issues, selectedStatuses) {
       if (next.has(option.id)) next.delete(option.id);
       else next.add(option.id);
       state.inboxStatusFilters[type] = Array.from(next);
-      render();
+      renderPreservingBoardState();
     });
     filter.append(button);
   });
@@ -776,7 +1024,14 @@ function createTaskLane({ title, subtitle, type, issues, showStatusFilter = fals
 
 function renderSplitView(issues, history = false) {
   const { requirements, bugs } = splitIssuesByType(issues);
-  board.className = `board split-board${history ? " history-board" : ""}`;
+  const dominance = history
+    ? ""
+    : requirements.length > 0 && bugs.length === 0
+      ? " requirement-dominant"
+      : bugs.length > 0 && requirements.length === 0
+        ? " bug-dominant"
+        : "";
+  board.className = `board split-board${history ? " history-board" : ""}${dominance}`;
   board.append(
     createTaskLane({
       title: history ? "需求处理历史" : "CT仪表盘-需要我完成的事宜",
@@ -1277,7 +1532,7 @@ async function submitIssueTransition() {
   try {
     const payload = await api(`/api/issues/${encodeURIComponent(issue.key)}/transitions`, {
       method: "POST",
-      body: { transitionId: transition.id }
+      body: { transitionId: transition.id, expectedTargetStatus: targetStatus }
     });
     const applied = payload.transition || transition;
     closeDetails();
@@ -1296,14 +1551,14 @@ function openDetails(issue) {
   document.querySelector("#detail-type").textContent = typeLabel(issue);
   document.querySelector("#detail-key").textContent = issue.key;
   document.querySelector("#detail-title").textContent = issue.title;
-  document.querySelector("#detail-summary").textContent = issue.summary;
+  renderRichText(document.querySelector("#detail-summary"), issue.summary);
   document.querySelector("#detail-status").textContent = issue.statusName || statusLabel(issue.status);
   document.querySelector("#detail-priority").textContent = issue.priority;
   document.querySelector("#detail-assignee").textContent = issue.assignee;
   document.querySelector("#detail-issue-type").textContent = typeLabel(issue);
   document.querySelector("#detail-project").textContent = issue.projectName || "—";
   document.querySelector("#detail-updated").textContent = formatDate(issue.updated);
-  const collaborators = issue.collaborators || [];
+  const collaborators = normalizeCollaborators(issue.collaborators || []);
   document.querySelector("#collaborator-count").textContent = String(collaborators.length);
   const collaboratorList = document.querySelector("#detail-collaborators");
   collaboratorList.replaceChildren(...(collaborators.length
@@ -1322,6 +1577,7 @@ function openDetails(issue) {
   const link = document.querySelector("#detail-link");
   link.href = issue.url;
   updatePrimaryAction(issue);
+  renderAssociationWait();
   drawer.hidden = false;
   backdrop.hidden = false;
   drawer.focus();
@@ -1332,30 +1588,216 @@ function updatePrimaryAction(issue) {
   const action = document.querySelector("#primary-action");
   const rebindAction = document.querySelector("#rebind-action");
   const clearBindingAction = document.querySelector("#clear-binding-action");
+  const svnAction = document.querySelector("#svn-action");
   const bindingSummary = document.querySelector("#binding-summary");
   const bindingThreadTitle = document.querySelector("#binding-thread-title");
   const canProcess = issue.status === "todo" || issue.status === "in_progress";
+  const associationWaiting = associationPendingIssueKey === String(issue.key || "").toUpperCase();
   const binding = state.bindings[issue.key];
   bindingSummary.hidden = !binding;
   bindingThreadTitle.textContent = binding?.threadTitle || "Codex 对话";
   bindingThreadTitle.title = binding?.threadTitle || "";
   rebindAction.hidden = !(canProcess && binding);
+  rebindAction.disabled = associationWaiting;
   clearBindingAction.hidden = !binding;
-  clearBindingAction.disabled = Boolean(clearingBindingIssueKey);
+  clearBindingAction.disabled = Boolean(clearingBindingIssueKey) || associationWaiting;
   clearBindingAction.textContent = clearingBindingIssueKey === issue.key ? "正在解除…" : "解除关联";
+  svnAction.hidden = !binding;
+  svnAction.disabled = associationWaiting;
   const firstMessageFailed = binding?.firstMessageStatus === "failed";
   const firstMessagePending = binding?.firstMessageStatus === "pending";
-  action.textContent = !canProcess
+  action.textContent = associationWaiting
+    ? associationWaitActionLabel
+    : !canProcess
     ? "已完成任务仅查看"
     : binding
       ? firstMessageFailed
-        ? "重试发送首条分析消息"
+        ? "重新创建并发送分析会话"
         : firstMessagePending
           ? "正在发送首条分析消息…"
           : "打开已绑定的 Codex 对话"
       : "关联 Codex 会话";
-  action.disabled = !canProcess || firstMessagePending;
+  action.disabled = !canProcess || firstMessagePending || associationWaiting;
+  action.classList.toggle("is-waiting", associationWaiting);
   action.classList.toggle("secondary", !canProcess);
+}
+
+function renderAssociationWait() {
+  const issueKey = String(state.selectedIssue?.key || "").toUpperCase();
+  const waiting = Boolean(issueKey && associationPendingIssueKey === issueKey);
+  associationWait.hidden = !waiting;
+  drawer.setAttribute("aria-busy", waiting ? "true" : "false");
+  if (waiting) {
+    associationWaitTitle.textContent = associationWaitTitleText;
+    associationWaitDescription.textContent = associationWaitDescriptionText;
+  }
+  if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
+}
+
+function finishAssociationWait(issueKey = "") {
+  const normalizedIssueKey = String(issueKey || associationPendingIssueKey || "").trim().toUpperCase();
+  if (normalizedIssueKey && associationPendingIssueKey && normalizedIssueKey !== associationPendingIssueKey) return;
+  if (associationWaitTimer) window.clearTimeout(associationWaitTimer);
+  associationWaitTimer = 0;
+  associationPendingIssueKey = "";
+  renderAssociationWait();
+}
+
+function beginAssociationWait(issueKey, {
+  actionLabel = "正在处理…",
+  title = "正在处理 Codex 会话…",
+  description = "操作确认成功后将自动跳转。"
+} = {}) {
+  const normalizedIssueKey = String(issueKey || "").trim().toUpperCase();
+  if (!normalizedIssueKey || associationPendingIssueKey) return false;
+  associationPendingIssueKey = normalizedIssueKey;
+  associationWaitActionLabel = actionLabel;
+  associationWaitTitleText = title;
+  associationWaitDescriptionText = description;
+  if (associationWaitTimer) window.clearTimeout(associationWaitTimer);
+  associationWaitTimer = window.setTimeout(() => {
+    if (associationPendingIssueKey !== normalizedIssueKey) return;
+    finishAssociationWait(normalizedIssueKey);
+    void loadCodexPanelContext({ quiet: true });
+    showToast("等待 Codex 会话响应超时，已自动恢复操作。请先确认绑定状态，再决定是否重试。", 6500);
+  }, ASSOCIATION_WAIT_TIMEOUT_MS);
+  closeRebindDialog();
+  renderAssociationWait();
+  return true;
+}
+
+function desktopActionSucceeded(issueKey, action) {
+  const key = String(issueKey || "").trim().toUpperCase();
+  finishAssociationWait(key);
+  postHostMessage("desktop-action-complete", { issueKey: key, action });
+}
+
+async function openBoundIssueConversation(issue, { recreateAnalysis = false, supplementalDescription = "" } = {}) {
+  const key = String(issue?.key || "").trim().toUpperCase();
+  if (!key) return;
+  const revisionBeforeRequest = state.bindingsRevision;
+  const threadIdBeforeRequest = String(state.bindings[key]?.threadId || "").trim();
+  try {
+    const result = await api(`/api/codex/issues/${encodeURIComponent(key)}/${recreateAnalysis ? "analysis" : "open"}`, {
+      method: "POST",
+      body: recreateAnalysis
+        ? { supplementalDescription, expectedRevision: revisionBeforeRequest }
+        : {}
+    });
+    if (recreateAnalysis) saveAssociationDraft(key, "");
+    if (result?.binding) state.bindings[key] = result.binding;
+    if (Number.isInteger(Number(result?.bindingsRevision))) {
+      state.bindingsRevision = Number(result.bindingsRevision);
+    }
+    desktopActionSucceeded(key, recreateAnalysis ? "analysis" : "open");
+    void loadCodexPanelContext({ quiet: true });
+  } catch (error) {
+    finishAssociationWait(key);
+    if (!recreateAnalysis) {
+      showToast(`无法打开 Codex 会话：${error.message}`, 6500);
+      void loadCodexPanelContext({ quiet: true });
+      return;
+    }
+
+    const orphanThreadId = error?.details?.stage === "created_unbound"
+      ? String(error.details.threadId || "").trim()
+      : "";
+    if (orphanThreadId) {
+      openRebindDialog({ preferredMode: "existing" });
+      const threadInput = document.querySelector("#rebind-thread-id");
+      threadInput.value = orphanThreadId;
+      updateRebindThreadPreview();
+      setRebindStatus(
+        `新会话 ${orphanThreadId} 已创建，但绑定状态同时发生变化，系统没有覆盖原绑定。请按“绑定已有会话”人工确认。`
+      );
+      void loadCodexPanelContext({ quiet: true });
+      return;
+    }
+
+    openRebindDialog({ preferredMode: "new" });
+    setRebindStatus(`新会话创建失败：${error.message}`);
+    void loadCodexPanelContext({ quiet: true }).then(() => {
+      const currentThreadId = String(state.bindings[key]?.threadId || "").trim();
+      // A revision can advance because an unrelated Jira issue changed. Only
+      // a genuinely different thread proves that this create operation saved
+      // a new binding; the previous binding must never be reported as success.
+      const bindingReallyChanged = Boolean(currentThreadId) && currentThreadId !== threadIdBeforeRequest;
+      if (!bindingReallyChanged) return;
+      setRebindStatus(
+        `服务回执异常，但已确认绑定更新为会话 ${currentThreadId}。请关闭本窗口后直接打开已绑定会话。`
+      );
+    });
+  }
+}
+
+async function bindExistingConversation(issue, { threadId, confirmConflict = false } = {}) {
+  const key = String(issue?.key || "").trim().toUpperCase();
+  if (!key || !threadId) return;
+  let bindingSaved = false;
+  try {
+    const result = await api("/api/codex/bindings", {
+      method: "PUT",
+      body: {
+        issueKey: key,
+        threadId,
+        expectedRevision: state.bindingsRevision,
+        replaceExistingThreadBinding: Boolean(confirmConflict)
+      }
+    });
+    bindingSaved = true;
+    if (Array.isArray(result.replacedIssueKeys)) {
+      for (const replacedIssueKey of result.replacedIssueKeys) delete state.bindings[replacedIssueKey];
+    }
+    if (result.binding) state.bindings[key] = result.binding;
+    if (Number.isInteger(Number(result.revision))) state.bindingsRevision = Number(result.revision);
+    await api(`/api/codex/issues/${encodeURIComponent(key)}/open`, { method: "POST", body: {} });
+    desktopActionSucceeded(key, "bind-existing");
+    void loadCodexPanelContext({ quiet: true });
+  } catch (error) {
+    finishAssociationWait(key);
+    if (bindingSaved) {
+      showToast(`会话已关联，但暂时无法跳转：${error.message}。可以直接重试打开。`, 7000);
+    } else {
+      openRebindDialog({ preferredMode: "existing" });
+      setRebindStatus(error.code === "ISSUE_BINDINGS_REVISION_CONFLICT"
+        ? "绑定关系刚刚发生变化，已刷新最新状态，请重新确认后再绑定。"
+        : error.message);
+    }
+    void loadCodexPanelContext({ quiet: true });
+  }
+}
+
+async function clearIssueBinding(issue) {
+  const key = String(issue?.key || "").trim().toUpperCase();
+  if (!key || clearingBindingIssueKey) return;
+  clearingBindingIssueKey = key;
+  confirmClearBinding.disabled = true;
+  confirmClearBinding.textContent = "正在解除…";
+  setClearBindingStatus("正在从本地服务解除会话关联…", "info");
+  updatePrimaryAction(issue);
+  try {
+    const result = await api(`/api/codex/bindings/${encodeURIComponent(key)}`, {
+      method: "DELETE",
+      body: { expectedRevision: state.bindingsRevision }
+    });
+    delete state.bindings[key];
+    if (Number.isInteger(Number(result.revision))) state.bindingsRevision = Number(result.revision);
+    await loadCodexPanelContext({ quiet: true });
+    clearingBindingIssueKey = "";
+    closeClearBindingDialog();
+    render();
+    if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
+    showToast(`${key} 已解除会话关联`, 4200);
+  } catch (error) {
+    clearingBindingIssueKey = "";
+    await loadCodexPanelContext({ quiet: true });
+    confirmClearBinding.disabled = false;
+    confirmClearBinding.textContent = "重试解除关联";
+    setClearBindingStatus(error.code === "ISSUE_BINDINGS_REVISION_CONFLICT"
+      ? "绑定关系刚刚发生变化，已刷新最新状态，请重新确认。"
+      : error.message);
+    if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
+  }
 }
 
 function setClearBindingStatus(message, kind = "error") {
@@ -1485,6 +1927,10 @@ function updateRebindMode() {
 
 function openRebindDialog({ preferredMode = "" } = {}) {
   if (!state.selectedIssue) return;
+  if (associationPendingIssueKey) {
+    showToast("当前 Codex 会话操作仍在等待结果，请稍候或等待自动恢复。", 3600);
+    return;
+  }
   const binding = state.bindings[state.selectedIssue.key];
   const options = document.querySelector("#rebind-thread-options");
   options.replaceChildren(...state.threads.map((thread) => {
@@ -1925,10 +2371,16 @@ function populateSettings(config) {
 function populateCodexProjectOptions(selectedId = "", selectedLabel = "") {
   const select = document.querySelector("#codex-project");
   const choices = [{ projectId: "", projectLabel: "不绑定项目（普通对话）" }, ...state.projects];
-  if (selectedId && !choices.some((project) => project.projectId === selectedId)) {
+  const selectedProject = choices.find((project) => (
+    project.projectId === selectedId || `project:${project.projectId}` === selectedId
+  ));
+  const effectiveSelectedId = selectedProject?.projectId || selectedId;
+  if (selectedId && !selectedProject) {
     choices.push({
       projectId: selectedId,
       projectLabel: selectedLabel || selectedId,
+      cwd: state.config?.codexProjectPath || "",
+      workspaceRoots: state.config?.codexProjectRoots || [],
       displayLabel: `${selectedLabel || selectedId}（当前不可用）`
     });
   }
@@ -1937,9 +2389,11 @@ function populateCodexProjectOptions(selectedId = "", selectedLabel = "") {
     option.value = project.projectId;
     option.textContent = project.displayLabel || project.projectLabel;
     option.dataset.projectLabel = project.projectLabel;
+    option.dataset.projectPath = project.cwd || "";
+    option.dataset.projectRoots = JSON.stringify(project.workspaceRoots || (project.cwd ? [project.cwd] : []));
     return option;
   }));
-  select.value = selectedId;
+  select.value = effectiveSelectedId;
 }
 
 function setSettingsStatus(message, kind = "error") {
@@ -2021,12 +2475,16 @@ function openSettings() {
   setSettingsSection(activeSettingsSection);
   settingsBackdrop.hidden = false;
   settingsDialog.hidden = false;
-  window.parent.postMessage({ source: "jira-codex-panel-poc", type: "get-skills" }, "*");
+  void loadCodexPanelContext({ quiet: true });
   window.setTimeout(() => document.querySelector("#base-url").focus(), 0);
 }
 
 function closeSettings() {
   if (!templateEditorDialog.hidden) closeTemplateEditor();
+  if (document.documentElement.dataset.view === "settings-only") {
+    window.close();
+    return;
+  }
   settingsBackdrop.hidden = true;
   settingsDialog.hidden = true;
 }
@@ -2044,10 +2502,12 @@ async function loadIssues({ background = false } = {}) {
   else state.loading = true;
   setHealth("syncing", "正在同步 Jira");
   hideNotice();
-  render();
+  if (background) renderPreservingBoardState();
+  else render();
   try {
     const payload = await api("/api/issues");
     state.issues = payload.issues || [];
+    applyBindingState(payload);
     state.total = payload.total ?? state.issues.length;
     state.truncated = Boolean(payload.truncated);
     state.fetchedAt = payload.fetchedAt;
@@ -2060,7 +2520,8 @@ async function loadIssues({ background = false } = {}) {
     if (background) state.backgroundSyncing = false;
     else state.loading = false;
     updateCounts();
-    render();
+    if (background) renderPreservingBoardState();
+    else render();
   }
 }
 
@@ -2197,6 +2658,8 @@ async function saveSettings(event) {
         email: "",
         codexProjectId: codexProject.value,
         codexProjectLabel: codexProject.selectedOptions[0]?.dataset.projectLabel || "",
+        codexProjectPath: codexProject.selectedOptions[0]?.dataset.projectPath || "",
+        codexProjectRoots: JSON.parse(codexProject.selectedOptions[0]?.dataset.projectRoots || "[]"),
         token: document.querySelector("#token").value,
         wecomWebhook: document.querySelector("#wecom-webhook").value,
         clearWecomWebhook: document.querySelector("#clear-wecom").checked,
@@ -2229,7 +2692,7 @@ async function saveSettings(event) {
     resetJxlState();
     closeSettings();
     showToast("Jira 与自动化配置已安全保存");
-    window.parent.postMessage({ source: "jira-codex-panel-poc", type: "automation-settings-changed" }, "*");
+    await loadCodexPanelContext({ quiet: true });
     await loadIssues();
     await loadJxlSheets({ loadSelected: state.activeView === "sheets" });
   } catch (error) {
@@ -2302,7 +2765,6 @@ bugMonitorToggle.addEventListener("change", async () => {
     showToast(enabled
       ? "监控已开启：当前待修复 Bug 已加入自动分析队列"
       : "Bug 自动监控已关闭", enabled ? 5200 : 2800);
-    window.parent.postMessage({ source: "jira-codex-panel-poc", type: "automation-settings-changed" }, "*");
   } catch (error) {
     bugMonitorToggle.checked = !enabled;
     showToast(`自动监控设置失败：${error.message}`, 5000);
@@ -2312,12 +2774,18 @@ bugMonitorToggle.addEventListener("change", async () => {
   }
 });
 
-search.addEventListener("input", render);
+search.addEventListener("input", () => {
+  if (searchRenderTimer) window.clearTimeout(searchRenderTimer);
+  searchRenderTimer = window.setTimeout(() => {
+    searchRenderTimer = 0;
+    renderPreservingBoardState();
+  }, 120);
+});
 topActions.addEventListener("click", (event) => {
   const action = event.target.closest?.("button.icon-button");
   if (!action || !topActions.contains(action)) return;
   if (action.id === "close-panel") {
-    window.parent.postMessage({ source: "jira-codex-panel-poc", type: "close" }, "*");
+    postHostMessage("close");
     return;
   }
   if (action.id === "open-settings") {
@@ -2350,23 +2818,29 @@ attachmentPreviewDownload.addEventListener("click", async () => {
 });
 document.querySelector("#primary-action").addEventListener("click", () => {
   if (!state.selectedIssue || !["todo", "in_progress"].includes(state.selectedIssue.status)) return;
+  if (associationPendingIssueKey) return;
   const binding = state.bindings[state.selectedIssue.key];
   if (!binding) {
     openRebindDialog();
     return;
   }
-  const actionMessage = issueActionMessage(state.selectedIssue, {
-    supplementalDescription: binding.firstMessageStatus === "failed"
-      ? associationDraftFor(state.selectedIssue.key)
-      : ""
+  const retrying = binding.firstMessageStatus === "failed";
+  if (!beginAssociationWait(state.selectedIssue.key, {
+    actionLabel: retrying ? "正在发送分析消息…" : "正在打开会话…",
+    title: retrying ? "正在发送首条分析消息…" : "正在打开 Codex 会话…",
+    description: retrying
+      ? "消息确认成功后将自动进入对应会话。"
+      : "会话确认可用后将自动跳转。"
+  })) return;
+  void openBoundIssueConversation(state.selectedIssue, {
+    recreateAnalysis: retrying,
+    supplementalDescription: retrying ? associationDraftFor(state.selectedIssue.key) : ""
   });
-  window.parent.postMessage({
-    source: "jira-codex-panel-poc",
-    type: binding.firstMessageStatus === "failed" ? "retry-task-message" : "open-task",
-    issue: state.selectedIssue,
-    ...actionMessage,
-    projectId: state.config?.codexProjectId || ""
-  }, "*");
+});
+document.querySelector("#svn-action").addEventListener("click", () => {
+  const issueKey = state.selectedIssue?.key;
+  if (!issueKey || !state.bindings[issueKey]) return;
+  postHostMessage("open-svn-workbench", { issueKey });
 });
 document.querySelector("#rebind-action").addEventListener("click", () => {
   if (!state.selectedIssue || !["todo", "in_progress"].includes(state.selectedIssue.status)) return;
@@ -2380,16 +2854,7 @@ clearBindingBackdrop.addEventListener("click", closeClearBindingDialog);
 confirmClearBinding.addEventListener("click", () => {
   const issue = state.selectedIssue;
   if (!issue || !state.bindings[issue.key] || clearingBindingIssueKey) return;
-  clearingBindingIssueKey = issue.key;
-  confirmClearBinding.disabled = true;
-  confirmClearBinding.textContent = "正在解除…";
-  setClearBindingStatus("正在同步清除本机保存的会话绑定…", "info");
-  updatePrimaryAction(issue);
-  window.parent.postMessage({
-    source: "jira-codex-panel-poc",
-    type: "clear-task-binding",
-    issueKey: issue.key
-  }, "*");
+  void clearIssueBinding(issue);
 });
 document.querySelector("#rebind-thread-id").addEventListener("input", updateRebindThreadPreview);
 document.querySelector("#bind-current-thread").addEventListener("click", () => {
@@ -2408,22 +2873,18 @@ document.querySelector("#cancel-rebind").addEventListener("click", closeRebindDi
 rebindBackdrop.addEventListener("click", closeRebindDialog);
 rebindForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  if (!state.selectedIssue) return;
+  if (!state.selectedIssue || associationPendingIssueKey) return;
   const mode = updateRebindMode();
   const issue = state.selectedIssue;
   if (mode === "new") {
     const supplementalDescription = document.querySelector("#rebind-supplement").value.trim();
     saveAssociationDraft(issue.key, supplementalDescription);
-    const actionMessage = issueActionMessage(issue, { supplementalDescription });
-    associationPendingIssueKey = issue.key;
-    closeRebindDialog();
-    window.parent.postMessage({
-      source: "jira-codex-panel-poc",
-      type: "associate-new-task",
-      issue,
-      ...actionMessage,
-      projectId: state.config?.codexProjectId || ""
-    }, "*");
+    if (!beginAssociationWait(issue.key, {
+      actionLabel: "正在创建会话…",
+      title: "正在创建 Codex 会话…",
+      description: "会话和首条分析消息确认成功后将自动跳转。"
+    })) return;
+    void openBoundIssueConversation(issue, { recreateAnalysis: true, supplementalDescription });
     return;
   }
   const target = updateRebindThreadPreview();
@@ -2435,21 +2896,24 @@ rebindForm.addEventListener("submit", (event) => {
     setRebindStatus(`该会话已经关联 ${target.conflict[0]}，请先勾选人工确认。`);
     return;
   }
-  associationPendingIssueKey = issue.key;
-  closeRebindDialog();
-  window.parent.postMessage({
-    source: "jira-codex-panel-poc",
-    type: "bind-task",
-    issue,
+  if (!beginAssociationWait(issue.key, {
+    actionLabel: "正在验证并打开…",
+    title: "正在验证 Codex 会话…",
+    description: "绑定保存且目标会话确认可用后将自动跳转。"
+  })) return;
+  void bindExistingConversation(issue, {
     threadId: target.threadId,
     confirmConflict: Boolean(target.conflict)
-  }, "*");
+  });
 });
 document.querySelector("#close-settings").addEventListener("click", closeSettings);
 document.querySelector("#cancel-settings").addEventListener("click", closeSettings);
 settingsBackdrop.addEventListener("click", closeSettings);
 settingsForm.addEventListener("submit", saveSettings);
 document.querySelector("#clear-settings").addEventListener("click", clearSettings);
+document.querySelector("#codex-project").addEventListener("change", (event) => {
+  void loadCodexSkillsForConfiguredProject(event.currentTarget.value);
+});
 document.querySelector("#sync-tasks-enabled").addEventListener("change", updateSyncControls);
 for (const kind of ["requirement", "bug"]) {
   document.querySelector(`#${kind}-source-mode`).addEventListener("change", () => {
@@ -2518,73 +2982,45 @@ document.addEventListener("keydown", (event) => {
   else if (!drawer.hidden) closeDetails();
 });
 
+async function openIssueFromHost(issueKey) {
+  const key = String(issueKey || "").trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(key)) return;
+  const cached = [...state.issues, ...state.sheetIssues]
+    .find((issue) => String(issue?.key || "").toUpperCase() === key);
+  try {
+    const payload = await api(`/api/issues/${encodeURIComponent(key)}`);
+    const issue = payload?.issue || payload;
+    if (!issue?.key) throw new Error("本地服务未返回任务详情");
+    if (Object.prototype.hasOwnProperty.call(payload, "binding")) {
+      if (payload.binding) state.bindings[key] = payload.binding;
+      else delete state.bindings[key];
+    }
+    const revision = Number(payload?.bindingsRevision);
+    if (Number.isInteger(revision) && revision >= 0) state.bindingsRevision = revision;
+    openDetails(issue);
+    postHostMessage("open-issue-ack", { issueKey: key });
+  } catch (error) {
+    if (cached) {
+      openDetails(cached);
+      postHostMessage("open-issue-ack", { issueKey: key });
+      showToast(`已打开缓存详情，刷新失败：${error.message}`, 5000);
+      return;
+    }
+    showToast(`无法打开 ${key}：${error.message}`, 6000);
+  }
+}
+
 window.addEventListener("message", (event) => {
   if (event.source !== window.parent) return;
   const message = event.data;
   if (!message || message.source !== "jira-codex-panel-host") return;
   if (message.type === "theme") applyHostTheme(message);
-  if (message.type === "panel-activated") refreshOnPanelReturn();
-  if (message.type === "bindings") {
-    state.bindings = message.bindings && typeof message.bindings === "object" ? message.bindings : {};
-    state.threads = Array.isArray(message.threads) ? message.threads : [];
-    state.projects = Array.isArray(message.projects) ? message.projects : [];
-    if (Array.isArray(message.skills)) state.skills = message.skills;
-    state.skillsError = String(message.skillsError || "");
-    if (!settingsDialog.hidden) {
-      populateCodexProjectOptions(state.config?.codexProjectId || "", state.config?.codexProjectLabel || "");
-      renderTemplateCards();
-    }
-    render();
-    if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
+  if (message.type === "panel-activated") {
+    refreshOnPanelReturn();
+    void loadCodexPanelContext({ quiet: true });
   }
-  if (message.type === "skills") {
-    const selected = templateEditorDialog.hidden ? null : selectedSkillFromEditor();
-    state.skills = Array.isArray(message.skills) ? message.skills : [];
-    state.skillsError = String(message.message || "");
-    renderTemplateCards();
-    if (!templateEditorDialog.hidden) populateTemplateSkillOptions(selected || templateDrafts[editingTemplateKind]?.skill);
-  }
-  if (message.type === "binding-error" && message.message) {
-    const issueKey = String(message.issueKey || associationPendingIssueKey || "").toUpperCase();
-    if (clearingBindingIssueKey && clearingBindingIssueKey === issueKey) {
-      clearingBindingIssueKey = "";
-      confirmClearBinding.disabled = false;
-      confirmClearBinding.textContent = "重试解除关联";
-      if (clearBindingDialog.hidden) showToast(message.message, 5000);
-      else setClearBindingStatus(message.message);
-      if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
-    } else if (!message.bindingRetained && state.selectedIssue?.key === issueKey) {
-      openRebindDialog({ preferredMode: "new" });
-      setRebindStatus(message.message);
-    } else if (!rebindDialog.hidden) setRebindStatus(message.message);
-    else showToast(message.message, 5000);
-    associationPendingIssueKey = "";
-  }
-  if (message.type === "binding-success") {
-    associationPendingIssueKey = "";
-    if (message.message) showToast(message.message, 3600);
-  }
-  if (message.type === "binding-cleared") {
-    const issueKey = String(message.issueKey || clearingBindingIssueKey || "").toUpperCase();
-    if (issueKey) delete state.bindings[issueKey];
-    clearingBindingIssueKey = "";
-    closeClearBindingDialog();
-    render();
-    if (state.selectedIssue) updatePrimaryAction(state.selectedIssue);
-    if (message.message) showToast(message.message, 4200);
-  }
-  if (message.type === "issue-prompt-sent" && message.issueKey) {
-    saveAssociationDraft(message.issueKey, "");
-    associationPendingIssueKey = "";
-  }
-  if (message.type === "automation-status") {
-    if (message.automation) state.automation = message.automation;
-    updateAutomationControl();
-    if (message.message) showToast(message.message, 5000);
-  }
-  if (message.type === "automation-error" && message.message) {
-    showToast(message.message, 5000);
-  }
+  if (message.type === "desktop-context") applyCurrentDesktopContext(message);
+  if (message.type === "open-issue") void openIssueFromHost(message.issueKey);
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -2593,14 +3029,20 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("focus", refreshOnPanelReturn);
 
 async function boot() {
-  window.parent.postMessage({ source: "jira-codex-panel-poc", type: "get-bindings" }, "*");
   try {
     const payload = await api("/api/config");
     state.config = payload.config;
-    if (state.config.configured) {
-      await loadAutomationStatus();
+    // Jira is the primary board payload. Bindings, App Server conversations,
+    // Desktop project context and Skills hydrate progressively without delaying it.
+    void loadCodexPanelContext({ quiet: true });
+    if (SETTINGS_ONLY_VIEW) {
+      openSettings();
+      populateCodexProjectOptions(state.config?.codexProjectId || "", state.config?.codexProjectLabel || "");
+      renderTemplateCards();
+    } else if (state.config.configured) {
       await loadIssues();
-      await loadJxlSheets({ loadSelected: false });
+      void loadAutomationStatus();
+      void loadJxlSheets({ loadSelected: false });
       scheduleSyncTimers();
     }
     else {
@@ -2616,9 +3058,19 @@ async function boot() {
     showNotice(error.message, { kind: "error" });
     renderState("本地服务不可用", error.message);
   } finally {
-    window.parent.postMessage({ source: "jira-codex-panel-poc", type: "ready" }, "*");
+    postHostMessage("ready");
   }
 }
 
+function openSettingsFromLocation() {
+  const settingsOnly = window.location.hash === "#settings";
+  document.documentElement.dataset.view = settingsOnly ? "settings-only" : "board";
+  if (!settingsOnly) return;
+  openSettings();
+}
+
+window.addEventListener("hashchange", openSettingsFromLocation);
+
 boot();
-window.setInterval(() => void loadAutomationStatus(), 10_000);
+if (!SETTINGS_ONLY_VIEW) window.setTimeout(openSettingsFromLocation, 0);
+if (!SETTINGS_ONLY_VIEW) window.setInterval(() => void loadAutomationStatus(), 10_000);

@@ -73,6 +73,35 @@ function Remove-TrackedShortcut {
   } catch {}
 }
 
+function Get-CodexRegistrationCleanupStatus {
+  param(
+    [string]$CodexCommand,
+    [string]$PluginSelector,
+    [string]$MarketplaceName
+  )
+
+  $result = [ordered]@{
+    probeAvailable = $false
+    pluginRegistered = $true
+    marketplaceRegistered = $true
+    clean = $false
+  }
+  if (-not $CodexCommand) { return $result }
+  try {
+    $pluginOutput = @(& $CodexCommand plugin list --json 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $result }
+    $marketplaceOutput = @(& $CodexCommand plugin marketplace list --json 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $result }
+    $plugins = ($pluginOutput -join "`n") | ConvertFrom-Json
+    $marketplaces = ($marketplaceOutput -join "`n") | ConvertFrom-Json
+    $result.probeAvailable = $true
+    $result.pluginRegistered = [bool](@($plugins.installed) | Where-Object { [string]$_.pluginId -eq $PluginSelector } | Select-Object -First 1)
+    $result.marketplaceRegistered = [bool](@($marketplaces.marketplaces) | Where-Object { [string]$_.name -eq $MarketplaceName } | Select-Object -First 1)
+    $result.clean = -not $result.pluginRegistered -and -not $result.marketplaceRegistered
+  } catch {}
+  return $result
+}
+
 $InstallRoot = Assert-SafeInstallRoot $InstallRoot
 if ($uninstallRegistryPath -notmatch '^HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\[A-Za-z0-9._-]+$') {
   throw "卸载注册表路径不安全：$uninstallRegistryPath"
@@ -110,6 +139,40 @@ if (-not $PSCmdlet.ShouldProcess($InstallRoot, "卸载 $productName")) { return 
 $runtimeDirectory = Join-Path $InstallRoot '.runtime'
 Stop-TrackedProcess -PidFile (Join-Path $runtimeDirectory 'injector.pid') -ExpectedScript 'injector.mjs' -ExpectedRoot $InstallRoot
 Stop-TrackedProcess -PidFile (Join-Path $runtimeDirectory 'server.pid') -ExpectedScript 'server.mjs' -ExpectedRoot $InstallRoot
+
+$pluginSelector = if ($metadata.codexPluginSelector) {
+  [string]$metadata.codexPluginSelector
+} else {
+  'jira-codex-assistant@jira-codex-local'
+}
+$pluginMarketplaceName = if ($metadata.codexPluginMarketplace) {
+  [string]$metadata.codexPluginMarketplace
+} else {
+  'jira-codex-local'
+}
+$codexCommandPath = if ($metadata.codexAppServerCommand -and (Test-Path -LiteralPath ([string]$metadata.codexAppServerCommand))) {
+  [string]$metadata.codexAppServerCommand
+} else {
+  $fallbackCodexCommand = Get-Command codex.cmd -ErrorAction SilentlyContinue
+  if ($fallbackCodexCommand) { [string]$fallbackCodexCommand.Source } else { '' }
+}
+$registrationWasManaged = $metadata.PSObject.Properties.Name -contains 'codexPluginSelector' `
+  -or $metadata.PSObject.Properties.Name -contains 'codexPluginMarketplace' `
+  -or $metadata.PSObject.Properties.Name -contains 'codexPluginRegistered'
+if ($registrationWasManaged -and -not $codexCommandPath) {
+  throw '卸载未完成：找不到 Codex CLI，无法确认核心 Plugin/Marketplace 注册已清理。程序文件已保留，请修复 Codex CLI 后重试。'
+}
+if ($registrationWasManaged) {
+  & $codexCommandPath plugin remove $pluginSelector --json 2>$null | Out-Null
+  & $codexCommandPath plugin marketplace remove $pluginMarketplaceName --json 2>$null | Out-Null
+  $cleanupStatus = Get-CodexRegistrationCleanupStatus `
+    -CodexCommand $codexCommandPath `
+    -PluginSelector $pluginSelector `
+    -MarketplaceName $pluginMarketplaceName
+  if (-not $cleanupStatus.probeAvailable -or -not $cleanupStatus.clean) {
+    throw '卸载未完成：无法确认核心 Plugin/Marketplace 注册已清理。程序文件已保留，请人工检查 Codex Plugin 状态后重试。'
+  }
+}
 
 foreach ($shortcutPath in @($metadata.shortcuts)) {
   Remove-TrackedShortcut -Path ([string]$shortcutPath) -ExpectedRoot $InstallRoot

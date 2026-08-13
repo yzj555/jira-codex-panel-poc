@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import {
   DEFAULT_BUG_MESSAGE_TEMPLATE,
   DEFAULT_MESSAGE_TEMPLATE,
@@ -505,6 +505,13 @@ export function normalizeConfiguration(input, previous = {}) {
   const deployment = "data_center";
   const codexProjectId = String(input.codexProjectId ?? previous.codexProjectId ?? "").trim();
   const codexProjectLabel = String(input.codexProjectLabel ?? previous.codexProjectLabel ?? "").trim();
+  const codexProjectPath = String(input.codexProjectPath ?? previous.codexProjectPath ?? "").trim();
+  const codexProjectRoots = [...new Set([
+    ...(Array.isArray(input.codexProjectRoots)
+      ? input.codexProjectRoots
+      : Array.isArray(previous.codexProjectRoots) ? previous.codexProjectRoots : []),
+    codexProjectPath
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
   const suppliedToken = typeof input.token === "string" ? input.token.trim() : "";
   const token = suppliedToken || String(previous.token || "");
   const rawJql = String(input.jql ?? previous.jql ?? "").trim();
@@ -533,6 +540,10 @@ export function normalizeConfiguration(input, previous = {}) {
   if (codexProjectId.length > 300 || codexProjectLabel.length > 300) {
     throw new ConfigurationError("Codex 项目标识无效。", { code: "INVALID_CODEX_PROJECT" });
   }
+  if (codexProjectPath.length > 4_000 || codexProjectRoots.length > 20
+    || codexProjectRoots.some((value) => value.length > 4_000 || !isAbsolute(value))) {
+    throw new ConfigurationError("Codex 项目目录无效。", { code: "INVALID_CODEX_PROJECT_PATH" });
+  }
 
   return {
     deployment,
@@ -540,6 +551,8 @@ export function normalizeConfiguration(input, previous = {}) {
     email: "",
     codexProjectId,
     codexProjectLabel: codexProjectId ? codexProjectLabel : "",
+    codexProjectPath: codexProjectId ? codexProjectPath : "",
+    codexProjectRoots: codexProjectId ? codexProjectRoots : [],
     token,
     jql,
     boardSources,
@@ -621,6 +634,10 @@ function publicConfiguration(record) {
     email: "",
     codexProjectId: record?.codexProjectId || "",
     codexProjectLabel: record?.codexProjectId ? record?.codexProjectLabel || "" : "",
+    codexProjectPath: record?.codexProjectId ? record?.codexProjectPath || "" : "",
+    codexProjectRoots: record?.codexProjectId && Array.isArray(record?.codexProjectRoots)
+      ? record.codexProjectRoots.map(String).filter(Boolean)
+      : [],
     jql: storedJql,
     boardSources,
     promptTemplates,
@@ -693,12 +710,14 @@ export function createConfigStore({
       });
     }
     const record = {
-      version: 3,
+      version: 4,
       deployment: normalized.deployment,
       baseUrl: normalized.baseUrl,
       email: normalized.email,
       codexProjectId: normalized.codexProjectId,
       codexProjectLabel: normalized.codexProjectLabel,
+      codexProjectPath: normalized.codexProjectPath,
+      codexProjectRoots: normalized.codexProjectRoots,
       jql: normalized.jql,
       boardSources: normalized.boardSources,
       promptTemplates: storedPromptTemplates(normalized.promptTemplates),
@@ -735,7 +754,7 @@ export function createConfigStore({
     const wasEnabled = Boolean(record.bugMonitorEnabled);
     const nextRecord = {
       ...record,
-      version: Math.max(3, Number(record.version || 1)),
+      version: Math.max(4, Number(record.version || 1)),
       bugMonitorEnabled: nextEnabled,
       monitorGeneration: !wasEnabled && nextEnabled
         ? Math.max(0, Number(record.monitorGeneration || 0)) + 1

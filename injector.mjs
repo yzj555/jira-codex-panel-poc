@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CdpClient, listPageTargets } from "./lib/cdp.mjs";
 import { createEmbeddedPanelDocument } from "./lib/panel-document.mjs";
@@ -12,7 +12,17 @@ const cdpPort = Number(process.env.CODEX_CDP_PORT || 47824);
 const panelUrl = process.env.JIRA_POC_PANEL_URL || "http://127.0.0.1:47823/";
 const bridgeBindingName = "__jiraCodexNodeRequest";
 const bridgeToken = randomUUID();
-const [clientSource, navigationSource, applicationCommandsSource, panelHtml, panelStyles, panelAppSource, promptBuilderSource, issueViewsSource] = await Promise.all([
+const bridgeProtocolVersion = "2";
+const [
+  clientSource,
+  navigationSource,
+  applicationCommandsSource,
+  panelHtml,
+  panelStyles,
+  panelAppSource,
+  promptBuilderSource,
+  issueViewsSource
+] = await Promise.all([
   readFile(join(root, "inject", "client.js"), "utf8"),
   readFile(join(root, "lib", "codex-navigation.mjs"), "utf8"),
   readFile(join(root, "lib", "codex-application-commands.mjs"), "utf8"),
@@ -23,10 +33,6 @@ const [clientSource, navigationSource, applicationCommandsSource, panelHtml, pan
   readFile(join(root, "public", "issue-views.js"), "utf8")
 ]);
 const navigationHelpers = navigationSource.replace(
-  /\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g,
-  ""
-);
-const promptHelpers = promptBuilderSource.replace(
   /\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g,
   ""
 );
@@ -48,13 +54,7 @@ const clientWithApplicationCommands = clientWithNavigation.replace(
 if (clientWithApplicationCommands === clientWithNavigation) {
   throw new Error("Injector client is missing the Codex Application Commands marker.");
 }
-const compiledClientSource = clientWithApplicationCommands.replace(
-  "/*__JIRA_CODEX_PROMPT_HELPERS__*/",
-  promptHelpers
-);
-if (compiledClientSource === clientWithApplicationCommands) {
-  throw new Error("Injector client is missing the Jira prompt helper marker.");
-}
+const compiledClientSource = clientWithApplicationCommands;
 const panelDocument = createEmbeddedPanelDocument({
   html: panelHtml,
   styles: panelStyles,
@@ -63,7 +63,14 @@ const panelDocument = createEmbeddedPanelDocument({
   issueViewsSource,
   panelUrl
 });
+const injectionRevision = createHash("sha256")
+  .update(compiledClientSource)
+  .update(panelDocument)
+  .update(bridgeProtocolVersion)
+  .digest("hex")
+  .slice(0, 16);
 const source = [
+  `window.__JIRA_CODEX_POC_INJECTION_REVISION__ = ${JSON.stringify(injectionRevision)};`,
   `window.__JIRA_CODEX_POC_PANEL_URL__ = ${JSON.stringify(panelUrl)};`,
   `window.__JIRA_CODEX_POC_PANEL_DOCUMENT__ = ${JSON.stringify(panelDocument)};`,
   `window.__JIRA_CODEX_BRIDGE_BINDING__ = ${JSON.stringify(bridgeBindingName)};`,
@@ -76,61 +83,12 @@ const panelOrigin = new URL(panelUrl).origin;
 const allowedBridgeMethods = new Set(["GET", "POST", "PUT", "DELETE"]);
 const maxBridgeRequestBytes = 128 * 1024;
 const maxBridgeResponseBytes = 50 * 1024 * 1024;
-const attachmentCacheRoot = resolve(process.env.LOCALAPPDATA || "", "jira-codex-panel-poc", "attachments");
 
 async function sendBridgeResult(cdp, payload) {
   await cdp.send("Runtime.evaluate", {
     expression: `window.__jiraCodexResolveHostFetch?.(${JSON.stringify(payload)})`,
     returnByValue: false
   });
-}
-
-function bridgeJsonResult(id, status, payload) {
-  return {
-    id,
-    status,
-    statusText: status >= 200 && status < 300 ? "OK" : "Error",
-    headers: { "content-type": "application/json; charset=utf-8" },
-    bodyBase64: Buffer.from(JSON.stringify(payload), "utf8").toString("base64")
-  };
-}
-
-async function validatedAttachmentPaths(values) {
-  if (!Array.isArray(values) || values.length < 1 || values.length > 50) {
-    throw new Error("Attachment path count is invalid.");
-  }
-  const paths = [];
-  for (const value of values) {
-    const filePath = resolve(String(value || ""));
-    const relativePath = relative(attachmentCacheRoot, filePath);
-    if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) {
-      throw new Error("Attachment path is outside the Jira attachment cache.");
-    }
-    const fileStat = await stat(filePath);
-    if (!fileStat.isFile()) throw new Error("Attachment path is not a file.");
-    paths.push(filePath);
-  }
-  return paths;
-}
-
-async function attachFilesToInput(cdp, request, id) {
-  const inputId = String(request.inputId || "");
-  if (!/^jira-codex-attachment-input-[0-9a-f-]{36}$/i.test(inputId)) {
-    throw new Error("Attachment input identifier is invalid.");
-  }
-  const paths = await validatedAttachmentPaths(request.paths);
-  await cdp.send("DOM.enable");
-  const documentNode = await cdp.send("DOM.getDocument", { depth: 1, pierce: true });
-  const inputNode = await cdp.send("DOM.querySelector", {
-    nodeId: documentNode.root.nodeId,
-    selector: `#${inputId}`
-  });
-  if (!inputNode.nodeId) throw new Error("Attachment input was not found in Codex.");
-  await cdp.send("DOM.setFileInputFiles", { nodeId: inputNode.nodeId, files: paths });
-  await cdp.send("Runtime.evaluate", {
-    expression: `(() => { const input = document.getElementById(${JSON.stringify(inputId)}); if (input && input.files?.length) input.dispatchEvent(new Event("change", { bubbles: true })); })()`
-  });
-  await sendBridgeResult(cdp, bridgeJsonResult(id, 200, { ok: true, count: paths.length }));
 }
 
 async function handleBridgeRequest(cdp, event) {
@@ -145,10 +103,6 @@ async function handleBridgeRequest(cdp, event) {
   if (!id || request.token !== bridgeToken) return;
 
   try {
-    if (request.action === "attach-files") {
-      await attachFilesToInput(cdp, request, id);
-      return;
-    }
     const url = new URL(String(request.url || ""), panelUrl);
     if (url.origin !== panelOrigin) throw new Error("Bridge URL origin is not allowed.");
     const method = String(request.method || "GET").toUpperCase();
@@ -160,6 +114,12 @@ async function handleBridgeRequest(cdp, event) {
     const headers = new Headers();
     const contentType = request.headers?.["content-type"] || request.headers?.["Content-Type"];
     if (contentType) headers.set("content-type", String(contentType));
+    const accept = request.headers?.accept || request.headers?.Accept;
+    if (accept) headers.set("accept", String(accept));
+    const desktopClientId = String(request.headers?.["x-jira-codex-desktop-client"] || "").trim();
+    if (desktopClientId && /^[A-Za-z0-9._:-]{1,160}$/.test(desktopClientId)) {
+      headers.set("x-jira-codex-desktop-client", desktopClientId);
+    }
     const response = await fetch(url, {
       method,
       headers,
@@ -225,6 +185,26 @@ async function injectTarget(target) {
     if (!registeredTargets.has(target.id)) {
       await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source });
       registeredTargets.add(target.id);
+    }
+    const current = await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        // The injector process owns the bridge token. Refresh transport globals on
+        // every pass even when the UI revision is already current, otherwise a
+        // service restart leaves the live page sending the retired token forever.
+        window.__JIRA_CODEX_POC_PANEL_URL__ = ${JSON.stringify(panelUrl)};
+        window.__JIRA_CODEX_BRIDGE_BINDING__ = ${JSON.stringify(bridgeBindingName)};
+        window.__JIRA_CODEX_BRIDGE_TOKEN__ = ${JSON.stringify(bridgeToken)};
+        const host = window.__jiraCodexPoc;
+        if (window.__JIRA_CODEX_POC_INJECTION_REVISION__ !== ${JSON.stringify(injectionRevision)}
+          || host?.revision !== ${JSON.stringify(injectionRevision)}) return { upToDate: false };
+        host.ensure?.();
+        return { upToDate: true, state: host.state?.() || null };
+      })()`,
+      returnByValue: true
+    });
+    if (current.result?.value?.upToDate) {
+      console.log(`[jira-poc] current ${target.id} ${target.url} ${JSON.stringify(current.result.value.state || {})}`);
+      return;
     }
     const result = await cdp.send("Runtime.evaluate", {
       expression: source,

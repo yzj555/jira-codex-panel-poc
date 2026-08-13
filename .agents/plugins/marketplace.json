@@ -1,0 +1,20 @@
+{
+  "name": "jira-codex-local",
+  "interface": {
+    "displayName": "Jira Codex Local"
+  },
+  "plugins": [
+    {
+      "name": "jira-codex-assistant",
+      "source": {
+        "source": "local",
+        "path": "./plugins/jira-codex-assistant"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

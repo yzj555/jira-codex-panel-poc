@@ -16,6 +16,7 @@ class FakeAppServerProcess extends EventEmitter {
     this.stdout = new PassThrough();
     this.stderr = new PassThrough();
     this.killed = false;
+    this.exitCode = null;
     this.messages = [];
     let buffer = "";
     this.stdin.on("data", (chunk) => {
@@ -30,6 +31,7 @@ class FakeAppServerProcess extends EventEmitter {
         handleMessage?.(message, this);
       }
     });
+    this.stdin.on("finish", () => queueMicrotask(() => this.finishExit(0, null)));
     queueMicrotask(() => {
       if (spawnError) this.emit("error", spawnError);
       else this.emit("spawn");
@@ -48,10 +50,16 @@ class FakeAppServerProcess extends EventEmitter {
     this.stdout.write(`${JSON.stringify({ method, params })}\n`);
   }
 
+  finishExit(code = 0, signal = null) {
+    if (this.exitCode !== null) return;
+    this.exitCode = code;
+    this.emit("exit", code, signal);
+  }
+
   kill() {
     if (this.killed) return false;
     this.killed = true;
-    queueMicrotask(() => this.emit("exit", 0, null));
+    queueMicrotask(() => this.finishExit(0, null));
     return true;
   }
 }
@@ -124,7 +132,7 @@ test("App Server 只读分析会创建会话、绑定 Skill 并发送真实图�
 
   assert.equal(result.threadId, "thread-jira");
   assert.equal(result.turnId, "turn-analysis");
-  assert.equal(result.handoffPending, true);
+  assert.equal(result.completionTracking, "app-server");
   assert.deepEqual(result.unsupportedAttachments, ["C:\\jira\\rules.pdf"]);
   const thread = harness.process().messages.find((message) => message.method === "thread/start");
   assert.equal(thread.params.sandbox, "read-only");
@@ -146,34 +154,31 @@ test("App Server 只读分析会创建会话、绑定 Skill 并发送真实图�
     access: { type: "fullAccess" }
   });
   assert.equal(turn.params.approvalPolicy, "never");
-  const unsubscribe = harness.process().messages.find((message) => message.method === "thread/unsubscribe");
-  assert.deepEqual(unsubscribe.params, { threadId: "thread-jira" });
-  await harness.client.close();
-});
-
-test("desktop handoff creates and releases a thread without starting a turn", async () => {
-  const harness = createFakeClient((message, child) => {
-    if (message.method === "thread/start") {
-      child.reply(message.id, { thread: { id: "thread-handoff" } });
-    } else if (message.method === "thread/name/set" || message.method === "thread/unsubscribe") {
-      child.reply(message.id, {});
+  assert.equal(harness.process().messages.some((message) => message.method === "thread/unsubscribe"), false);
+  harness.process().notify("item/completed", {
+    threadId: "thread-jira",
+    turnId: "turn-analysis",
+    item: { id: "message-1", type: "agentMessage", text: "analysis result", phase: "final_answer" },
+    completedAtMs: Date.now()
+  });
+  harness.process().notify("turn/completed", {
+    threadId: "thread-jira",
+    turn: {
+      id: "turn-analysis",
+      status: "completed",
+      items: [],
+      startedAt: 1_786_000_000,
+      completedAt: 1_786_000_001,
+      error: null
     }
   });
-
-  const result = await harness.client.startReadOnlyAnalysis({
-    message: "Analyze after the desktop owns this thread.",
-    title: "Desktop handoff",
-    cwd: "F:\\repo",
-    desktopHandoff: true
-  });
-
-  assert.equal(result.threadId, "thread-handoff");
-  assert.equal(result.turnId, "");
-  assert.equal(result.desktopHandoff, true);
-  assert.deepEqual(
-    harness.process().messages.map((message) => message.method),
-    ["initialize", "initialized", "thread/start", "thread/name/set", "thread/unsubscribe"]
-  );
+  await new Promise((resolve) => setImmediate(resolve));
+  const completion = await harness.client.readTurnResult("thread-jira", "turn-analysis");
+  assert.equal(completion.status, "completed");
+  assert.equal(completion.result, "analysis result");
+  assert.equal(completion.source, "app-server-notification");
+  const unsubscribe = harness.process().messages.find((message) => message.method === "thread/unsubscribe");
+  assert.deepEqual(unsubscribe.params, { threadId: "thread-jira" });
   await harness.client.close();
 });
 
@@ -246,6 +251,40 @@ test("非图片附件不会伪装成已发送给 App Server", () => {
   assert.deepEqual(prepared.unsupportedAttachments, ["C:\\jira\\trace.log"]);
 });
 
+test("非图片文件可作为明确的只读路径上下文交给 App Server", () => {
+  const prepared = buildCodexAnalysisInput({
+    message: "审核 SVN 差异",
+    referenceFiles: true,
+    attachments: [{ path: "C:\\review\\02-svn-changes.diff", mimeType: "text/plain" }]
+  });
+  assert.deepEqual(prepared.unsupportedAttachments, []);
+  assert.deepEqual(prepared.referencedAttachments, ["C:\\review\\02-svn-changes.diff"]);
+  assert.match(prepared.input.at(-1).text, /不是原生附件/);
+  assert.match(prepared.input.at(-1).text, /02-svn-changes\.diff/);
+});
+
+test("turn/start 透传仅对当前 turn 生效的 outputSchema", async () => {
+  const harness = createFakeClient((message, child) => {
+    if (message.method === "thread/resume") child.reply(message.id, { thread: { id: "thread-review" } });
+    else if (message.method === "turn/start") {
+      child.reply(message.id, { turn: { id: "turn-review", status: "inProgress" } });
+    } else if (message.method === "thread/unsubscribe") child.reply(message.id, { status: "unsubscribed" });
+  });
+  const outputSchema = {
+    type: "object",
+    properties: { verdict: { type: "string" } },
+    required: ["verdict"],
+    additionalProperties: false
+  };
+  await harness.client.startReadOnlyTurn("thread-review", {
+    message: "只读审核",
+    outputSchema
+  });
+  const turn = harness.process().messages.find((message) => message.method === "turn/start");
+  assert.deepEqual(turn.params.outputSchema, outputSchema);
+  await harness.client.close();
+});
+
 test("无法启动 App Server 时返回可降级的明确状态", async () => {
   const denied = Object.assign(new Error("spawn EACCES"), { code: "EACCES" });
   const client = createCodexAppServerClient({
@@ -269,5 +308,48 @@ test("App Server RPC 错误保留服务端错误码", async () => {
     harness.client.readThread("missing"),
     (error) => error.code === "CODEX_APP_SERVER_RPC_ERROR" && error.rpcCode === -32602
   );
+  await harness.client.close();
+});
+
+test("会话由桌面持有时 resume 返回可安全降级的明确错误", async () => {
+  const harness = createFakeClient((message, child) => {
+    if (message.method === "thread/resume") {
+      child.fail(message.id, -32000, "This task is running in another app. Close it there first.");
+    }
+  });
+  await assert.rejects(
+    harness.client.resumeThread("thread-desktop"),
+    (error) => error.code === "CODEX_THREAD_OWNED_ELSEWHERE"
+  );
+  await harness.client.close();
+});
+
+test("App Server restart recovery reads a completed turn through thread/read", async () => {
+  const harness = createFakeClient((message, child) => {
+    if (message.method !== "thread/read") return;
+    child.reply(message.id, {
+      thread: {
+        id: "thread-recovered",
+        turns: [{
+          id: "turn-recovered",
+          status: "completed",
+          startedAt: 1_786_000_000,
+          completedAt: 1_786_000_002,
+          error: null,
+          items: [
+            { id: "user-1", type: "userMessage", content: [{ type: "text", text: "request" }] },
+            { id: "agent-1", type: "agentMessage", text: "recovered result", phase: "final_answer" }
+          ]
+        }]
+      }
+    });
+  });
+
+  const completion = await harness.client.readTurnResult("local:thread-recovered", "turn-recovered");
+  assert.equal(completion.status, "completed");
+  assert.equal(completion.result, "recovered result");
+  assert.equal(completion.source, "app-server-thread-read");
+  const read = harness.process().messages.find((message) => message.method === "thread/read");
+  assert.deepEqual(read.params, { threadId: "thread-recovered", includeTurns: true });
   await harness.client.close();
 });

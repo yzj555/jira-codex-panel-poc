@@ -31,6 +31,8 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
       email: "user@example.com",
       codexProjectId: "local-project-1",
       codexProjectLabel: "server-project",
+      codexProjectPath: "F:\\repo",
+      codexProjectRoots: ["F:\\repo", "F:\\shared"],
       token: "secret-token-value",
       wecomWebhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=11111111-2222-3333-4444-555555555555",
       jql: "project = DEMO",
@@ -50,6 +52,8 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
     assert.equal(publicConfig.email, "");
     assert.equal(publicConfig.codexProjectId, "local-project-1");
     assert.equal(publicConfig.codexProjectLabel, "server-project");
+    assert.equal(publicConfig.codexProjectPath, "F:\\repo");
+    assert.deepEqual(publicConfig.codexProjectRoots, ["F:\\repo", "F:\\shared"]);
     assert.equal(publicConfig.messageTemplate, "处理 {{key}}");
     assert.equal(publicConfig.promptTemplates.requirement.content, "处理 {{key}}");
     assert.equal(publicConfig.promptTemplates.bug.content, "处理 {{key}}");
@@ -228,7 +232,7 @@ test("需求与 Bug 模板、技能独立保存，系统默认正文不固化到
     assert.equal(publicConfig.promptTemplates.bug.skill.name, "custom-bug-skill");
 
     const record = JSON.parse(await readFile(configFile, "utf8"));
-    assert.equal(record.version, 3);
+    assert.equal(record.version, 4);
     assert.equal("content" in record.promptTemplates.requirement, false);
     assert.equal(record.promptTemplates.bug.content, "诊断 {{key}}：{{description}}");
     assert.equal("messageTemplate" in record, false);

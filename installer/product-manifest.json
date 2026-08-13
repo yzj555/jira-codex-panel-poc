@@ -10,14 +10,54 @@
       "path": "server.mjs"
     },
     {
-      "id": "panel-ui",
+      "id": "settings-ui",
       "required": true,
       "path": "public"
     },
     {
-      "id": "legacy-cdp-host",
+      "id": "minimal-desktop-ui-host",
       "required": true,
       "path": "injector.mjs"
+    },
+    {
+      "id": "desktop-ui-client",
+      "required": true,
+      "path": "inject/client.js"
+    },
+    {
+      "id": "embedded-panel-builder",
+      "required": true,
+      "path": "lib/panel-document.mjs"
+    },
+    {
+      "id": "embedded-panel-document",
+      "required": true,
+      "path": "public/index.html"
+    },
+    {
+      "id": "embedded-panel-application",
+      "required": true,
+      "path": "public/app.js"
+    },
+    {
+      "id": "embedded-panel-styles",
+      "required": true,
+      "path": "public/styles.css"
+    },
+    {
+      "id": "embedded-panel-prompt-builder",
+      "required": true,
+      "path": "public/prompt-builder.js"
+    },
+    {
+      "id": "embedded-panel-issue-views",
+      "required": true,
+      "path": "public/issue-views.js"
+    },
+    {
+      "id": "official-mcp-app-ui",
+      "required": true,
+      "path": "mcp/ui/task-board.html"
     },
     {
       "id": "codex-app-server-adapter",
@@ -35,18 +75,38 @@
       "path": "lib/codex-application-commands.mjs"
     },
     {
+      "id": "jira-workbench-service",
+      "required": true,
+      "path": "lib/jira-workbench-service.mjs"
+    },
+    {
+      "id": "codex-conversation-service",
+      "required": true,
+      "path": "lib/codex-conversation-service.mjs"
+    },
+    {
+      "id": "svn-workbench-service",
+      "required": true,
+      "path": "lib/svn-workbench-service.mjs"
+    },
+    {
       "id": "bundled-skills",
       "required": true,
       "path": "skills"
     },
     {
       "id": "official-plugin",
-      "required": false,
-      "path": ".codex-plugin/plugin.json"
+      "required": true,
+      "path": "plugins/jira-codex-assistant"
+    },
+    {
+      "id": "plugin-marketplace",
+      "required": true,
+      "path": ".agents/plugins/marketplace.json"
     },
     {
       "id": "mcp-server",
-      "required": false,
+      "required": true,
       "path": "mcp"
     }
   ]

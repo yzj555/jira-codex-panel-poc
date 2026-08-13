@@ -39,6 +39,26 @@ async function waitForServer(url, child, stderr) {
   throw new Error(`等待测试服务超时：${stderr.join("")}`);
 }
 
+async function waitForDesktopCommand(baseUrl, clientId = "integration-desktop") {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const payload = await fetch(
+      `${baseUrl}/api/desktop/commands/next?clientId=${encodeURIComponent(clientId)}`
+    ).then((response) => response.json());
+    if (payload.command) return payload.command;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("等待 Desktop command 超时。");
+}
+
+async function completeDesktopCommand(baseUrl, command, result) {
+  const response = await fetch(`${baseUrl}/api/desktop/commands/${command.id}/result`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lease: command.lease, ok: true, result })
+  });
+  assert.equal(response.status, 200, await response.text());
+}
+
 test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
   skip: process.platform !== "win32",
   timeout: 20_000
@@ -207,6 +227,36 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
 
   try {
     await waitForServer(`${baseUrl}/api/health`, child, stderr);
+    const mcpAppResponse = await fetch(`${baseUrl}/mcp-app.html?transport=http`);
+    const mcpAppHtml = await mcpAppResponse.text();
+    assert.equal(mcpAppResponse.status, 200);
+    assert.match(mcpAppResponse.headers.get("content-type") || "", /text\/html/);
+    assert.match(mcpAppHtml, /Jira 任务工作台/);
+    assert.match(mcpAppHtml, /LOCAL_TRANSPORT/);
+
+    const unsupportedMediaTypeResponse = await fetch(`${baseUrl}/api/config`, {
+      method: "PUT",
+      headers: { "content-type": "text/plain" },
+      body: "{}"
+    });
+    const unsupportedMediaTypePayload = await unsupportedMediaTypeResponse.json();
+    assert.equal(unsupportedMediaTypeResponse.status, 415);
+    assert.equal(unsupportedMediaTypePayload.code, "UNSUPPORTED_MEDIA_TYPE");
+
+    const foreignOriginResponse = await fetch(`${baseUrl}/api/config`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://example.com"
+      },
+      body: "{}"
+    });
+    const foreignOriginPayload = await foreignOriginResponse.json();
+    assert.equal(foreignOriginResponse.status, 403);
+    assert.equal(foreignOriginPayload.code, "WRITE_ORIGIN_FORBIDDEN");
+
+    // Desktop injection, MCP and CLI callers omit Origin. A normal local JSON
+    // write without that browser header must remain valid.
     const saveResponse = await fetch(`${baseUrl}/api/config`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -240,12 +290,13 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
       })
     }).then((response) => response.json());
     assert.equal(importedBindings.revision, 1);
-    assert.equal(importedBindings.bindings["REAL-9"].runtimeOwner, "legacy-desktop");
+    assert.equal(importedBindings.bindings["REAL-9"].runtimeOwner, "desktop-appserver");
 
     const mutatedBindings = await fetch(`${baseUrl}/api/bindings/mutations`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        expectedRevision: importedBindings.revision,
         deletes: ["REAL-9"],
         upserts: {
           "REAL-10": {
@@ -281,7 +332,10 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
     const migrationResponseText = await migrationResponse.text();
     assert.equal(migrationResponse.status, 200, migrationResponseText);
     const migratedBindings = JSON.parse(migrationResponseText);
-    assert.equal(Object.keys(migratedBindings.bindings).length, 81);
+    assert.equal(migratedBindings.revision, mutatedBindings.revision);
+    assert.equal(Object.keys(migratedBindings.bindings).length, 1);
+    assert.equal(migratedBindings.bindings["REAL-10"].threadId, "019fc6eb-2d03-7a62-be45-840481d26b20");
+    assert.equal(migratedBindings.legacyImportCount, 1);
 
     const runtimeCapabilities = await fetch(`${baseUrl}/api/codex/runtime/capabilities`)
       .then((response) => response.json());
@@ -362,15 +416,149 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
     assert.equal(cachedPayload.attachment.path, materializedPayload.attachment.path);
     assert.equal(cachedPayload.attachment.cached, true);
 
+    const unboundOpenResponse = await fetch(`${baseUrl}/api/codex/issues/REAL-9/open`, {
+      method: "POST",
+      headers: { "x-jira-codex-desktop-client": "integration-desktop" }
+    });
+    const unboundOpenPayload = await unboundOpenResponse.json();
+    assert.equal(unboundOpenResponse.status, 409);
+    assert.equal(unboundOpenPayload.code, "ISSUE_NOT_BOUND");
+
+    const invalidAnalysisResponse = await fetch(`${baseUrl}/api/codex/issues/REAL-9/analysis`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ supplementalDescription: ["invalid"] })
+    });
+    const invalidAnalysisPayload = await invalidAnalysisResponse.json();
+    assert.equal(invalidAnalysisResponse.status, 400);
+    assert.equal(invalidAnalysisPayload.code, "INVALID_SUPPLEMENTAL_DESCRIPTION");
+
+    const conflictingAnalysisResponsePromise = fetch(`${baseUrl}/api/codex/issues/REAL-9/analysis`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-jira-codex-desktop-client": "integration-desktop"
+      },
+      body: JSON.stringify({
+        supplementalDescription: "集成补充上下文",
+        expectedRevision: mutatedBindings.revision
+      })
+    });
+    const conflictingCreateCommand = await waitForDesktopCommand(baseUrl);
+    assert.equal(conflictingCreateCommand.type, "create-analysis");
+    const concurrentlyMutatedBindings = await fetch(`${baseUrl}/api/bindings/mutations`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: mutatedBindings.revision,
+        upserts: {
+          "REAL-11": {
+            threadId: "thread-created-during-analysis",
+            runtimeOwner: "desktop-appserver"
+          }
+        }
+      })
+    }).then((response) => response.json());
+    await completeDesktopCommand(baseUrl, conflictingCreateCommand, {
+      threadId: "019fc6eb-2d03-7a62-be45-840481d26b98",
+      turnId: "turn-integration-conflict"
+    });
+    const conflictingAnalysisResponse = await conflictingAnalysisResponsePromise;
+    const conflictingAnalysisPayload = await conflictingAnalysisResponse.json();
+    assert.equal(conflictingAnalysisResponse.status, 409, JSON.stringify(conflictingAnalysisPayload));
+    assert.equal(conflictingAnalysisPayload.code, "ISSUE_ANALYSIS_CREATED_UNBOUND");
+    assert.equal(conflictingAnalysisPayload.details.stage, "created_unbound");
+    assert.equal(conflictingAnalysisPayload.details.threadId, "019fc6eb-2d03-7a62-be45-840481d26b98");
+    assert.equal(conflictingAnalysisPayload.details.currentRevision, concurrentlyMutatedBindings.revision);
+    const bindingsAfterConflict = await fetch(`${baseUrl}/api/bindings`).then((response) => response.json());
+    assert.equal("REAL-9" in bindingsAfterConflict.bindings, false);
+    assert.equal(bindingsAfterConflict.bindings["REAL-11"].threadId, "thread-created-during-analysis");
+
+    const staleAnalysisResponse = await fetch(`${baseUrl}/api/codex/issues/REAL-9/analysis`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-jira-codex-desktop-client": "integration-desktop"
+      },
+      body: JSON.stringify({ expectedRevision: mutatedBindings.revision })
+    });
+    const staleAnalysisPayload = await staleAnalysisResponse.json();
+    assert.equal(staleAnalysisResponse.status, 409, JSON.stringify(staleAnalysisPayload));
+    assert.equal(staleAnalysisPayload.code, "ISSUE_BINDINGS_REVISION_CONFLICT");
+    assert.equal(staleAnalysisPayload.details.stage, "before_create");
+
+    // expectedRevision is optional for MCP-compatible callers. In that case
+    // the service snapshots the current revision when the operation starts.
+    const analysisResponsePromise = fetch(`${baseUrl}/api/codex/issues/REAL-9/analysis`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-jira-codex-desktop-client": "integration-desktop"
+      },
+      body: JSON.stringify({ supplementalDescription: "集成补充上下文" })
+    });
+    const createCommand = await waitForDesktopCommand(baseUrl);
+    assert.equal(createCommand.type, "create-analysis");
+    assert.equal(createCommand.payload.issueKey, "REAL-9");
+    assert.match(createCommand.payload.message, /集成补充上下文/);
+    assert.equal(createCommand.payload.attachments[0].path, materializedPayload.attachment.path);
+    const issueReadsBeforeDesktopCompletion = requests.filter(
+      (request) => request.url.startsWith("/rest/api/2/issue/REAL-9?fields=")
+    ).length;
+    await completeDesktopCommand(baseUrl, createCommand, {
+      threadId: "019fc6eb-2d03-7a62-be45-840481d26b99",
+      turnId: "turn-integration-1"
+    });
+    const analysisResponse = await analysisResponsePromise;
+    const analysisPayload = await analysisResponse.json();
+    assert.equal(analysisResponse.status, 200, JSON.stringify(analysisPayload));
+    assert.equal(analysisPayload.issueKey, "REAL-9");
+    assert.equal(analysisPayload.threadId, "019fc6eb-2d03-7a62-be45-840481d26b99");
+    assert.equal(analysisPayload.turnId, "turn-integration-1");
+    assert.equal(analysisPayload.binding.runtimeOwner, "desktop-appserver");
+    assert.equal(analysisPayload.bindingsRevision, concurrentlyMutatedBindings.revision + 1);
+    assert.equal(analysisPayload.issueSnapshot.bindingsRevision, analysisPayload.bindingsRevision);
+    assert.equal(analysisPayload.issueSnapshot.issue.key, "REAL-9");
+    assert.equal(
+      requests.filter((request) => request.url.startsWith("/rest/api/2/issue/REAL-9?fields=")).length,
+      issueReadsBeforeDesktopCompletion,
+      "成功回执不应再同步重取 Jira 详情"
+    );
+
+    const openResponsePromise = fetch(`${baseUrl}/api/codex/issues/REAL-9/open`, {
+      method: "POST",
+      headers: { "x-jira-codex-desktop-client": "integration-desktop" }
+    });
+    const openCommand = await waitForDesktopCommand(baseUrl);
+    assert.equal(openCommand.type, "open-thread");
+    assert.deepEqual(openCommand.payload, {
+      issueKey: "REAL-9",
+      threadId: "019fc6eb-2d03-7a62-be45-840481d26b99"
+    });
+    await completeDesktopCommand(baseUrl, openCommand, {
+      threadId: "019fc6eb-2d03-7a62-be45-840481d26b99"
+    });
+    const openResponse = await openResponsePromise;
+    const openPayload = await openResponse.json();
+    assert.equal(openResponse.status, 200, JSON.stringify(openPayload));
+    assert.deepEqual(openPayload, {
+      opened: true,
+      threadId: "019fc6eb-2d03-7a62-be45-840481d26b99"
+    });
+
     const searchRequests = requests.filter((request) => request.url === "/rest/api/2/search");
-    assert.equal(searchRequests.length, 3);
+    // The page-independent Bug monitor performs its own startup scan. Keep
+    // this assertion focused on the API requests under test rather than the
+    // scheduler's timing relative to the test process.
+    assert.ok(searchRequests.length >= 3);
     const transitionRequests = requests.filter((request) => request.url.includes("/rest/api/2/issue/REAL-9/transitions"));
-    assert.equal(transitionRequests.length, 3);
-    assert.deepEqual(transitionRequests[2].body, { transition: { id: "21" } });
-    assert.equal(requests.filter((request) => request.url.startsWith("/rest/api/2/issue/REAL-9?fields=")).length, 1);
+    assert.equal(transitionRequests.length, 4);
+    assert.deepEqual(transitionRequests[3].body, { transition: { id: "21" } });
+    assert.ok(requests.filter((request) => request.url.startsWith("/rest/api/2/issue/REAL-9?fields=")).length >= 3);
     assert.equal(requests.every((request) => request.authorization === "Bearer dpapi-integration-token"), true);
-    assert.equal(searchRequests[2].body.jql, "project = REAL ORDER BY updated DESC");
-    assert.equal(searchRequests[2].body.maxResults, 20);
+    const sheetSearch = searchRequests.find((request) => request.body.jql === "project = REAL ORDER BY updated DESC");
+    assert.ok(sheetSearch);
+    assert.equal(sheetSearch.body.maxResults, 20);
   } finally {
     child.kill();
     await close(mockJira);

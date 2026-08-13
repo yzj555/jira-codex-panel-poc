@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  createLegacyCodexHostAdapter,
+  CODEX_DESKTOP_APP_SERVER_HOST_ID,
+  createCodexDesktopAppServerHostAdapter,
   findCodexAppInitialAsset,
   findCodexRpcAsset,
   interruptCodexThreadTurn,
@@ -177,13 +178,24 @@ test("Codex 会话 ID 会移除本地主机前缀", () => {
   assert.equal(isProvisionalCodexThreadId("local:019fcbb6-c322-7250-9b19-4645a37103c9"), false);
 });
 
-test("legacy desktop behavior is exposed through one host adapter", async () => {
+test("current Codex Desktop App Server behavior is exposed through one host adapter", async () => {
   const harness = createBridgeHarness();
-  const host = createLegacyCodexHostAdapter(harness.options);
+  const host = createCodexDesktopAppServerHostAdapter(harness.options);
   const capabilities = host.getCapabilities();
-  assert.equal(host.id, "legacy-desktop");
+  assert.equal(host.id, CODEX_DESKTOP_APP_SERVER_HOST_ID);
   assert.equal(capabilities.capabilities.navigateThread, true);
   assert.equal(capabilities.capabilities.resolveConversationTarget, true);
+  assert.equal(capabilities.capabilities.listProjects, true);
+  assert.deepEqual(await host.listProjects(), [{
+    id: "local-project",
+    projectId: "local-project",
+    label: "captain_tsubasa_server",
+    projectLabel: "captain_tsubasa_server",
+    cwd: "F:\\football\\server_v3\\server\\captain_tsubasa_server",
+    workspaceRoots: ["F:\\football\\server_v3\\server\\captain_tsubasa_server"],
+    kind: "project",
+    source: "codex-desktop-local-projects"
+  }]);
   assert.equal(
     (await host.resolveConversationTarget("local-project", "analyze")).cwd,
     "F:\\football\\server_v3\\server\\captain_tsubasa_server"
@@ -348,12 +360,10 @@ test("人工 Jira 会话通过桌面命令原子创建并发送结构化首条�
   const started = await startCodexConversation("分析 Jira CT-13350", {
     ...harness.options,
     projectId: "local-project",
-    title: "分析 CT-13350 收藏票优化",
-    desktopHandoff: true
+    title: "分析 CT-13350 收藏票优化"
   });
   assert.equal(started.threadId, harness.threadId);
   assert.equal(started.firstMessagePending, undefined);
-  assert.equal(started.desktopReady, true);
   assert.equal(started.knownLoadedThread, true);
   const startCall = harness.calls.find((call) => call.type === "start-conversation");
   assert.equal(startCall.payload.cwd, "F:\\football\\server_v3\\server\\captain_tsubasa_server");
@@ -439,6 +449,23 @@ test("侧栏未渲染目标时可通过 Codex 原生服务按会话 ID 导航", 
       threadId: "019fcbb6-c322-7250-9b19-4645a37103c9"
     }
   });
+});
+
+test("App Server 新会话可先由桌面静默 resume，确认首条消息后再显示", async () => {
+  const harness = createBridgeHarness({ threadStatus: "notLoaded" });
+  await navigateCodexThread(harness.threadId, {
+    ...harness.options,
+    showThread: false
+  });
+
+  assert.deepEqual(
+    harness.calls.filter((call) => call.payload?.method).map((call) => call.payload.method),
+    ["thread/read", "thread/resume"]
+  );
+  assert.equal(
+    harness.calls.some((call) => call.request?.action?.type === "windows.show_thread"),
+    false
+  );
 });
 
 test("刚启动首个 turn 的新会话直接显示，不执行 read 或 resume", async () => {

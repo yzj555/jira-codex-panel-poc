@@ -6,6 +6,48 @@ import { join } from "node:path";
 import { createAutomationManager, buildWecomAnalysisMessage } from "../lib/automation-manager.mjs";
 import { createCodexSessionReader, parseCodexTaskCompletion } from "../lib/codex-session-reader.mjs";
 
+test("new automation jobs use App Server turn results before the legacy rollout fallback", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-codex-appserver-automation-"));
+  try {
+    const calls = [];
+    const manager = createAutomationManager({
+      stateFile: join(directory, "automation.json"),
+      configStore: { load: async () => ({ wecomWebhook: "" }) },
+      turnReader: {
+        readTurnResult: async (threadId, turnId) => {
+          calls.push({ threadId, turnId });
+          return {
+            threadId,
+            turnId,
+            status: "completed",
+            completedAt: "2026-08-12T10:00:00.000Z",
+            result: "official App Server result",
+            source: "app-server-thread-read"
+          };
+        }
+      },
+      sessionReader: {
+        readCompletion: async () => { throw new Error("legacy reader must not be used"); }
+      },
+      pollIntervalMs: 60_000
+    });
+    await manager.register({
+      issue: { key: "CT-456", title: "App Server tracking" },
+      threadId: "local:thread-456",
+      turnId: "turn-456",
+      startedAt: Date.parse("2026-08-12T09:59:00.000Z")
+    });
+    await manager.poll();
+    const status = await manager.getStatus();
+    assert.deepEqual(calls, [{ threadId: "local:thread-456", turnId: "turn-456" }]);
+    assert.equal(status.recentJobs[0].status, "completed");
+    assert.equal(status.recentJobs[0].turnId, "turn-456");
+    assert.equal(status.recentJobs[0].completionSource, "app-server-thread-read");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("Codex 会话日志只读取真实 task_complete 事件", () => {
   const content = [
     JSON.stringify({ timestamp: "2026-08-04T10:00:00.000Z", type: "response_item", payload: { text: "task_complete" } }),

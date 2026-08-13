@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jira 任务工作台</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f6f7; --panel: #fff; --card: #fff; --line: #e1e5e9; --line-strong: #cbd2d9;
+      --soft: #f0f2f4; --hover: #f4f6f8; --text: #1f2328; --muted: #818a95; --accent: #356bc6;
+      --req: #356bc6; --bug: #bc4b40; --ok: #2f865b; --warn: #b7791f;
+      --shadow: 0 10px 30px rgb(16 24 40 / 12%);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #181a1d; --panel: #202328; --card: #24282d; --line: #32373e; --line-strong: #48505a;
+        --soft: #2a2f35; --hover: #2d3238; --text: #f2f3f5; --muted: #9099a4; --accent: #79aaff;
+        --req: #79aaff; --bug: #ff8c82; --ok: #62cf91; --warn: #f1b35d; --shadow: 0 14px 38px rgb(0 0 0 / 34%);
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #181a1d; --panel: #202328; --card: #24282d; --line: #32373e; --line-strong: #48505a;
+      --soft: #2a2f35; --hover: #2d3238; --text: #f2f3f5; --muted: #9099a4; --accent: #79aaff;
+      --req: #79aaff; --bug: #ff8c82; --ok: #62cf91; --warn: #f1b35d; --shadow: 0 14px 38px rgb(0 0 0 / 34%);
+    }
+    :root[data-theme="light"] {
+      --bg: #f5f6f7; --panel: #fff; --card: #fff; --line: #e1e5e9; --line-strong: #cbd2d9;
+      --soft: #f0f2f4; --hover: #f4f6f8; --text: #1f2328; --muted: #818a95; --accent: #356bc6;
+      --req: #356bc6; --bug: #bc4b40; --ok: #2f865b; --warn: #b7791f;
+      --shadow: 0 10px 30px rgb(16 24 40 / 12%);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 12px; background: var(--bg); color: var(--text); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    button, select, input { color: inherit; font: inherit; }
+    button { min-height: 34px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 6px; outline: 0; background: var(--panel); cursor: pointer; font-weight: 620; transition: color .11s ease, border-color .11s ease, background-color .11s ease, opacity .11s ease; }
+    button:hover { border-color: color-mix(in srgb, var(--accent) 48%, var(--line-strong)); background: var(--hover); color: var(--accent); }
+    button:active:not(:disabled) { background: var(--soft); }
+    button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+    button:disabled { opacity: .52; cursor: not-allowed; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 17px; }
+    h2 { font-size: 15px; }
+    #meta { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .toolbar { display: flex; align-items: center; gap: 8px; }
+    #local-close { width: 34px; padding: 0; font-size: 20px; line-height: 1; }
+    .monitor { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+    .monitor button[aria-pressed="true"] { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
+    nav { display: flex; gap: 18px; margin-bottom: 12px; padding: 0; border-bottom: 1px solid var(--line); background: transparent; }
+    nav button { position: relative; flex: 1; border: 0; border-radius: 0; background: transparent; }
+    nav button::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; border-radius: 2px; background: transparent; content: ""; }
+    nav button.active { background: transparent; color: var(--text); box-shadow: none; font-weight: 680; }
+    nav button.active::after { background: var(--accent); }
+    #error { display: none; margin-bottom: 10px; padding: 9px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bug) 16%, transparent); color: var(--bug); }
+    #loading { display: none; position: fixed; inset: 0; z-index: 30; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 72%, transparent); backdrop-filter: blur(2px); }
+    #loading.visible { display: flex; }
+    .loader { display: flex; align-items: center; gap: 9px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+    .spinner { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    section, .sheet-panel, .detail { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 650; }
+    .section-title .count { min-width: 25px; padding: 1px 7px; border-radius: 5px; color: var(--muted); background: var(--soft); text-align: center; font-size: 11px; }
+    .status-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 9px; }
+    .status-filter { min-height: 27px; padding: 0 8px; border-radius: 5px; color: var(--muted); font-size: 11px; }
+    .status-filter.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--accent); }
+    .requirement .section-title strong { color: var(--req); }
+    .bug .section-title strong { color: var(--bug); }
+    .list { display: grid; gap: 0; }
+    article { min-width: 0; padding: 10px 9px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; cursor: pointer; transition: background-color .11s ease, box-shadow .11s ease; }
+    article:last-child { border-bottom: 0; }
+    article:hover { border-color: var(--line); background: var(--hover); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 58%, transparent); }
+    .bug article:hover { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--bug) 62%, transparent); }
+    .task-head, .task-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .key { color: var(--accent); font-weight: 700; }
+    .title { margin: 5px 0; overflow-wrap: anywhere; font-weight: 600; }
+    .pill { display: inline-flex; align-items: center; max-width: 140px; padding: 1px 6px; border-radius: 4px; background: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bound { color: var(--ok); }
+    .empty { padding: 24px 8px; color: var(--muted); text-align: center; }
+    .sheets-layout { display: grid; grid-template-columns: minmax(190px, 34%) minmax(0, 1fr); gap: 10px; }
+    .sheet-list { display: grid; gap: 6px; max-height: 500px; overflow: auto; }
+    .sheet-item { width: 100%; min-height: 48px; text-align: left; }
+    .sheet-item.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
+    .sheet-item small { display: block; color: var(--muted); }
+    .sheet-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+    .sheet-toolbar input, .sheet-toolbar select { min-height: 34px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 9px; }
+    .sheet-toolbar input { flex: 1; }
+    .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+    .back { min-width: 36px; padding: 0 9px; }
+    .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 30%); gap: 10px; }
+    .description { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; border-radius: 8px; background: var(--bg); }
+    .facts { display: grid; gap: 6px; }
+    .fact { display: grid; grid-template-columns: 65px minmax(0,1fr); gap: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+    .fact span:first-child { color: var(--muted); }
+    .subsection { margin-top: 12px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .chip { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+    .attachments { display: grid; gap: 6px; margin-top: 6px; }
+    .attachment { padding: 8px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+    .attachment small { display: block; color: var(--muted); }
+    .attachment button { width: 100%; min-height: 0; padding: 0; border: 0; background: transparent; text-align: left; }
+    .attachment-preview { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+    .attachment-preview img { display: block; max-width: 100%; max-height: 440px; margin: 6px auto 0; border-radius: 7px; object-fit: contain; }
+    .transition-box { margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+    .transition-box select { width: 100%; min-height: 34px; margin: 7px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 8px; }
+    .transition-box button { width: 100%; background: var(--panel); }
+    .transition-hint { margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .binding-box { margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+    .binding-box select { width: 100%; min-height: 34px; margin: 7px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 8px; }
+    .binding-actions { display: flex; gap: 6px; margin-top: 7px; }
+    .binding-actions button { flex: 1; min-width: 0; }
+    #open-bound-thread, #create-analysis { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); color: var(--accent); }
+    #open-bound-thread:hover, #create-analysis:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--panel)); }
+    #confirm-binding, #confirm-create-analysis, #execute-transition { border-color: var(--accent); background: var(--accent); color: #fff; }
+    #confirm-binding:hover, #confirm-create-analysis:hover, #execute-transition:hover { border-color: color-mix(in srgb, var(--accent) 78%, #000); background: color-mix(in srgb, var(--accent) 88%, #000); color: #fff; }
+    .binding-actions .danger { border-color: color-mix(in srgb, var(--bug) 45%, var(--line)); color: var(--bug); }
+    .binding-current { margin-top: 5px; overflow-wrap: anywhere; font-weight: 600; }
+    .binding-hint { margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .svn { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .svn-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, 34%); gap: 10px; }
+    .svn-card { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
+    .svn-files { display: grid; align-content: start; gap: 1px; max-height: 340px; overflow: auto; margin-top: 8px; padding: 2px; }
+    .svn-tree-dir > summary { min-height: 25px; padding: 4px 3px; overflow: hidden; color: var(--muted); cursor: pointer; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .svn-tree-dir > summary:hover { color: var(--text); }
+    .svn-tree-children { display: grid; gap: 1px; margin-left: 8px; padding-left: 7px; border-left: 1px solid color-mix(in srgb, var(--line) 78%, transparent); }
+    .svn-file { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 38px; padding: 4px 5px; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer; }
+    .svn-file:hover { border-color: color-mix(in srgb, var(--line) 72%, transparent); background: color-mix(in srgb, var(--card) 72%, transparent); }
+    .svn-file:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 24%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+    .svn-file.preview-active, .svn-selected-row.preview-active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent); }
+    .svn-file > input { margin: 0; }
+    .svn-file-copy { display: grid; min-width: 0; gap: 1px; }
+    .svn-file-name, .svn-file-reason { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .svn-file-name { font-size: 11px; font-weight: 600; }
+    .svn-file-reason { color: var(--muted); font-size: 9px; }
+    .svn-file .svn-change-tag { flex: 0 0 auto; margin: 0; white-space: nowrap; }
+    .svn-controls { display: grid; gap: 7px; margin-top: 10px; }
+    .svn-controls textarea, .svn-controls input[type="text"] { width: 100%; min-height: 36px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; font: inherit; resize: vertical; }
+    .svn-controls label { display: flex; align-items: flex-start; gap: 7px; }
+    .svn-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+    .svn-actions .primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .svn .primary { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 650; }
+    .svn .primary:hover { border-color: color-mix(in srgb, var(--accent) 78%, #000); color: #fff; }
+    .svn-actions .danger { border-color: color-mix(in srgb, var(--bug) 45%, var(--line)); color: var(--bug); }
+    .svn-status { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+    .svn-check { margin-top: 6px; padding: 7px; border-radius: 7px; background: var(--panel); }
+    .svn-check.warning { color: var(--warn); }
+    .svn-check.block { color: var(--bug); }
+    .svn-message, .svn-diff { margin: 8px 0 0; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: #15171b; color: #d8dce3; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .svn-message { background: var(--panel); color: var(--text); }
+    .svn-field { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+    .svn-field > span { color: var(--text); font-weight: 650; }
+    .svn-diff { max-height: 360px; }
+    .diff-add { color: #72d6a6; background: rgb(45 157 111 / 12%); }
+    .diff-del { color: #ff9589; background: rgb(223 103 90 / 12%); }
+    .diff-hunk { color: #8eaeff; background: rgb(82 117 232 / 12%); }
+    .svn-error { margin-top: 7px; color: var(--bug); }
+    .svn-workbench { min-width: 0; }
+    .svn-workbench-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: -10px -10px 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .svn-workbench-title { display: flex; min-width: 0; align-items: center; gap: 12px; }
+    .svn-workbench-kicker { color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .12em; }
+    .svn-workbench-issue { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+    .svn-workbench-issue h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .svn-workbench-stage { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+    .svn-stage-step { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .svn-stage-step::before { width: 7px; height: 7px; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); content: ""; }
+    .svn-stage-step.done::before { border-color: var(--ok); background: var(--ok); }
+    .svn-stage-step.active { color: var(--accent); font-weight: 700; }
+    .svn-stage-step.active::before { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+    .svn-workbench-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+    .svn-workbench-actions .icon { width: 34px; padding: 0; font-size: 17px; }
+    .svn-context-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--bg) 82%, var(--panel)); color: var(--muted); font-size: 11px; }
+    .svn-context-bar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .svn-workbench-grid { display: grid; min-width: 0; grid-template-columns: minmax(250px, 29%) minmax(330px, 1fr) minmax(270px, 31%); align-items: stretch; gap: 10px; }
+    .svn-pane, .svn-workbench-side { min-width: 0; }
+    .svn-pane, .svn-workbench-side { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .svn-pane-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; margin-bottom: 8px; }
+    .svn-pane-head small { display: block; margin-top: 2px; color: var(--muted); }
+    .svn-pane-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+    .svn-pane-actions button { min-height: 28px; padding: 0 8px; font-size: 11px; }
+    .svn-categories { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+    .svn-category { min-height: 27px; padding: 0 8px; border-radius: 5px; color: var(--muted); font-size: 11px; }
+    .svn-category.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); }
+    .svn-change-tag { display: inline-flex; width: fit-content; margin-top: 3px; padding: 0 5px; border-radius: 4px; background: color-mix(in srgb, var(--line) 45%, transparent); color: var(--muted); font-size: 10px; }
+    .svn-change-tag.added { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+    .svn-change-tag.deleted, .svn-change-tag.missing, .svn-change-tag.conflicted { background: color-mix(in srgb, var(--bug) 14%, transparent); color: var(--bug); }
+    .svn-change-tag.modified, .svn-change-tag.replaced { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); }
+    .svn-preview-empty { display: grid; min-height: 280px; place-items: center; padding: 24px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); text-align: center; }
+    .svn-preview-surface { position: relative; min-height: 0; }
+    .svn-preview-loading { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; padding: 20px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 78%, transparent); backdrop-filter: blur(2px); }
+    .svn-preview-loading .loader { max-width: min(320px, 88%); }
+    .svn-preview-loading small { display: block; max-width: 240px; margin-top: 2px; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+    .svn-review-stack { display: grid; align-content: start; gap: 10px; }
+    .svn-review-stack .svn-card { background: var(--panel); }
+    .svn-side-primary { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); }
+    .svn-review-mode-options { display: grid; gap: 7px; margin-top: 9px; }
+    .svn-review-mode { display: grid !important; grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; }
+    .svn-review-mode.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+    .svn-review-mode input { margin-top: 3px; }
+    .svn-review-mode strong, .svn-review-mode small { display: block; }
+    .svn-review-mode small { margin-top: 2px; color: var(--muted); }
+    .svn-message-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .svn-selected-row { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 7px; padding: 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); cursor: pointer; }
+    .svn-selected-row span { min-width: 0; overflow-wrap: anywhere; }
+    body.svn-mode { height: 100vh; padding: 0; overflow: hidden; -webkit-app-region: no-drag !important; }
+    body.svn-mode #svn-view { height: 100vh; overflow: hidden; }
+    body.svn-mode #svn-view > .svn { display: flex; height: 100%; padding: 0; border: 0; border-radius: 0; flex-direction: column; }
+    body.svn-mode .svn-workbench { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+    body.svn-mode .svn-workbench-header { position: relative; z-index: 2; flex: 0 0 auto; margin: 0; padding: 11px 14px; pointer-events: auto; -webkit-app-region: no-drag !important; }
+    body.svn-mode .svn-workbench-actions, body.svn-mode .svn-workbench-actions button { position: relative; z-index: 3; pointer-events: auto; -webkit-app-region: no-drag !important; }
+    body.svn-mode .svn-workbench-scroll { display: flex; min-height: 0; padding: 10px 12px 14px; overflow: hidden; flex: 1; flex-direction: column; }
+    body.svn-mode .svn-workbench-grid { min-height: 0; flex: 1; }
+    body.svn-mode .svn-pane, body.svn-mode .svn-workbench-side { min-height: 0; height: 100%; }
+    body.svn-mode .svn-workbench-grid > .svn-pane:first-child { display: flex; flex-direction: column; }
+    body.svn-mode .svn-files { min-height: 0; max-height: none; flex: 1; }
+    body.svn-mode .svn-workbench-grid:not(.has-review) > .svn-pane:nth-child(2) { display: flex; min-height: 0; flex-direction: column; }
+    body.svn-mode .svn-workbench-grid:not(.has-review) > .svn-pane:nth-child(2).svn-preview-surface,
+    body.svn-mode .svn-workbench-grid:not(.has-review) > .svn-pane:nth-child(2) .svn-preview-surface { flex: 1; }
+    body.svn-mode .svn-workbench-grid:not(.has-review) > .svn-pane:nth-child(2) .svn-preview-empty,
+    body.svn-mode .svn-workbench-grid:not(.has-review) > .svn-pane:nth-child(2) .svn-diff { min-height: 0; max-height: none; flex: 1; }
+    body.svn-mode .svn-workbench-side { overflow: hidden; }
+    body.svn-mode .svn-review-stack { height: 100%; overflow: auto; }
+    body.svn-mode #error { position: fixed; z-index: 40; top: 68px; right: 16px; left: 16px; box-shadow: var(--shadow); }
+    body.svn-mode #loading { top: 57px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 1080px) {
+      .svn-workbench-grid { grid-template-columns: minmax(250px, 34%) minmax(0, 1fr); }
+      .svn-workbench-side { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .svn-review-stack { display: contents; }
+      .svn-workbench-stage .svn-stage-step span { display: none; }
+      body.svn-mode .svn-workbench-scroll { overflow: auto; }
+      body.svn-mode .svn-workbench-grid { min-height: auto; flex: 0 0 auto; }
+      body.svn-mode .svn-pane, body.svn-mode .svn-workbench-side { height: auto; }
+      body.svn-mode .svn-files, body.svn-mode .svn-diff { max-height: 360px; }
+      body.svn-mode .svn-workbench-side { overflow: visible; }
+    }
+    @media (max-width: 660px) {
+      .columns, .sheets-layout, .detail-grid, .svn-grid, .svn-workbench-grid, .svn-workbench-side { grid-template-columns: 1fr; }
+      .sheet-list { max-height: 220px; }
+      .svn-workbench-side { display: grid; grid-column: auto; }
+      .svn-workbench-header { align-items: flex-start; gap: 8px; }
+      .svn-workbench-stage { display: none; }
+      .svn-workbench-issue h2 { white-space: normal; }
+      .svn-context-bar { grid-template-columns: 1fr; }
+      body.svn-mode .svn-files, body.svn-mode .svn-diff { max-height: 360px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Jira 任务工作台</h1><div id="meta">等待任务数据…</div></div>
+    <div class="toolbar"><div class="monitor"><span id="monitor-meta">自动 Bug 监控：读取中</span><button id="monitor-toggle" type="button" aria-pressed="false">开启</button></div><button id="settings" type="button">设置</button><button id="refresh" type="button">刷新</button><button id="local-close" type="button" aria-label="返回 Codex" title="返回 Codex" hidden>×</button></div>
+  </header>
+  <nav aria-label="工作台页签">
+    <button type="button" data-tab="active" class="active">待我处理</button>
+    <button type="button" data-tab="sheets">Jira Sheets</button>
+    <button type="button" data-tab="history">处理历史</button>
+  </nav>
+  <div id="error" role="alert"></div>
+  <div id="board-view">
+    <main class="columns">
+      <section class="requirement"><div class="section-title"><strong id="req-title">需求</strong><span id="requirement-count" class="count">0</span></div><div id="requirement-status-filters" class="status-filters"></div><div id="requirements" class="list"><div class="empty">暂无数据</div></div></section>
+      <section class="bug"><div class="section-title"><strong id="bug-title">Bug</strong><span id="bug-count" class="count">0</span></div><div id="bug-status-filters" class="status-filters"></div><div id="bugs" class="list"><div class="empty">暂无数据</div></div></section>
+    </main>
+  </div>
+  <div id="sheets-view" hidden>
+    <div class="sheets-layout">
+      <section><div class="section-title"><strong>可用 Sheets</strong><span id="sheet-count" class="count">0</span></div><div id="sheet-list" class="sheet-list"><div class="empty">点击页签读取</div></div></section>
+      <section class="sheet-panel"><div class="sheet-toolbar"><input id="sheet-search" type="search" placeholder="筛选当前 Sheet"><select id="sheet-sort"><option value="updated">按更新时间</option><option value="key">按单号</option><option value="title">按标题</option><option value="status">按状态</option></select></div><h2 id="sheet-title">请选择 Sheet</h2><div id="sheet-issues" class="list"><div class="empty">从左侧选择一个 Sheet</div></div></section>
+    </div>
+  </div>
+  <div id="detail-view" hidden></div>
+  <div id="svn-view" hidden></div>
+  <div id="loading"><div class="loader"><span class="spinner"></span><span id="loading-text">正在读取…</span></div></div>
+  <script>
+    const TOOLS = { board: "jira_list_my_tasks", issue: "jira_get_issue", attachmentPreview: "jira_preview_issue_attachment", sheets: "jira_list_sheets", sheet: "jira_get_sheet_issues", transitions: "jira_list_transitions", prepareTransition: "jira_prepare_transition", executeTransition: "jira_execute_transition", threads: "codex_list_bindable_threads", bindIssue: "codex_bind_issue_to_thread", clearBinding: "codex_clear_issue_binding", openBoundThread: "codex_open_bound_issue_thread", createAnalysis: "codex_create_and_bind_issue_analysis", automationStatus: "jira_get_bug_monitor_status", automationToggle: "jira_set_bug_monitor_enabled", svnInspect: "svn_inspect_issue_changes", svnDiff: "svn_preview_issue_diff", svnExternalDiff: "svn_open_issue_external_diff", svnCreateReview: "svn_create_issue_review", svnGetReview: "svn_get_issue_review", svnCancelReview: "svn_cancel_issue_review", svnConfirmReview: "svn_confirm_issue_review", svnCommit: "svn_commit_issue_review", svnReconcile: "svn_reconcile_issue_commit", svnConfirmCommitted: "svn_confirm_issue_committed", svnAbandon: "svn_abandon_issue_review" };
+    const DESKTOP_BRIDGE_TRANSPORT = document.documentElement.dataset.transport === "desktop-bridge";
+    const LOCAL_TRANSPORT = DESKTOP_BRIDGE_TRANSPORT
+      || new URLSearchParams(window.location.search).get("transport") === "http";
+    const LOCAL_STATE_KEY = "jira-codex-mcp-app:widget-state:v1";
+    const pending = new Map();
+    const cache = { board: null, sheets: null, sheet: null, issue: null, attachmentPreview: null, transitions: null, pendingTransition: null, threads: null, automation: null, createAnalysisIssueKey: "", svnContext: null, svnPreview: null, svnReview: null, svnConfirmation: null };
+    let requestId = 1;
+    let activeTab = "active";
+    let previousView = "board";
+    let selectedSheet = null;
+    let statusFilters = {};
+    let svnSelectedPaths = new Set();
+    let svnPollTimer = null;
+    let svnDedicatedMode = false;
+    let svnCategoryFilter = "all";
+    let svnDraftSummary = "";
+    let svnDraftCodexReview = false;
+    let busy = false;
+    const $ = (id) => document.getElementById(id);
+    const esc = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+    const fmtTime = (value) => value ? new Date(value).toLocaleString() : "—";
+    const fmtSize = (value) => { const size = Number(value || 0); return size > 1048576 ? `${(size / 1048576).toFixed(1)} MB` : size > 1024 ? `${Math.round(size / 1024)} KB` : `${size} B`; };
+
+    /* SVN_FILE_INTERACTION_START */
+    function createSvnFileInteraction({ delay = 260, setTimer, clearTimer, canRun, select, needsPreview, preview, external }) {
+      let previewTimer = null;
+      const cancel = () => {
+        if (previewTimer !== null) clearTimer(previewTimer);
+        previewTimer = null;
+      };
+      return {
+        click(event) {
+          const row = event.target.closest(".svn-file[data-svn-preview-row], .svn-selected-row[data-svn-preview-row]");
+          if (!row || event.target.closest("input, button") || !canRun()) return false;
+          event.preventDefault();
+          cancel();
+          const path = row.dataset.svnPreviewRow;
+          select(path);
+          if (!needsPreview(path)) return true;
+          previewTimer = setTimer(() => {
+            previewTimer = null;
+            if (canRun() && needsPreview(path)) preview(path);
+          }, delay);
+          return true;
+        },
+        doubleClick(event) {
+          if (event.target.closest("input, button")) return false;
+          const target = event.target.closest(".svn-file[data-svn-external-diff], .svn-selected-row[data-svn-external-diff], .svn-diff[data-svn-external-diff]");
+          if (!target) return false;
+          event.preventDefault();
+          cancel();
+          if (!canRun()) return false;
+          if (target.dataset.svnPreviewRow) select(target.dataset.svnPreviewRow);
+          external(target.dataset.svnExternalDiff);
+          return true;
+        },
+        cancel,
+        hasPendingPreview() { return previewTimer !== null; }
+      };
+    }
+    /* SVN_FILE_INTERACTION_END */
+    let svnActivePreviewPath = "";
+    let svnPreviewRequestPath = "";
+    function selectSvnPreviewPath(path) {
+      svnActivePreviewPath = String(path || "");
+      document.querySelectorAll("[data-svn-preview-row]").forEach((row) => {
+        const active = row.dataset.svnPreviewRow === svnActivePreviewPath;
+        row.classList.toggle("preview-active", active);
+        if (active) row.setAttribute("aria-current", "true");
+        else row.removeAttribute("aria-current");
+      });
+    }
+    function needsSvnPreview(path) {
+      return Boolean(path)
+        && cache.svnPreview?.preview?.path !== path
+        && svnPreviewRequestPath !== path;
+    }
+    async function loadSvnPreview(path) {
+      if (!cache.svnContext || !needsSvnPreview(path)) return;
+      svnPreviewRequestPath = path;
+      renderSvn();
+      try {
+        const result = await callTool(
+          TOOLS.svnDiff,
+          { issueKey: cache.svnContext.issueKey, path },
+          { busyScope: "svn-preview", accept: false }
+        );
+        if (result && svnPreviewRequestPath === path) acceptResult(result);
+      } finally {
+        if (svnPreviewRequestPath === path) {
+          svnPreviewRequestPath = "";
+          renderSvn();
+        }
+      }
+    }
+    const svnFileInteraction = createSvnFileInteraction({
+      setTimer: (callback, delay) => window.setTimeout(callback, delay),
+      clearTimer: (timer) => window.clearTimeout(timer),
+      canRun: () => Boolean(cache.svnContext && !busy),
+      select: selectSvnPreviewPath,
+      needsPreview: needsSvnPreview,
+      preview: (path) => void loadSvnPreview(path),
+      external: (path) => void callTool(TOOLS.svnExternalDiff, { issueKey: cache.svnContext.issueKey, path })
+    });
+
+    const RETRYABLE_LOCAL_TOOLS = new Set([
+      TOOLS.board, TOOLS.issue, TOOLS.attachmentPreview, TOOLS.sheets, TOOLS.sheet,
+      TOOLS.transitions, TOOLS.threads, TOOLS.automationStatus,
+      TOOLS.svnDiff, TOOLS.svnGetReview
+    ]);
+    async function desktopBridgeRequest(method, params, attempt = 0) {
+      const id = requestId++;
+      const toolName = method === "tools/call" ? String(params?.name || "") : "";
+      const retryable = RETRYABLE_LOCAL_TOOLS.has(toolName);
+      try {
+        return await new Promise((resolve, reject) => {
+          const timer = window.setTimeout(() => {
+            pending.delete(id);
+            const error = new Error("本地 MCP 响应超时，请刷新任务面板后重试。");
+            error.code = "LOCAL_MCP_TIMEOUT";
+            reject(error);
+          }, toolName === TOOLS.svnInspect ? 90_000 : retryable ? 8_000 : 90_000);
+          pending.set(id, {
+            resolve: (value) => { window.clearTimeout(timer); resolve(value); },
+            reject: (error) => { window.clearTimeout(timer); reject(error); }
+          });
+          window.parent.postMessage({ source: "jira-codex-local-ui", jsonrpc: "2.0", id, method, params }, "*");
+        });
+      } catch (error) {
+        if (retryable && attempt === 0 && error?.code === "LOCAL_MCP_TIMEOUT") {
+          return desktopBridgeRequest(method, params, 1);
+        }
+        throw error;
+      }
+    }
+    async function localRequest(method, params) {
+      if (DESKTOP_BRIDGE_TRANSPORT) return desktopBridgeRequest(method, params);
+      const id = requestId++;
+      const response = await fetch(new URL("/mcp", window.location.origin), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream"
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id, method, params })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.error) {
+        const error = new Error(payload?.error?.message || `本地 MCP 请求失败（HTTP ${response.status}）。`);
+        error.code = payload?.error?.data?.code || payload?.error?.code || "LOCAL_MCP_ERROR";
+        error.data = payload?.error?.data;
+        throw error;
+      }
+      return payload?.result;
+    }
+    function request(method, params) {
+      if (LOCAL_TRANSPORT) return localRequest(method, params);
+      const id = requestId++;
+      window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    }
+    function notify(method, params) {
+      if (!LOCAL_TRANSPORT) window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+    }
+    function notifyDesktopHost(type, extra = {}) {
+      if (LOCAL_TRANSPORT) window.parent.postMessage({ source: "jira-codex-local-ui", type, ...extra }, "*");
+    }
+    function openLink(url) {
+      if (LOCAL_TRANSPORT) {
+        notifyDesktopHost("open-link", { url });
+        return Promise.resolve();
+      }
+      return request("ui/open-link", { url });
+    }
+    async function callTool(name, args = {}, options = {}) {
+      const busyText = name === TOOLS.issue ? "正在读取任务详情…"
+        : name === TOOLS.attachmentPreview ? "正在读取附件预览…"
+        : name === TOOLS.sheets ? "正在读取 Sheets…"
+        : name === TOOLS.sheet ? "正在读取 Sheet 内容…"
+        : name === TOOLS.transitions ? "正在读取可用状态…"
+        : name === TOOLS.prepareTransition ? "正在复核状态流转…"
+        : name === TOOLS.executeTransition ? "正在提交 Jira 状态流转…"
+        : name === TOOLS.threads ? "正在读取 Codex 会话…"
+        : name === TOOLS.bindIssue ? "正在保存会话关联…"
+        : name === TOOLS.clearBinding ? "正在解除会话关联…"
+        : name === TOOLS.openBoundThread ? "正在打开 Codex 会话…"
+        : name === TOOLS.createAnalysis ? "正在当前 Codex 窗口创建分析会话…"
+        : name === TOOLS.automationStatus ? "正在读取自动监控状态…"
+        : name === TOOLS.automationToggle ? "正在更新自动监控…"
+        : name === TOOLS.svnInspect ? "正在检查 SVN 工作副本…"
+        : name === TOOLS.svnDiff ? "正在读取 SVN 差异…"
+        : name === TOOLS.svnExternalDiff ? "正在打开 TortoiseSVN 差异比较…"
+        : name === TOOLS.svnCreateReview ? "正在创建 SVN 审核快照…"
+        : name === TOOLS.svnGetReview ? "正在刷新 SVN 审核…"
+        : name === TOOLS.svnCancelReview ? "正在取消 Codex 审查…"
+        : name === TOOLS.svnConfirmReview ? "正在复检 SVN 审核快照…"
+        : name === TOOLS.svnCommit ? "正在复检并提交 SVN…"
+        : name === TOOLS.svnReconcile ? "正在核对 SVN 日志…"
+        : name === TOOLS.svnConfirmCommitted ? "正在登记人工核对结果…"
+        : name === TOOLS.svnAbandon ? "正在放弃旧审核草稿…"
+        : "正在同步任务…";
+      const localBusy = options.busyScope === "svn-preview";
+      if (!localBusy) setBusy(true, busyText);
+      try {
+        const result = await request("tools/call", { name, arguments: args });
+        const output = result?.structuredContent;
+        if (!output) throw new Error("工具没有返回结构化结果。");
+        if (options.accept !== false) acceptResult(output);
+        return output;
+      } catch (error) {
+        showError(error);
+        return null;
+      } finally {
+        if (!localBusy) setBusy(false);
+      }
+    }
+    function setBusy(value, text = "正在读取…") {
+      busy = value;
+      $("loading-text").textContent = text;
+      $("loading").classList.toggle("visible", value);
+      $("refresh").disabled = value;
+      const svnRefresh = $("refresh-svn-workbench");
+      if (svnRefresh) svnRefresh.disabled = value;
+    }
+    function showError(error) { $("error").textContent = String(error?.message || error?.data?.message || "读取 Jira 数据失败。"); $("error").style.display = "block"; }
+    function clearError() { $("error").style.display = "none"; }
+    function saveState() {
+      const state = { activeTab, selectedSheet: selectedSheet ? { projectId: selectedSheet.projectId, id: selectedSheet.id } : null, statusFilters };
+      if (DESKTOP_BRIDGE_TRANSPORT) {
+        notifyDesktopHost("save-state", { state });
+        return;
+      }
+      if (LOCAL_TRANSPORT) {
+        try { window.localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(state)); } catch {}
+        return;
+      }
+      window.openai?.setWidgetState?.({ privateContent: state });
+    }
+    function taskHtml(task) {
+      return `<article data-key="${esc(task.key)}" tabindex="0"><div class="task-head"><span class="key">${esc(task.key)}</span><span class="pill">${esc(task.statusName)}</span></div><div class="title">${esc(task.title)}</div><div class="task-foot"><span>${esc(task.priority)} · ${esc(task.assignee)}</span><span>${task.attachmentCount ? `📎 ${task.attachmentCount}` : ""}${task.binding ? ` <span class="bound">● 已关联</span>` : ""}</span></div></article>`;
+    }
+    function renderList(id, tasks) { $(id).innerHTML = tasks.length ? tasks.map(taskHtml).join("") : '<div class="empty">暂无任务</div>'; }
+    function renderStatusFilters(kind, tasks) {
+      const key = `${activeTab}:${kind}`;
+      const statuses = [...new Set((tasks || []).map((task) => task.statusName).filter(Boolean))];
+      const previous = Array.isArray(statusFilters[key]) ? statusFilters[key] : [];
+      const selected = new Set(previous.filter((status) => statuses.includes(status)));
+      if (selected.size !== previous.length) statusFilters[key] = Array.from(selected);
+      const target = $(kind === "requirement" ? "requirement-status-filters" : "bug-status-filters");
+      target.hidden = statuses.length < 2;
+      target.innerHTML = statuses.map((status) => `<button type="button" class="status-filter ${selected.has(status) ? "active" : ""}" data-status-filter-kind="${kind}" data-status-filter-value="${esc(status)}" aria-pressed="${selected.has(status)}">${esc(status)}</button>`).join("");
+      return selected.size ? tasks.filter((task) => selected.has(task.statusName)) : tasks;
+    }
+    function renderBoard() {
+      const snapshot = cache.board;
+      if (!snapshot) return;
+      const history = activeTab === "history";
+      const group = history ? snapshot.completed : snapshot.active;
+      const requirements = renderStatusFilters("requirement", group.requirements || []);
+      const bugs = renderStatusFilters("bug", group.bugs || []);
+      $("req-title").textContent = history ? "已处理需求" : "需要我完成的事宜";
+      $("bug-title").textContent = history ? "已处理 Bug" : "需要我修复的 Bug";
+      $("requirement-count").textContent = `${requirements.length}/${group.requirements.length}`;
+      $("bug-count").textContent = `${bugs.length}/${group.bugs.length}`;
+      renderList("requirements", requirements);
+      renderList("bugs", bugs);
+      $("meta").textContent = `${history ? "处理历史" : "待我处理"} · ${fmtTime(snapshot.fetchedAt)}${snapshot.truncated ? " · 结果已截断" : ""}`;
+    }
+    function renderAutomation() {
+      const status = cache.automation?.automation;
+      if (!status) return;
+      const enabled = status.monitorEnabled === true;
+      $("monitor-toggle").setAttribute("aria-pressed", String(enabled));
+      $("monitor-toggle").textContent = enabled ? "关闭" : "开启";
+      $("monitor-meta").textContent = enabled
+        ? `自动 Bug 监控：运行中${status.queueLength ? ` · 队列 ${status.queueLength}` : ""}${status.lastError ? " · 有错误" : ""}`
+        : "自动 Bug 监控：已关闭";
+      $("monitor-meta").title = status.lastError || "监控由本地服务持有，关闭工作台不会停止。";
+    }
+    function renderSheets() {
+      const snapshot = cache.sheets;
+      if (!snapshot) return;
+      $("sheet-count").textContent = snapshot.sheets.length;
+      $("sheet-list").innerHTML = snapshot.sheets.length ? snapshot.sheets.map((sheet) => `<button type="button" class="sheet-item ${selectedSheet?.id === sheet.id && selectedSheet?.projectId === sheet.projectId ? "active" : ""}" data-project="${esc(sheet.projectId)}" data-sheet="${esc(sheet.id)}"><strong>${esc(sheet.title)}</strong><small>${esc(sheet.projectName)}${sheet.queryable ? "" : " · 仅可在 Jira 打开"}</small></button>`).join("") : '<div class="empty">暂无可用 Sheet</div>';
+      $("meta").textContent = `Jira Sheets · ${fmtTime(snapshot.fetchedAt)}`;
+    }
+    function renderSheetIssues() {
+      const snapshot = cache.sheet;
+      if (!snapshot) return;
+      const term = $("sheet-search").value.trim().toLowerCase();
+      const sort = $("sheet-sort").value;
+      const issues = (snapshot.issues || []).filter((issue) => !term || `${issue.key} ${issue.title} ${issue.statusName} ${issue.assignee}`.toLowerCase().includes(term));
+      issues.sort((a, b) => sort === "key" ? a.key.localeCompare(b.key) : sort === "title" ? a.title.localeCompare(b.title, "zh-CN") : sort === "status" ? a.statusName.localeCompare(b.statusName, "zh-CN") : String(b.updated || "").localeCompare(String(a.updated || "")));
+      $("sheet-title").textContent = `${snapshot.sheet?.title || "Sheet"}（${issues.length}/${snapshot.total}）`;
+      renderList("sheet-issues", issues);
+    }
+    function renderDetail() {
+      const task = cache.issue?.issue;
+      if (!task) return;
+      const collaborators = task.collaborators?.length ? task.collaborators.map((person) => `<span class="chip">${esc(person.displayName)}</span>`).join("") : '<span class="empty">无协同处理人</span>';
+      const attachments = task.attachments?.length ? task.attachments.map((item) => `<div class="attachment">${item.previewable ? `<button type="button" data-preview-attachment="${esc(item.id)}"><strong>${esc(item.filename)}</strong><small>${esc(item.mimeType)} · ${fmtSize(item.size)} · ${esc(item.author)} · 点击预览</small></button>` : `<strong>${esc(item.filename)}</strong><small>${esc(item.mimeType)} · ${fmtSize(item.size)} · ${esc(item.author)} · 请在 Jira 中查看</small>`}</div>`).join("") : '<div class="empty">无附件</div>';
+      const attachmentPreview = cache.attachmentPreview?.preview?.issueKey === task.key
+        ? `<div class="attachment-preview"><strong>${esc(cache.attachmentPreview.preview.filename)}</strong><img src="${esc(cache.attachmentPreview.preview.dataUrl)}" alt="${esc(cache.attachmentPreview.preview.filename)}"></div>`
+        : "";
+      const transitions = cache.transitions?.issueKey === task.key ? cache.transitions.transitions : null;
+      const transitionOptions = transitions?.map((transition) => `<option value="${esc(transition.id)}" ${transition.requiresInput ? "disabled" : ""}>${esc(transition.to.name)}${transition.requiresInput ? "（需在 Jira 填写字段）" : ""}</option>`).join("") || "";
+      const transitionBox = task.status === "done" ? "" : `<div class="transition-box"><strong>状态流转</strong>${transitions ? `<select id="transition-select"><option value="">选择目标状态</option>${transitionOptions}</select><button type="button" id="execute-transition" ${transitions.some((transition) => !transition.requiresInput) ? "" : "disabled"}>确认并流转</button><div class="transition-hint">提交前会再次读取 Jira 当前状态；需要额外字段的流转只能在 Jira 中完成。</div>` : `<button type="button" id="load-transitions">读取可用状态</button>`}</div>`;
+      const availableThreads = cache.threads?.threads || null;
+      const threadOptions = availableThreads?.map((thread) => `<option value="${esc(thread.id)}">${esc(thread.title)}${thread.boundIssueKeys?.length ? ` · 已关联 ${esc(thread.boundIssueKeys.join("、"))}` : ""}</option>`).join("") || "";
+      const createMode = cache.createAnalysisIssueKey === task.key;
+      const bindingBox = availableThreads ? `<div class="binding-box"><strong>${task.binding ? "更改会话关联" : "关联现有会话"}</strong>${availableThreads.length ? `<select id="binding-thread-select"><option value="">选择 Codex 会话</option>${threadOptions}</select><div class="binding-actions"><button type="button" id="cancel-binding">取消</button><button type="button" id="confirm-binding">确认关联</button></div>` : `<div class="empty">App Server 未返回可关联会话</div><div class="binding-actions"><button type="button" id="cancel-binding">返回</button></div>`}<div class="binding-hint">这里只保存关联，不发送消息，也不修改 Codex 会话内容。</div></div>` : createMode ? `<div class="binding-box"><strong>${task.binding ? "新建会话并重新关联" : "新建会话并关联"}</strong><div class="svn-controls"><textarea id="analysis-supplement" rows="4" maxlength="4000" placeholder="补充 Jira 中缺失的背景、业务规则、环境或复现信息（可选）"></textarea><div class="binding-actions"><button type="button" id="cancel-create-analysis">取消</button><button type="button" id="confirm-create-analysis">新建并发送只读分析消息</button></div></div><div class="binding-hint">首轮消息只允许理解和分析，不会修改项目文件。会话创建成功并取得正式 ID 后才保存关联。</div></div>` : `<div class="binding-box"><strong>Codex 会话</strong><div class="binding-current ${task.binding ? "bound" : ""}">${esc(task.binding?.title || "未关联")}</div>${task.binding ? `<div class="binding-actions"><button type="button" id="open-bound-thread">打开会话</button><button type="button" id="create-analysis">新建并重绑</button><button type="button" id="open-binding">绑定已有</button><button type="button" id="clear-binding" class="danger">解除</button></div>` : `<div class="binding-actions"><button type="button" id="create-analysis">新建并绑定</button><button type="button" id="open-binding">绑定已有会话</button></div>`}<div class="binding-hint">会话列表来自 App Server；创建和桌面跳转由最小兼容层执行。</div></div>`;
+      const svnBox = `<div class="binding-box"><strong>代码提交</strong><div class="binding-actions"><button type="button" id="open-svn" ${task.binding ? "" : "disabled"}>审核并提交 SVN</button></div><div class="binding-hint">${task.binding ? "先检查显式文件与风险，真正提交前必须再次人工确认。" : "请先关联 Codex 会话，以确定项目与 SVN 工作副本范围。"}</div></div>`;
+      $("detail-view").innerHTML = `<div class="detail"><div class="detail-head"><div><span class="key">${esc(task.key)}</span><h2>${esc(task.title)}</h2></div><button class="back" type="button" id="back">返回</button></div><div class="detail-grid"><div><div class="description">${esc(task.summary)}</div><div class="subsection"><strong>协同处理人（${task.collaborators?.length || 0}）</strong><div class="chips">${collaborators}</div></div><div class="subsection"><strong>附件（${task.attachments?.length || 0}）</strong><div class="attachments">${attachments}</div>${attachmentPreview}</div></div><aside class="facts"><div class="fact"><span>状态</span><strong>${esc(task.statusName)}</strong></div><div class="fact"><span>优先级</span><strong>${esc(task.priority)}</strong></div><div class="fact"><span>负责人</span><strong>${esc(task.assignee)}</strong></div><div class="fact"><span>类型</span><strong>${esc(task.typeName)}</strong></div><div class="fact"><span>项目</span><strong>${esc(task.projectName)}</strong></div><div class="fact"><span>修复版本</span><strong>${esc(task.fixVersions?.join("、") || "—")}</strong></div><div class="fact"><span>更新时间</span><strong>${esc(fmtTime(task.updated))}</strong></div>${bindingBox}${svnBox}${transitionBox}</aside></div></div>`;
+      $("back").onclick = () => showMain(previousView);
+    }
+    function svnSelectable(change) { return change?.kind === "file" && !["unversioned", "ignored", "external"].includes(change.item); }
+    function svnChangeLabel(change) { return ({ modified: "修改", added: "新增", deleted: "删除", replaced: "替换", missing: "缺失", conflicted: "冲突", unversioned: "未纳管" })[change?.item] || change?.item || "变化"; }
+    function svnFileHtml(change) {
+      const path = String(change.path || "");
+      const filename = path.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || path;
+      const item = String(change.item || "changed").toLowerCase();
+      return `<div class="svn-file ${svnActivePreviewPath === path ? "preview-active" : ""}" ${change.kind === "file" ? `data-svn-preview-row="${esc(path)}"` : ""} ${svnActivePreviewPath === path ? 'aria-current="true"' : ""} ${svnSelectable(change) ? `data-svn-external-diff="${esc(path)}" title="${esc(path)} · 单击预览，双击使用 TortoiseSVN 比较"` : `title="${esc(path)}"`}><input type="checkbox" data-svn-path="${esc(path)}" aria-label="选择 ${esc(filename)}" ${svnSelectedPaths.has(path) ? "checked" : ""} ${svnSelectable(change) ? "" : "disabled"}><span class="svn-file-copy"><span class="svn-file-name">${esc(filename)}</span><small class="svn-file-reason">${esc(change.recommendationReason || "未归因")}${change.relatedIssues?.length ? ` · 还关联 ${esc(change.relatedIssues.map((entry) => entry.issueKey || entry.key).join("、"))}` : ""}</small></span><span class="svn-change-tag ${esc(item)}">${esc(svnChangeLabel(change))}${change.recommended ? " · 推荐" : ""}</span></div>`;
+    }
+    function svnTreeHtml(changes) {
+      const root = { directories: new Map(), files: [] };
+      for (const change of changes) {
+        const parts = String(change.path || "").replaceAll("\\", "/").split("/").filter(Boolean);
+        let node = root;
+        for (const part of parts.slice(0, -1)) {
+          if (!node.directories.has(part)) node.directories.set(part, { directories: new Map(), files: [] });
+          node = node.directories.get(part);
+        }
+        node.files.push(change);
+      }
+      const renderNode = (node) => [
+        ...Array.from(node.directories.entries()).sort(([left], [right]) => left.localeCompare(right, "zh-CN")).map(([name, child]) => `<details class="svn-tree-dir" open><summary>${esc(name)}</summary><div class="svn-tree-children">${renderNode(child)}</div></details>`),
+        ...node.files.sort((left, right) => String(left.path).localeCompare(String(right.path), "zh-CN")).map(svnFileHtml)
+      ].join("");
+      return renderNode(root);
+    }
+    function diffHtml(value) {
+      return String(value || "").split("\n").map((line) => {
+        const cls = line.startsWith("+++") || line.startsWith("---") ? "" : line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del" : line.startsWith("@@") ? "diff-hunk" : "";
+        return `<div class="${cls}">${esc(line) || " "}</div>`;
+      }).join("");
+    }
+    function renderSvnChecks(review) {
+      const mechanical = review?.mechanical || {};
+      const groups = [["blockers", "block"], ["warnings", "warning"], ["notes", "note"]];
+      return groups.flatMap(([name, cls]) => (mechanical[name] || []).map((check) => `<div class="svn-check ${cls}"><strong>${esc(check.message)}</strong>${check.paths?.length ? `<small>${esc(check.paths.join("、"))}</small>` : ""}</div>`)).join("");
+    }
+    function svnCategoryMatches(change, category) {
+      if (category === "all") return true;
+      if (category === "recommended") return change?.recommended === true;
+      if (category === "other") return !["modified", "added", "deleted"].includes(String(change?.item || ""));
+      return String(change?.item || "") === category;
+    }
+    function svnCategoryHtml(changes) {
+      const categories = [
+        ["all", "全部"], ["recommended", "推荐"], ["modified", "修改"],
+        ["added", "新增"], ["deleted", "删除"], ["other", "其他"]
+      ];
+      return categories.map(([value, label]) => {
+        const count = changes.filter((change) => svnCategoryMatches(change, value)).length;
+        return `<button type="button" class="svn-category ${svnCategoryFilter === value ? "active" : ""}" data-svn-category="${value}" aria-pressed="${svnCategoryFilter === value}">${label} ${count}</button>`;
+      }).join("");
+    }
+    function svnStatusText(review) {
+      return ({ manual_review: "等待人工审核", prepared: "等待启动 Codex 审查", dispatching: "正在投递审查", running: "Codex 审查中", completed: "Codex 审查完成", cancelled: "已取消 Codex 审查，转人工", blocked: "审核阻断", stale: "快照已失效", dispatch_failed: "Codex 审查启动失败", timed_out: "Codex 审查超时", failed: "Codex 审查失败", commit_unknown: "提交结果待核对", committed: "已提交", abandoned: "草稿已放弃" })[review?.status] || review?.status || "选择本次提交文件";
+    }
+    function svnStageIndex(review) {
+      if (!review) return 0;
+      if (cache.svnConfirmation || ["commit_unknown", "committed"].includes(review.status)) return 3;
+      if (["manual_review", "completed", "cancelled"].includes(review.status)) return 2;
+      return 1;
+    }
+    function svnStageHtml(review) {
+      const current = svnStageIndex(review);
+      return ["选择改动", "检查与审查", "人工确认", "提交回执"].map((label, index) => `<span class="svn-stage-step ${index < current ? "done" : index === current ? "active" : ""}" ${index === current ? 'aria-current="step"' : ""}><span>${label}</span></span>`).join("");
+    }
+    function svnDraftCommitMessage(baseMessage = cache.svnContext?.message || "") {
+      const base = String(baseMessage || "").trimEnd();
+      const explanation = String(svnDraftSummary || "").trim().replace(/^--\s*/, "").trim().slice(0, 500);
+      return explanation ? [base, `--${explanation}`].filter(Boolean).join("\n") : base;
+    }
+    function syncSvnCommitMessagePreview() {
+      const preview = $("svn-message-preview");
+      if (preview) preview.textContent = svnDraftCommitMessage();
+    }
+    function svnPreviewHtml(preview) {
+      if (!preview) return '<div class="svn-preview-empty">从左侧选择“差异”，在此查看 SVN 原生差异。<br>二进制文件或无文本变化时会显示说明。</div>';
+      return `<div class="svn-pane-head"><div><strong>差异预览</strong><small>${esc(preview.path || "")}</small></div><button type="button" data-svn-external-diff="${esc(preview.path || "")}" title="使用 TortoiseSVN 打开原生差异比较">TortoiseSVN 比较</button></div>${preview.available ? `<div class="svn-diff" data-svn-scroll="diff" data-svn-external-diff="${esc(preview.path || "")}" title="双击使用 TortoiseSVN 比较">${diffHtml(preview.diff)}</div>` : `<div class="svn-preview-empty">${esc(preview.message || "该文件没有可显示的文本差异")}</div>`}`;
+    }
+    function syncSvnPreviewLoading() {
+      document.querySelectorAll(".svn-preview-loading").forEach((element) => element.remove());
+      if (!svnPreviewRequestPath) return;
+      const previewPane = $("svn-view")?.querySelector(".svn-workbench-grid > .svn-pane:nth-child(2)");
+      const target = previewPane?.querySelector(".subsection") || previewPane;
+      if (!target) return;
+      target.classList.add("svn-preview-surface");
+      const overlay = document.createElement("div");
+      overlay.className = "svn-preview-loading";
+      overlay.setAttribute("role", "status");
+      overlay.setAttribute("aria-live", "polite");
+      const loader = document.createElement("div");
+      loader.className = "loader";
+      const spinner = document.createElement("span");
+      spinner.className = "spinner";
+      const copy = document.createElement("span");
+      copy.append("正在读取差异");
+      const path = document.createElement("small");
+      path.textContent = svnPreviewRequestPath;
+      copy.append(document.createElement("br"), path);
+      loader.append(spinner, copy);
+      overlay.append(loader);
+      target.append(overlay);
+    }
+    function stopSvnPolling() { if (svnPollTimer) window.clearInterval(svnPollTimer); svnPollTimer = null; }
+    async function refreshSvnReviewQuiet() {
+      const review = cache.svnReview;
+      const issueKey = cache.svnContext?.issueKey;
+      if (!review?.id || !issueKey) return;
+      try {
+        const result = await request("tools/call", { name: TOOLS.svnGetReview, arguments: { issueKey, reviewId: review.id } });
+        if (result?.structuredContent) acceptResult(result.structuredContent);
+      } catch (error) { showError(error); }
+    }
+    function syncSvnPolling() {
+      const active = ["prepared", "dispatching", "running"].includes(cache.svnReview?.status);
+      if (!active) return stopSvnPolling();
+      if (!svnPollTimer) svnPollTimer = window.setInterval(() => void refreshSvnReviewQuiet(), 3000);
+    }
+    function showSvn() { $("board-view").hidden = true; $("sheets-view").hidden = true; $("detail-view").hidden = true; $("svn-view").hidden = false; renderSvn(); }
+    function renderSvn() {
+      const snapshot = cache.svnContext;
+      if (!snapshot?.context) return;
+      const context = snapshot.context;
+      const issueKey = snapshot.issueKey;
+      const review = cache.svnReview;
+      const changes = context.changes || [];
+      const selected = review?.selectedPaths || Array.from(svnSelectedPaths);
+      const existingScroll = new Map(Array.from($("svn-view").querySelectorAll("[data-svn-scroll]"), (element) => [element.dataset.svnScroll, { top: element.scrollTop, left: element.scrollLeft }]));
+      const issueTitle = cache.issue?.issue?.title || "当前 Jira 任务";
+      const closeLabel = svnDedicatedMode ? "关闭" : "返回任务";
+      const header = `<div class="svn-workbench-header"><div class="svn-workbench-title"><div><div class="svn-workbench-kicker">SVN REVIEW &amp; COMMIT · SVN 审核与提交</div><div class="svn-workbench-issue"><span class="key">${esc(issueKey)}</span><h2>${esc(issueTitle)}</h2></div></div></div><div class="svn-workbench-stage" aria-label="审核阶段">${svnStageHtml(review)}</div><div class="svn-workbench-actions"><button type="button" id="refresh-svn-workbench">刷新</button><button type="button" id="close-svn-workbench" class="${svnDedicatedMode ? "icon" : ""}" aria-label="${closeLabel}" title="${closeLabel}">${svnDedicatedMode ? "×" : closeLabel}</button></div></div>`;
+      const contextBar = `<div class="svn-context-bar"><span title="${esc(context.workingCopy?.scopeRoot || context.session?.cwd || "未知")}"><strong>项目范围：</strong>${esc(context.workingCopy?.scopeName || "当前项目")} · ${esc(context.workingCopy?.scopeRoot || context.session?.cwd || "未知")}</span><span><strong>工作副本：</strong>${esc(context.workingCopy?.revisionRange || context.workingCopy?.revision || "未知版本")}</span></div>`;
+      const preview = cache.svnPreview?.preview;
+      let body = "";
+      if (!review) {
+        const filteredChanges = changes.filter((change) => svnCategoryMatches(change, svnCategoryFilter));
+        const files = filteredChanges.length ? svnTreeHtml(filteredChanges) : '<div class="empty">当前分类没有文件</div>';
+        const messagePreview = snapshot.message ? `<div id="svn-message-preview" class="svn-message" data-svn-scroll="message">${esc(svnDraftCommitMessage(snapshot.message))}</div>` : '<div class="binding-hint">创建审核快照后将按 Jira 拷贝链接规范生成完整提交信息。</div>';
+        body = `${contextBar}<div class="svn-workbench-grid"><section class="svn-pane"><div class="svn-pane-head"><div><strong>本次提交文件</strong><small>已选 ${svnSelectedPaths.size} / 可选 ${changes.filter(svnSelectable).length}</small></div><div class="svn-pane-actions"><button type="button" id="select-recommended">恢复推荐</button><button type="button" id="clear-svn-selection">清空</button></div></div><div class="svn-categories" aria-label="文件分类">${svnCategoryHtml(changes)}</div><div class="svn-files" data-svn-scroll="files">${changes.length ? files : '<div class="empty">当前项目没有 SVN 本地改动</div>'}</div></section><section class="svn-pane">${svnPreviewHtml(preview)}</section><aside class="svn-workbench-side"><div class="svn-review-stack"><section class="svn-card svn-side-primary"><strong>审核方式</strong><div class="svn-review-mode-options" role="radiogroup" aria-label="审核方式"><label class="svn-review-mode ${svnDraftCodexReview ? "" : "active"}"><input id="svn-manual-review" name="svn-review-mode" type="radio" value="manual" ${svnDraftCodexReview ? "" : "checked"}><span><strong>人工审核（默认）</strong><small>立即生成机械检查快照，由你查看差异、风险和提交信息。</small></span></label><label class="svn-review-mode ${svnDraftCodexReview ? "active" : ""}"><input id="svn-codex-review" name="svn-review-mode" type="radio" value="codex" ${svnDraftCodexReview ? "checked" : ""}><span><strong>Codex 辅助审查</strong><small>可能耗时较长；必须等待完成，或主动取消并降级为人工审核后才能提交。</small></span></label></div></section><section class="svn-card svn-commit-message-card"><div class="svn-message-label"><strong>提交信息</strong><span class="pill">实时预览</span></div><div class="svn-controls"><label class="svn-field" for="svn-summary"><span>补充说明（可选）</span><input id="svn-summary" type="text" maxlength="500" placeholder="简要说明本次改动；提交时自动追加为 --说明" value="${esc(svnDraftSummary)}"></label></div>${messagePreview}<div class="binding-hint">提交正文来自当前 Jira 任务；补充说明会实时追加到末行。创建快照不会执行 svn commit。</div><div class="svn-actions"><button type="button" id="create-svn-review" class="primary" ${svnSelectedPaths.size ? "" : "disabled"}>创建审核快照</button></div></section></div></aside></div>`;
+      } else {
+        const statusText = svnStatusText(review);
+        const canConfirm = ["manual_review", "completed", "cancelled"].includes(review.status) && ["pass", "warning"].includes(review.verdict);
+        const canCancel = ["prepared", "dispatching", "running", "dispatch_failed", "timed_out", "failed"].includes(review.status);
+        const canAbandon = ["cancelled", "blocked", "stale", "dispatch_failed", "timed_out", "failed", "manual_review"].includes(review.status);
+        const checks = renderSvnChecks(review);
+        const semantic = review.semantic?.summary ? `<div class="svn-check ${review.verdict === "block" ? "block" : review.verdict === "warning" ? "warning" : "note"}"><strong>Codex 审查结论</strong><div>${esc(review.semantic.summary)}</div></div>` : '<div class="binding-hint">未启用 Codex 审查，或审查结果尚未返回。机械检查与人工审阅仍然有效。</div>';
+        const humanConfirm = canConfirm && !cache.svnConfirmation ? `<section class="svn-card svn-side-primary"><strong>人工确认</strong><div class="svn-controls"><label><input id="svn-reviewed" type="checkbox"> <span>我已人工查看全部选定文件、需求符合性和影响风险</span></label>${review.verdict === "warning" ? `<label><input id="svn-risk" type="checkbox"> <span>我理解并接受审核警告</span></label>` : ""}${review.crossTaskConflicts?.length ? `<label><input id="svn-overlap" type="checkbox"> <span>我已核对同一文件混入多个任务的风险</span></label>` : ""}<button type="button" id="confirm-svn-review" class="primary">复检并进入最终确认</button></div></section>` : "";
+        const finalCommit = cache.svnConfirmation ? `<section class="svn-card svn-side-primary"><strong>最终提交确认</strong><div class="binding-hint">确认令牌将在 ${esc(fmtTime(cache.svnConfirmation.expiresAt))} 过期，且只能使用一次。</div><div class="svn-actions"><button type="button" id="commit-svn" class="primary">人工确认并提交 SVN</button></div></section>` : "";
+        const unknown = review.status === "commit_unknown" ? `<section class="svn-card"><strong>提交结果未知</strong><div class="svn-error">${esc(review.error || "请勿重复提交。")}</div><div class="svn-actions"><button type="button" id="reconcile-svn">重新核对 SVN 日志</button></div><div class="svn-controls"><input id="svn-manual-revision" type="text" placeholder="人工核对得到的 revision，例如 r12345"><button type="button" id="confirm-svn-committed">登记已提交 revision</button></div></section>` : "";
+        const committed = review.status === "committed" ? `<section class="svn-card svn-side-primary"><strong>提交回执</strong><div class="svn-check note">revision r${esc(review.commit?.revision || "?")} · ${esc(review.commit?.author || "")}</div></section>` : "";
+        const control = canCancel || canAbandon ? `<section class="svn-card"><strong>审核控制</strong><div class="svn-actions">${canCancel ? `<button type="button" id="cancel-svn-review">取消 Codex 审查并人工降级</button>` : ""}${canAbandon ? `<button type="button" id="abandon-svn-review" class="danger">放弃草稿并重新扫描</button>` : ""}</div></section>` : "";
+        const selectedRows = selected.map((path) => {
+          const change = changes.find((entry) => String(entry.path || "") === path);
+          const item = String(change?.item || "changed").toLowerCase();
+          return `<div class="svn-selected-row ${svnActivePreviewPath === path ? "preview-active" : ""}" ${change?.kind === "file" ? `data-svn-preview-row="${esc(path)}"` : ""} ${svnSelectable(change) ? `data-svn-external-diff="${esc(path)}" title="${esc(path)} · 单击预览，双击使用 TortoiseSVN 比较"` : ""} ${svnActivePreviewPath === path ? 'aria-current="true"' : ""}><span>${esc(path)}${change ? `<span class="svn-change-tag ${esc(item)}">${esc(svnChangeLabel(change))}</span>` : ""}</span></div>`;
+        }).join("");
+        body = `${contextBar}<div class="svn-workbench-grid has-review"><section class="svn-pane"><div class="svn-pane-head"><div><strong>显式提交路径</strong><small>${selected.length} 个文件；只会提交此清单</small></div></div><div class="svn-files" data-svn-scroll="files">${selectedRows || '<div class="empty">没有显式提交路径</div>'}</div></section><section class="svn-pane"><div class="svn-pane-head"><div><strong>审核结果</strong><small>${esc(statusText)}</small></div><span class="pill">${esc(review.verdict || review.mechanical?.verdict || "待定")}</span></div>${review.error ? `<div class="svn-error">${esc(review.error)}</div>` : ""}${checks || '<div class="svn-check note">机械检查未报告额外问题。</div>'}${semantic}<div class="subsection">${svnPreviewHtml(preview)}</div></section><aside class="svn-workbench-side"><div class="svn-review-stack"><section class="svn-card"><div class="svn-message-label"><strong>最终提交信息</strong><span class="pill">已锁定</span></div><div class="svn-message" data-svn-scroll="message">${esc(review.message || snapshot.message || "")}</div></section>${humanConfirm}${finalCommit}${unknown}${committed}${control}</div></aside></div>`;
+      }
+      $("svn-view").innerHTML = `<div class="svn"><div class="svn-workbench">${header}<div class="svn-workbench-scroll" data-svn-scroll="workbench">${body}</div></div></div>`;
+      syncSvnPreviewLoading();
+      for (const element of $("svn-view").querySelectorAll("[data-svn-scroll]")) {
+        const position = existingScroll.get(element.dataset.svnScroll);
+        if (position) { element.scrollTop = position.top; element.scrollLeft = position.left; }
+      }
+      syncSvnPolling();
+    }
+    function showMain(view = "board") { stopSvnPolling(); $("detail-view").hidden = true; $("svn-view").hidden = true; $("board-view").hidden = view !== "board"; $("sheets-view").hidden = view !== "sheets"; }
+    async function openIssue(key) { previousView = activeTab === "sheets" ? "sheets" : "board"; cache.attachmentPreview = null; cache.transitions = null; cache.threads = null; cache.svnContext = null; cache.svnReview = null; cache.svnConfirmation = null; stopSvnPolling(); await callTool(TOOLS.issue, { issueKey: key }); }
+    function acceptResult(result) {
+      clearError();
+      if (result.view === "board") { cache.board = result; showMain("board"); renderBoard(); }
+      if (result.view === "sheets") { cache.sheets = result; showMain("sheets"); renderSheets(); }
+      if (result.view === "sheet") { cache.sheet = result; selectedSheet = result.sheet; renderSheets(); renderSheetIssues(); }
+      if (result.view === "issue") { cache.issue = result; $("board-view").hidden = true; $("sheets-view").hidden = true; $("svn-view").hidden = true; $("detail-view").hidden = false; renderDetail(); }
+      if (result.view === "attachmentPreview") { cache.attachmentPreview = result; renderDetail(); }
+      if (result.view === "automationStatus") { cache.automation = result; renderAutomation(); }
+      if (result.view === "desktopNavigation") {
+        $("meta").textContent = `${result.issueKey} 已在 Codex Desktop 打开`;
+        notifyDesktopHost("close");
+      }
+      if (result.view === "desktopAnalysis") {
+        cache.createAnalysisIssueKey = "";
+        cache.board = null;
+        cache.threads = null;
+        if (result.issueSnapshot) cache.issue = result.issueSnapshot;
+        renderDetail();
+        $("meta").textContent = `${result.issueKey} 的分析会话已创建并关联`;
+        notifyDesktopHost("close");
+      }
+      if (result.view === "transitions") { cache.transitions = result; renderDetail(); }
+      if (result.view === "transitionConfirmation") { cache.pendingTransition = result; }
+      if (result.view === "threads") { cache.threads = result; renderDetail(); }
+      if (result.view === "bindingResult") {
+        cache.threads = null;
+        cache.board = null;
+        if (result.issueSnapshot) cache.issue = result.issueSnapshot;
+        renderDetail();
+        $("meta").textContent = result.action === "cleared" ? `${result.issueKey} 已解除会话关联` : `${result.issueKey} 已保存会话关联`;
+      }
+      if (result.view === "svnContext") {
+        cache.svnContext = result;
+        cache.svnPreview = null;
+        svnActivePreviewPath = "";
+        svnPreviewRequestPath = "";
+        cache.svnConfirmation = null;
+        cache.svnReview = result.review || null;
+        svnSelectedPaths = new Set(cache.svnReview?.selectedPaths || (result.context?.changes || []).filter((change) => change.recommended && svnSelectable(change)).map((change) => change.path));
+        showSvn();
+      }
+      if (result.view === "svnDiff") {
+        cache.svnPreview = result;
+        svnActivePreviewPath = String(result.preview?.path || "");
+        svnPreviewRequestPath = "";
+        renderSvn();
+      }
+      if (result.view === "svnReview") {
+        cache.svnReview = result.review || null;
+        cache.svnConfirmation = null;
+        showSvn();
+      }
+      if (result.view === "svnCommitConfirmation") {
+        cache.svnReview = result.review || cache.svnReview;
+        cache.svnConfirmation = result;
+        showSvn();
+      }
+      if (result.view === "svnCommitResult") {
+        cache.svnReview = result.review || cache.svnReview;
+        cache.svnConfirmation = null;
+        showSvn();
+      }
+      if (result.view === "transitionResult") {
+        cache.pendingTransition = null;
+        cache.transitions = null;
+        cache.board = null;
+        if (result.issueSnapshot) cache.issue = result.issueSnapshot;
+        renderDetail();
+        $("meta").textContent = `${result.issueKey} 已流转到 ${result.targetStatus} · ${fmtTime(result.transitionedAt)}`;
+      }
+    }
+    async function selectTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll("nav button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+      saveState();
+      if (tab === "sheets") {
+        showMain("sheets");
+        if (!cache.sheets) await callTool(TOOLS.sheets); else renderSheets();
+        if (selectedSheet?.queryable === undefined && cache.sheets) {
+          selectedSheet = cache.sheets.sheets.find((item) => item.id === selectedSheet.id && item.projectId === selectedSheet.projectId) || null;
+          renderSheets();
+        }
+        if (selectedSheet?.queryable && (cache.sheet?.sheet?.id !== selectedSheet.id || cache.sheet?.sheet?.projectId !== selectedSheet.projectId)) {
+          await callTool(TOOLS.sheet, { projectId: selectedSheet.projectId, sheetId: selectedSheet.id, limit: 100 });
+        }
+        return;
+      }
+      showMain("board");
+      if (!cache.board) await callTool(TOOLS.board, { includeCompleted: true, limitPerType: 100 }); else renderBoard();
+    }
+    document.addEventListener("click", (event) => {
+      const tab = event.target.closest("nav button[data-tab]");
+      if (tab && !busy) void selectTab(tab.dataset.tab);
+      const statusFilter = event.target.closest("button[data-status-filter-kind]");
+      if (statusFilter && !busy) {
+        const key = `${activeTab}:${statusFilter.dataset.statusFilterKind}`;
+        const selected = new Set(statusFilters[key] || []);
+        if (selected.has(statusFilter.dataset.statusFilterValue)) selected.delete(statusFilter.dataset.statusFilterValue);
+        else selected.add(statusFilter.dataset.statusFilterValue);
+        statusFilters[key] = Array.from(selected);
+        saveState();
+        renderBoard();
+      }
+      const task = event.target.closest("article[data-key]");
+      if (task && !busy) void openIssue(task.dataset.key);
+      const attachment = event.target.closest("button[data-preview-attachment]");
+      if (attachment && cache.issue?.issue && !busy) {
+        void callTool(TOOLS.attachmentPreview, {
+          issueKey: cache.issue.issue.key,
+          attachmentId: attachment.dataset.previewAttachment
+        });
+      }
+      const sheet = event.target.closest(".sheet-item");
+      if (sheet && !busy) {
+        selectedSheet = cache.sheets?.sheets.find((item) => item.id === sheet.dataset.sheet && item.projectId === sheet.dataset.project) || null;
+        saveState(); renderSheets();
+        if (selectedSheet?.queryable) void callTool(TOOLS.sheet, { projectId: selectedSheet.projectId, sheetId: selectedSheet.id, limit: 100 });
+        else showError(new Error("此 Sheet 不是 JQL 范围，请在 Jira 中打开。"));
+      }
+      if (event.target.closest("#load-transitions") && cache.issue?.issue && !busy) {
+        void callTool(TOOLS.transitions, { issueKey: cache.issue.issue.key });
+      }
+      if (event.target.closest("#monitor-toggle") && !busy) {
+        const enabled = cache.automation?.automation?.monitorEnabled !== true;
+        const warning = enabled
+          ? "开启后，本地服务会持续监控你的 Bug，并自动创建只读分析会话；若已配置企业微信机器人，还会推送分析结果。确认开启吗？"
+          : "关闭后不会再创建新的自动分析会话；已启动的分析仍会保留。确认关闭吗？";
+        if (!window.confirm(warning)) return;
+        void callTool(TOOLS.automationToggle, { enabled });
+      }
+      if (event.target.closest("#settings") && !busy) {
+        void openLink("http://127.0.0.1:47823/#settings").catch((error) => showError(error));
+      }
+      if (event.target.closest("#local-close") && !busy) notifyDesktopHost("close");
+      if (event.target.closest("#open-binding") && cache.issue?.issue && !busy) {
+        void callTool(TOOLS.threads, { limit: 100 });
+      }
+      if (event.target.closest("#open-bound-thread") && cache.issue?.issue?.binding && !busy) {
+        void callTool(TOOLS.openBoundThread, { issueKey: cache.issue.issue.key });
+      }
+      if (event.target.closest("#create-analysis") && cache.issue?.issue && !busy) {
+        cache.createAnalysisIssueKey = cache.issue.issue.key;
+        renderDetail();
+      }
+      if (event.target.closest("#cancel-create-analysis") && !busy) {
+        cache.createAnalysisIssueKey = "";
+        renderDetail();
+      }
+      if (event.target.closest("#confirm-create-analysis") && cache.issue?.issue && !busy) {
+        const supplementalDescription = $("analysis-supplement")?.value?.trim() || "";
+        if (!window.confirm(`确认在当前 Codex Desktop 窗口为 ${cache.issue.issue.key} 新建会话，并发送一条只读分析消息吗？`)) return;
+        void callTool(TOOLS.createAnalysis, { issueKey: cache.issue.issue.key, supplementalDescription });
+      }
+      if (event.target.closest("#cancel-binding") && !busy) {
+        cache.threads = null;
+        renderDetail();
+      }
+      if (event.target.closest("#confirm-binding") && cache.issue?.issue && cache.threads && !busy) {
+        const threadId = $("binding-thread-select")?.value || "";
+        const thread = cache.threads.threads.find((item) => item.id === threadId);
+        if (!thread) return showError(new Error("请先选择要关联的 Codex 会话。"));
+        const conflicts = (thread.boundIssueKeys || []).filter((issueKey) => issueKey !== cache.issue.issue.key);
+        const message = conflicts.length
+          ? `该会话已关联 ${conflicts.join("、")}。确认解除原关联并改为关联 ${cache.issue.issue.key} 吗？不会发送消息。`
+          : `确认将 ${cache.issue.issue.key} 关联到“${thread.title}”吗？不会发送消息。`;
+        if (!window.confirm(message)) return;
+        void callTool(TOOLS.bindIssue, { issueKey: cache.issue.issue.key, threadId, expectedRevision: cache.threads.bindingsRevision, replaceExistingThreadBinding: conflicts.length > 0 });
+      }
+      if (event.target.closest("#clear-binding") && cache.issue?.issue?.binding && !busy) {
+        if (!window.confirm(`确认解除 ${cache.issue.issue.key} 与“${cache.issue.issue.binding.title}”的关联吗？Codex 会话不会被删除。`)) return;
+        void callTool(TOOLS.clearBinding, { issueKey: cache.issue.issue.key, expectedRevision: cache.issue.bindingsRevision });
+      }
+      if (event.target.closest("#open-svn") && cache.issue?.issue?.binding && !busy) {
+        cache.svnContext = null; cache.svnPreview = null; cache.svnReview = null; cache.svnConfirmation = null; svnSelectedPaths = new Set();
+        svnCategoryFilter = "all"; svnDraftSummary = ""; svnDraftCodexReview = false;
+        void callTool(TOOLS.svnInspect, { issueKey: cache.issue.issue.key });
+      }
+      if (event.target.closest("#back-from-svn") || event.target.closest("#close-svn-workbench")) {
+        svnFileInteraction.cancel();
+        stopSvnPolling();
+        if (svnDedicatedMode && LOCAL_TRANSPORT) notifyDesktopHost("close");
+        else { $("svn-view").hidden = true; $("detail-view").hidden = false; renderDetail(); }
+        return;
+      }
+      if (event.target.closest("#refresh-svn-workbench") && cache.svnContext && !busy) {
+        if (cache.svnReview?.id) void callTool(TOOLS.svnGetReview, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id });
+        else void callTool(TOOLS.svnInspect, { issueKey: cache.svnContext.issueKey });
+      }
+      const svnCategory = event.target.closest("button[data-svn-category]");
+      if (svnCategory && !busy) {
+        svnCategoryFilter = svnCategory.dataset.svnCategory || "all";
+        renderSvn();
+      }
+      const svnCheckbox = event.target.closest("input[data-svn-path]");
+      if (svnCheckbox && !busy) {
+        if (svnCheckbox.checked) svnSelectedPaths.add(svnCheckbox.dataset.svnPath);
+        else svnSelectedPaths.delete(svnCheckbox.dataset.svnPath);
+        renderSvn();
+      }
+      svnFileInteraction.click(event);
+      const svnExternalDiff = event.target.closest("button[data-svn-external-diff]");
+      if (svnExternalDiff && cache.svnContext && !busy) {
+        void callTool(TOOLS.svnExternalDiff, { issueKey: cache.svnContext.issueKey, path: svnExternalDiff.dataset.svnExternalDiff });
+      }
+      if (event.target.closest("#select-recommended") && cache.svnContext && !busy) {
+        svnSelectedPaths = new Set((cache.svnContext.context?.changes || []).filter((change) => change.recommended && svnSelectable(change)).map((change) => change.path));
+        renderSvn();
+      }
+      if (event.target.closest("#clear-svn-selection") && !busy) { svnSelectedPaths.clear(); renderSvn(); }
+      if (event.target.closest("#create-svn-review") && cache.svnContext && !busy) {
+        if (!svnSelectedPaths.size) return showError(new Error("请至少选择一个要审核的 SVN 文件。"));
+        svnDraftSummary = $("svn-summary")?.value || svnDraftSummary;
+        svnDraftCodexReview = $("svn-codex-review")?.checked === true;
+        void callTool(TOOLS.svnCreateReview, {
+          issueKey: cache.svnContext.issueKey,
+          selectedPaths: Array.from(svnSelectedPaths),
+          summary: svnDraftSummary,
+          codexReviewEnabled: svnDraftCodexReview
+        });
+      }
+      if (event.target.closest("#refresh-svn-review") && cache.svnReview && !busy) {
+        void callTool(TOOLS.svnGetReview, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id });
+      }
+      if (event.target.closest("#cancel-svn-review") && cache.svnReview && !busy) {
+        if (!window.confirm("确认取消 Codex 审查并改为人工审核吗？审核快照会保留。")) return;
+        void callTool(TOOLS.svnCancelReview, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id, message: "用户已取消 Codex 审查，改为人工审核。" });
+      }
+      if (event.target.closest("#confirm-svn-review") && cache.svnReview && !busy) {
+        if ($("svn-reviewed")?.checked !== true) return showError(new Error("请先人工查看全部选定文件和风险。"));
+        if (cache.svnReview.verdict === "warning" && $("svn-risk")?.checked !== true) return showError(new Error("当前审核有警告，请确认理解风险。"));
+        if (cache.svnReview.crossTaskConflicts?.length && $("svn-overlap")?.checked !== true) return showError(new Error("请先确认已核对多个任务混入同一文件的风险。"));
+        void callTool(TOOLS.svnConfirmReview, {
+          issueKey: cache.svnContext.issueKey,
+          reviewId: cache.svnReview.id,
+          reviewed: true,
+          riskAcknowledged: $("svn-risk")?.checked === true,
+          overlapAcknowledged: $("svn-overlap")?.checked === true
+        });
+      }
+      if (event.target.closest("#commit-svn") && cache.svnReview && cache.svnConfirmation && !busy) {
+        const message = `这将真实提交 ${cache.svnReview.selectedPaths?.length || 0} 个显式 SVN 路径。\n\n提交信息：\n${cache.svnReview.message || ""}\n\n确认继续吗？`;
+        if (!window.confirm(message)) return;
+        void (async () => {
+          const result = await callTool(TOOLS.svnCommit, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id, confirmationToken: cache.svnConfirmation.confirmationToken });
+          if (!result) await callTool(TOOLS.svnGetReview, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id });
+        })();
+      }
+      if (event.target.closest("#reconcile-svn") && cache.svnReview && !busy) {
+        void callTool(TOOLS.svnReconcile, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id });
+      }
+      if (event.target.closest("#confirm-svn-committed") && cache.svnReview && !busy) {
+        const revision = $("svn-manual-revision")?.value?.trim() || "";
+        if (!/^r?\d+$/i.test(revision)) return showError(new Error("请输入有效的 SVN revision。"));
+        if (!window.confirm(`仅当你已经人工查看 SVN 日志并确认 ${revision} 提交成功时继续。不会再次提交。`)) return;
+        void callTool(TOOLS.svnConfirmCommitted, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id, acknowledged: true, revision });
+      }
+      if (event.target.closest("#abandon-svn-review") && cache.svnReview && !busy) {
+        if (!window.confirm("确认放弃当前审核草稿并重新扫描最新 SVN 文件状态吗？不会还原任何文件。")) return;
+        void (async () => {
+          const abandoned = await callTool(TOOLS.svnAbandon, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id, acknowledged: true, message: "用户已确认放弃旧审核草稿并重新扫描。" });
+          if (abandoned) await callTool(TOOLS.svnInspect, { issueKey: cache.svnContext.issueKey });
+        })();
+      }
+      if (event.target.closest("#execute-transition") && cache.issue?.issue && cache.transitions && !busy) {
+        const transitionId = $("transition-select")?.value || "";
+        const transition = cache.transitions.transitions.find((item) => item.id === transitionId);
+        if (!transition) return showError(new Error("请先选择目标状态。"));
+        if (!window.confirm(`确认将 ${cache.issue.issue.key} 从“${cache.issue.issue.statusName}”流转到“${transition.to.name}”吗？`)) return;
+        void (async () => {
+          const prepared = await callTool(TOOLS.prepareTransition, { issueKey: cache.issue.issue.key, transitionId: transition.id, expectedTargetStatus: transition.to.name });
+          if (prepared?.confirmationId) await callTool(TOOLS.executeTransition, { confirmationId: prepared.confirmationId });
+        })();
+      }
+    });
+    document.addEventListener("dblclick", (event) => {
+      svnFileInteraction.doubleClick(event);
+    });
+    document.addEventListener("keydown", (event) => { if ((event.key === "Enter" || event.key === " ") && event.target.matches("article[data-key]")) { event.preventDefault(); void openIssue(event.target.dataset.key); } });
+    document.addEventListener("input", (event) => {
+      if (event.target.id === "svn-summary") {
+        svnDraftSummary = event.target.value;
+        syncSvnCommitMessagePreview();
+      }
+    });
+    document.addEventListener("change", (event) => {
+      if (event.target.name === "svn-review-mode") {
+        svnDraftCodexReview = event.target.value === "codex";
+        document.querySelectorAll(".svn-review-mode").forEach((label) => label.classList.toggle("active", label.contains(event.target)));
+      }
+    });
+    $("sheet-search").addEventListener("input", renderSheetIssues);
+    $("sheet-sort").addEventListener("change", renderSheetIssues);
+    $("refresh").addEventListener("click", () => { if (activeTab === "sheets") return callTool(selectedSheet ? TOOLS.sheet : TOOLS.sheets, selectedSheet ? { projectId: selectedSheet.projectId, sheetId: selectedSheet.id, limit: 100 } : {}); return callTool(TOOLS.board, { includeCompleted: true, limitPerType: 100 }); });
+
+    window.addEventListener("message", (event) => {
+      if (event.source !== window.parent) return;
+      const message = event.data;
+      if (!message || message.jsonrpc !== "2.0") return;
+      if (message.id !== undefined && pending.has(message.id)) { const entry = pending.get(message.id); pending.delete(message.id); message.error ? entry.reject(message.error) : entry.resolve(message.result); return; }
+      if (message.method === "ui/notifications/tool-result") acceptResult(message.params?.structuredContent);
+    }, { passive: true });
+
+    async function initialize() {
+      let stored = window.openai?.widgetState?.privateContent || window.openai?.widgetState || {};
+      if (LOCAL_TRANSPORT) {
+        if (DESKTOP_BRIDGE_TRANSPORT) stored = window.__JIRA_CODEX_INITIAL_WIDGET_STATE__ || {};
+        else {
+          try { stored = JSON.parse(window.localStorage.getItem(LOCAL_STATE_KEY) || "{}"); } catch { stored = {}; }
+        }
+        $("local-close").hidden = false;
+      }
+      if (stored.openSvn) {
+        svnDedicatedMode = true;
+        document.body.classList.add("svn-mode");
+        document.querySelector("body > header")?.setAttribute("hidden", "");
+        document.querySelector("body > nav")?.setAttribute("hidden", "");
+      }
+      activeTab = ["active", "sheets", "history"].includes(stored.activeTab) ? stored.activeTab : "active";
+      selectedSheet = stored.selectedSheet && typeof stored.selectedSheet === "object"
+        ? { projectId: String(stored.selectedSheet.projectId || ""), id: String(stored.selectedSheet.id || "") }
+        : null;
+      statusFilters = stored.statusFilters && typeof stored.statusFilters === "object" && !Array.isArray(stored.statusFilters)
+        ? Object.fromEntries(Object.entries(stored.statusFilters).map(([key, values]) => [key, Array.isArray(values) ? values.map(String) : []]))
+        : {};
+      try {
+        if (LOCAL_TRANSPORT) {
+          if (stored.openIssueKey) {
+            await openIssue(String(stored.openIssueKey));
+            if (stored.openSvn && cache.issue?.issue?.binding) {
+              await callTool(TOOLS.svnInspect, { issueKey: String(stored.openIssueKey) });
+            }
+          } else {
+            await callTool(TOOLS.board, { includeCompleted: true, limitPerType: 100 });
+          }
+          if (!stored.openSvn) await callTool(TOOLS.automationStatus);
+        } else {
+          await request("ui/initialize", { protocolVersion: "2025-11-21", appInfo: { name: "jira-workbench", title: "Jira 任务工作台", version: "0.3.0" }, appCapabilities: {} });
+          notify("ui/notifications/initialized", {});
+          void callTool(TOOLS.automationStatus);
+        }
+      } catch (error) {
+        if (window.openai?.toolOutput) acceptResult(window.openai.toolOutput);
+        else showError(error);
+      }
+      document.querySelectorAll("nav button").forEach((button) => button.classList.toggle("active", button.dataset.tab === activeTab));
+    }
+    void initialize();
+  </script>
+</body>
+</html>

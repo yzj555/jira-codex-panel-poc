@@ -157,6 +157,7 @@ export function buildIssuePrompt(issue, {
   messageTemplate = "",
   requirementMessageTemplate = DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE,
   bugMessageTemplate = DEFAULT_BUG_MESSAGE_TEMPLATE,
+  includeAnalysisInstructions = true,
   fallbackNotice = "",
   supplementalDescription = "",
   automated = false
@@ -170,6 +171,15 @@ export function buildIssuePrompt(issue, {
   const supplement = String(supplementalDescription || "").trim();
   const supplementSection = supplement ? `## 用户补充说明\n\n${supplement}` : "";
   const fallback = String(fallbackNotice || "").trim();
+
+  // A configured Skill is the authoritative analysis contract. In that case
+  // the visible first turn only carries Jira facts and the user's supplement;
+  // the built-in template and bundled Skill are strictly fallback behavior.
+  if (!includeAnalysisInstructions) {
+    return [buildIssueContext(issue, { automated }), supplementSection]
+      .filter(Boolean)
+      .join("\n\n");
+  }
 
   // Preserve custom templates created before context and instructions were split.
   // A template that explicitly renders description or attachments still owns its

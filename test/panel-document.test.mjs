@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createEmbeddedPanelDocument } from "../lib/panel-document.mjs";
 
-test("内嵌面板移除外部资源，并安装受限 fetch 桥接", () => {
+test("内嵌完整面板移除外部资源，并安装受限 fetch 与资源桥接", () => {
   const document = createEmbeddedPanelDocument({
     html: '<html><head><link rel="stylesheet" href="/styles.css"></head><body><script type="module" src="/app.js"></script></body></html>',
     styles: "body { color: red; }",
@@ -19,13 +19,14 @@ test("内嵌面板移除外部资源，并安装受限 fetch 桥接", () => {
   assert.doesNotMatch(document, /export const/);
   assert.match(document, /window\.__JIRA_CODEX_EMBEDDED__ = true/);
   assert.match(document, /window\.parent\.__jiraCodexHostFetch/);
+  assert.match(document, /window\.__jiraCodexAssetUrl/);
   assert.match(document, /body \{ color: red; \}/);
   assert.match(document, /const value = 42/);
   assert.match(document, /const helper = 8/);
   assert.doesNotMatch(document, /<script type="module">/);
 });
 
-test("实际内嵌面板脚本可以在同一作用域中编译", async () => {
+test("实际完整工作台脚本可以在同一 srcdoc 作用域中编译", async () => {
   const [html, styles, appSource, promptBuilderSource, issueViewsSource] = await Promise.all([
     readFile(new URL("../public/index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
@@ -43,11 +44,134 @@ test("实际内嵌面板脚本可以在同一作用域中编译", async () => {
   });
   const scripts = Array.from(document.matchAll(/<script>([\s\S]*?)<\/script>/g), (match) => match[1]);
 
-  assert.equal(scripts.length, 2);
+  assert.ok(scripts.length >= 2);
   scripts.forEach((script) => assert.doesNotThrow(() => new Function(script)));
 });
 
-test("设置面板包含六个分组和可持久化的数据同步控件", async () => {
+test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话与 SVN", async () => {
+  const ui = await readFile(new URL("../mcp/ui/task-board.html", import.meta.url), "utf8");
+  for (const label of ["待我处理", "Jira Sheets", "处理历史", "状态流转", "Codex 会话", "SVN 审核与提交"]) {
+    assert.match(ui, new RegExp(label));
+  }
+  assert.match(ui, /requirement-status-filters/);
+  assert.match(ui, /bug-status-filters/);
+  assert.match(ui, /statusFilters/);
+  assert.match(ui, /selectedSheet/);
+  assert.match(ui, /jira_preview_issue_attachment/);
+  assert.match(ui, /data-preview-attachment/);
+  assert.match(ui, /svn-tree-dir/);
+  assert.match(ui, /body\.svn-mode #svn-view/);
+  assert.match(ui, /body\.svn-mode #loading \{ top: 57px; \}/);
+  assert.match(ui, /\.svn-workbench-actions button[^}]*-webkit-app-region: no-drag/);
+  assert.match(ui, /svn-workbench-header/);
+  assert.match(ui, /svn-workbench-grid/);
+  assert.match(ui, /data-svn-category/);
+  assert.match(ui, /人工审核（默认）/);
+  assert.match(ui, /Codex 辅助审查/);
+  assert.match(ui, /svn_open_issue_external_diff/);
+  assert.match(ui, /TortoiseSVN 比较/);
+  assert.match(ui, /dblclick/);
+  assert.match(ui, /\.svn-file\[data-svn-external-diff\]/);
+  assert.match(ui, /data-svn-preview-row/);
+  assert.match(ui, /svn-file\.preview-active/);
+  assert.match(ui, /needsSvnPreview/);
+  assert.doesNotMatch(ui, /class="svn-file-diff"/);
+  assert.doesNotMatch(ui, /button\[data-svn-preview\]/);
+  assert.match(ui, /createSvnFileInteraction/);
+  assert.match(ui, /svnFileInteraction\.click\(event\)/);
+  assert.match(ui, /svnFileInteraction\.doubleClick\(event\)/);
+  assert.match(ui, /event\.target\.closest\("input, button"\)/);
+  assert.match(ui, /event\.target\.closest\("#back-from-svn"\) \|\| event\.target\.closest\("#close-svn-workbench"\)/);
+  assert.doesNotMatch(ui, /close-svn-workbench"\)\) && !busy/);
+  assert.match(ui, /function svnDraftCommitMessage/);
+  assert.match(ui, /id="svn-summary" type="text" maxlength="500"/);
+  assert.match(ui, /id="svn-message-preview"/);
+  assert.match(ui, /svn-commit-message-card/);
+  assert.match(ui, /syncSvnCommitMessagePreview/);
+  assert.match(ui, /\.svn-message \{ background: var\(--panel\); color: var\(--text\); \}/);
+  assert.match(ui, /data-svn-scroll="workbench"/);
+  assert.match(ui, /document\.body\.classList\.add\("svn-mode"\)/);
+  assert.match(ui, /codex_create_and_bind_issue_analysis/);
+  assert.match(ui, /codex_open_bound_issue_thread/);
+  assert.match(ui, /jira_get_bug_monitor_status/);
+  assert.match(ui, /jira_set_bug_monitor_enabled/);
+  assert.match(ui, /ui\/initialize/);
+  assert.match(ui, /tools\/call/);
+  assert.match(ui, /ui\/open-link/);
+  assert.match(ui, /LOCAL_TRANSPORT/);
+  assert.match(ui, /new URL\("\/mcp", window\.location\.origin\)/);
+  assert.match(ui, /jira-codex-local-ui/);
+  assert.doesNotThrow(() => new Function(ui.match(/<script>([\s\S]*?)<\/script>/)?.[1] || ""));
+});
+
+test("SVN 文件行区分单击预览与双击 TortoiseSVN，且交互控件不会误触发", async () => {
+  const ui = await readFile(new URL("../mcp/ui/task-board.html", import.meta.url), "utf8");
+  const start = ui.indexOf("function createSvnFileInteraction");
+  const end = ui.indexOf("/* SVN_FILE_INTERACTION_END */");
+  assert.ok(start >= 0 && end > start);
+  const createInteraction = new Function(`${ui.slice(start, end)}\nreturn createSvnFileInteraction;`)();
+
+  let nextTimer = 0;
+  const timers = new Map();
+  const previews = [];
+  const externals = [];
+  const selections = [];
+  let loadedPath = "";
+  const interaction = createInteraction({
+    delay: 260,
+    setTimer(callback) { const id = ++nextTimer; timers.set(id, callback); return id; },
+    clearTimer(id) { timers.delete(id); },
+    canRun: () => true,
+    select: (path) => selections.push(path),
+    needsPreview: (path) => loadedPath !== path,
+    preview: (path) => { loadedPath = path; previews.push(path); },
+    external: (path) => externals.push(path)
+  });
+  const row = { dataset: { svnPreviewRow: "src/example.go", svnExternalDiff: "src/example.go" } };
+  const target = {
+    closest(selector) {
+      if (selector === "input, button") return null;
+      if (selector === ".svn-file[data-svn-preview-row], .svn-selected-row[data-svn-preview-row]") return row;
+      if (selector === ".svn-file[data-svn-external-diff], .svn-selected-row[data-svn-external-diff], .svn-diff[data-svn-external-diff]") return row;
+      return null;
+    }
+  };
+  const event = () => ({ target, prevented: false, preventDefault() { this.prevented = true; } });
+
+  assert.equal(interaction.click(event()), true);
+  assert.equal(interaction.hasPendingPreview(), true);
+  assert.deepEqual(previews, []);
+  assert.equal(interaction.click(event()), true);
+  assert.equal(timers.size, 1, "双击产生的第二次 click 应替换首次预览计时器");
+  assert.equal(interaction.doubleClick(event()), true);
+  assert.equal(interaction.hasPendingPreview(), false);
+  assert.equal(timers.size, 0, "dblclick 必须先取消内置预览，避免 busy 竞态");
+  assert.deepEqual(previews, []);
+  assert.deepEqual(externals, ["src/example.go"]);
+
+  assert.equal(interaction.click(event()), true);
+  const [singleClickTimer] = timers.values();
+  timers.clear();
+  singleClickTimer();
+  assert.deepEqual(previews, ["src/example.go"], "没有后续双击时应加载内置差异");
+
+  assert.equal(interaction.click(event()), true);
+  assert.equal(timers.size, 0, "重复点击已加载的同一文件不应再次调度差异请求");
+  assert.deepEqual(previews, ["src/example.go"]);
+  assert.ok(selections.length >= 3, "单击和双击均应立即更新文件行选中状态");
+
+  const buttonTarget = { closest: (selector) => selector === "input, button" ? {} : row };
+  assert.equal(interaction.click({ target: buttonTarget, preventDefault() {} }), false);
+  assert.equal(interaction.doubleClick({ target: buttonTarget, preventDefault() {} }), false);
+  assert.equal(timers.size, 0, "checkbox 和差异按钮不应进入文件行延迟逻辑");
+  assert.match(ui, /preview: \(path\) => void loadSvnPreview\(path\)/);
+  assert.match(ui, /busyScope: "svn-preview"/);
+  assert.match(ui, /function syncSvnPreviewLoading/);
+  assert.match(ui, /\.svn-preview-loading \{ position: absolute; inset: 0/);
+  assert.match(ui, /if \(!localBusy\) setBusy\(true, busyText\)/);
+});
+
+test("设置面板保留六个分组和数据同步配置", async () => {
   const [html, styles, configSource, appSource] = await Promise.all([
     readFile(new URL("../public/index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
@@ -61,291 +185,138 @@ test("设置面板包含六个分组和可持久化的数据同步控件", async
   for (const id of ["sync-tasks-enabled", "sync-task-interval", "sync-on-panel-return", "sync-sheets-interval"]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(styles, /\.settings-dialog form \{[^}]*grid-template-rows: auto auto minmax\(0, 1fr\) auto auto/);
-  assert.match(styles, /\.form-grid \{[^}]*overflow: auto/);
-  assert.match(styles, /\.settings-actions \{[^}]*min-height: 62px/);
-  assert.match(appSource, /syncOnPanelReturn/);
+  assert.match(styles, /\.settings-dialog form/);
+  assert.match(html, /dataset\.view = "settings-only"/);
+  assert.match(styles, /:root\[data-view="settings-only"\] \.app-shell/);
+  assert.match(styles, /:root\[data-view="settings-only"\] \.settings-dialog \{ inset: 0; width: 100%; height: 100%/);
   assert.match(appSource, /scheduleSyncTimers/);
+  assert.match(appSource, /openSettingsFromLocation/);
+  assert.match(appSource, /loadCodexPanelContext/);
+  assert.match(appSource, /expectedRevision: revisionBeforeRequest/);
+  assert.match(appSource, /error\?\.details\?\.stage === "created_unbound"/);
+  assert.doesNotMatch(appSource, /recreateAnalysis && state\.bindings\[key\]/);
+  assert.match(appSource, /if \(SETTINGS_ONLY_VIEW\)/);
   assert.match(configSource, /DEFAULT_SYNC_SETTINGS/);
 });
 
-test("首页需求和 Bug 面板支持独立的状态筛选", async () => {
+test("桌面注入以完整 public 工作台为主 UI，官方 MCP Apps 仍作为插件能力保留", async () => {
+  const [client, navigation, commands, injector, pluginManifest, mcpUi] = await Promise.all([
+    readFile(new URL("../inject/client.js", import.meta.url), "utf8"),
+    readFile(new URL("../lib/codex-navigation.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../lib/codex-application-commands.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../injector.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../plugins/jira-codex-assistant/.codex-plugin/plugin.json", import.meta.url), "utf8"),
+    readFile(new URL("../mcp/ui/task-board.html", import.meta.url), "utf8")
+  ]);
+  const stripExports = (source) => source.replace(/\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g, "");
+  const compiled = client
+    .replace("/*__JIRA_CODEX_NAVIGATION_HELPERS__*/", stripExports(navigation))
+    .replace("/*__JIRA_CODEX_APPLICATION_COMMANDS__*/", stripExports(commands));
+  assert.doesNotThrow(() => new Function(compiled));
+  assert.match(client, /mode: "minimal-desktop-host"/);
+  assert.match(client, /jira-codex-conversation-float/);
+  assert.doesNotMatch(client, /data-open-thread/);
+  assert.doesNotMatch(client, /openConversation\(binding\.threadId\)/);
+  assert.match(client, /PANEL_DOCUMENT/);
+  assert.match(client, /(?:target|frame)\.srcdoc\s*=\s*PANEL_DOCUMENT/);
+  assert.match(client, /#\$\{PAGE_ID\} \{ position: absolute/);
+  assert.match(client, /function findPageMount\(/);
+  assert.match(client, /surface\.setAttribute\(HOST/);
+  assert.doesNotMatch(client, /codex:\/\/plugins\/jira-codex-assistant/);
+  assert.match(client, /\/api\/desktop\/commands\/next/);
+  assert.match(client, /command\.type === "open-thread"/);
+  assert.match(client, /command\.type === "create-analysis"/);
+  assert.match(client, /codexCommands\.currentConversation/);
+  assert.match(client, /desktopHost\.listProjects/);
+  assert.match(client, /projects: desktopProjects/);
+  assert.match(client, /\/api\/bindings\/import/);
+  assert.match(client, /\/api\/automation\/monitor\/import/);
+  assert.doesNotMatch(client, /threadRows|projectWorkspaceFromRow|runBugMonitor/);
+  assert.doesNotMatch(client, /localStorage\.setItem\(BINDINGS_KEY/);
+  assert.doesNotMatch(client, /data-app-action-sidebar-thread-id|data-app-action-sidebar-project-id|__reactProps\$/);
+  assert.match(injector, /createEmbeddedPanelDocument/);
+  assert.match(injector, /readFile\(join\(root, "public", "index\.html"\), "utf8"\)/);
+  assert.match(injector, /readFile\(join\(root, "public", "styles\.css"\), "utf8"\)/);
+  assert.match(injector, /readFile\(join\(root, "public", "app\.js"\), "utf8"\)/);
+  assert.match(injector, /readFile\(join\(root, "public", "prompt-builder\.js"\), "utf8"\)/);
+  assert.match(injector, /readFile\(join\(root, "public", "issue-views\.js"\), "utf8"\)/);
+  assert.match(injector, /const panelDocument = createEmbeddedPanelDocument/);
+  assert.match(injector, /__JIRA_CODEX_POC_PANEL_DOCUMENT__/);
+  assert.ok((injector.match(/window\.__JIRA_CODEX_BRIDGE_TOKEN__\s*=/g) || []).length >= 2,
+    "injector restart must refresh the live page bridge token even when the UI revision is current");
+  assert.match(injector, /new Set\(\["GET", "POST", "PUT", "DELETE"\]\)/);
+  assert.match(pluginManifest, /"mcpServers"\s*:\s*"\.\/\.mcp\.json"/);
+  assert.match(mcpUi, /ui\/initialize/);
+  assert.match(mcpUi, /tools\/call/);
+});
+
+test("服务端持有监控、绑定、项目目录与 SVN 新流程的数据源", async () => {
+  const [server, bindings, conversations, monitor, svn] = await Promise.all([
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../lib/issue-binding-store.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../lib/codex-conversation-service.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../lib/bug-monitor-service.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../lib/svn-review-manager.mjs", import.meta.url), "utf8")
+  ]);
+  assert.match(bindings, /legacyImportCompletedAt/);
+  assert.match(bindings, /ISSUE_BINDINGS_REVISION_CONFLICT/);
+  assert.match(bindings, /normalizeBindingWorkspace/);
+  assert.doesNotMatch(conversations, /listWorkspaces|resolveWorkspace/);
+  assert.match(conversations, /codex\.listThreads/);
+  assert.match(monitor, /Persistent, page-independent Bug monitor/);
+  assert.match(monitor, /runtime\.startReadOnlyAnalysis/);
+  assert.match(server, /bugMonitor\.start\(\)/);
+  assert.match(server, /desktopCommands\.request\("create-analysis"/);
+  assert.match(server, /expectedRevision: baselineRevision/);
+  assert.match(server, /code: "ISSUE_ANALYSIS_CREATED_UNBOUND"/);
+  assert.match(server, /stage: "created_unbound"/);
+  assert.match(server, /config\.codexProjectPath/);
+  assert.doesNotMatch(server, /\/api\/codex\/workspaces/);
+  assert.match(server, /void svnWorkbench\.recordBaseline/);
+  assert.doesNotMatch(server, /buildIssueDetailSnapshot\(await jiraWorkbench\.getIssue/);
+  assert.match(svn, /bindingWorkspace|turnReader/);
+  assert.match(svn, /sessionReader/); // 只保留旧记录恢复兼容。
+});
+
+test("完整本地设置 UI 本身仍支持深浅主题和首页状态筛选", async () => {
   const [appSource, styles] = await Promise.all([
     readFile(new URL("../public/app.js", import.meta.url), "utf8"),
     readFile(new URL("../public/styles.css", import.meta.url), "utf8")
   ]);
   assert.match(appSource, /inboxStatusFilters: \{ requirement: \[\], bug: \[\] \}/);
-  assert.match(appSource, /function issueStatusName\(issue\)/);
-  assert.match(appSource, /function createLaneStatusFilter\(type, issues, selectedStatuses\)/);
-  assert.match(appSource, /showStatusFilter: !history/);
-  assert.match(appSource, /state\.inboxStatusFilters\[type\] = Array\.from\(next\)/);
-  assert.match(appSource, /状态筛选（可多选）/);
-  assert.match(appSource, /selectedStatuses\.includes\(issueStatusName\(issue\)\)/);
-  assert.match(styles, /\.lane-status-filter/);
+  assert.match(appSource, /createLaneStatusFilter/);
+  assert.match(styles, /:root\[data-theme="dark"\]/);
   assert.match(styles, /\.lane-status-button\.active/);
 });
 
-test("Codex 宿主注入脚本包含会话 Jira 浮窗并可编译", async () => {
-  const [clientSource, navigationSource, applicationCommandsSource, promptBuilderSource, injectorSource] = await Promise.all([
-    readFile(new URL("../inject/client.js", import.meta.url), "utf8"),
-    readFile(new URL("../lib/codex-navigation.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../lib/codex-application-commands.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../public/prompt-builder.js", import.meta.url), "utf8"),
-    readFile(new URL("../injector.mjs", import.meta.url), "utf8")
-  ]);
-  const stripExports = (source) => source.replace(
-    /\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g,
-    ""
-  );
-  const compiled = clientSource
-    .replace("/*__JIRA_CODEX_NAVIGATION_HELPERS__*/", stripExports(navigationSource))
-    .replace("/*__JIRA_CODEX_APPLICATION_COMMANDS__*/", stripExports(applicationCommandsSource))
-    .replace("/*__JIRA_CODEX_PROMPT_HELPERS__*/", stripExports(promptBuilderSource));
-
-  assert.doesNotThrow(() => new Function(compiled));
-  assert.match(clientSource, /jira-codex-conversation-float/);
-  assert.match(clientSource, /jira-codex-svn-modal/);
-  assert.match(clientSource, /\[\$\{HOST_ATTRIBUTE\}="true"\][\s\S]*?pointer-events: auto !important;/);
-  assert.match(clientSource, /\/api\/svn\/reviews/);
-  assert.match(clientSource, /确认提交到 SVN/);
-  assert.match(clientSource, /我已完成本次改动审核/);
-  assert.match(clientSource, /理解上述风险/);
-  assert.doesNotMatch(clientSource, /我理解上述风险并仍要提交/);
-  assert.match(clientSource, /本次提交方式/);
-  assert.match(clientSource, /人工审核（默认）/);
-  assert.match(clientSource, /Codex 辅助审查/);
-  assert.match(clientSource, /可能耗时较长/);
-  assert.match(clientSource, /必须等待审查完成，或主动取消并降级为人工审核/);
-  assert.match(clientSource, /jira-codex-svn-mode-options/);
-  assert.match(clientSource, /codexReviewEnabled: false/);
-  assert.match(clientSource, /const preserveBodyScroll = state\.renderedViewKey === nextViewKey/);
-  assert.match(clientSource, /state\.bodyScrollTop = body\.scrollTop/);
-  assert.match(clientSource, /nextTree\.scrollTop = treeScrollTop/);
-  assert.match(clientSource, /nextPreview\.scrollLeft = previewScrollLeft/);
-  assert.match(clientSource, /function reconcileIssueBinding/);
-  assert.match(clientSource, /createLegacyCodexHostAdapter\(\)/);
-  assert.match(clientSource, /createPanelCodexRuntimeAdapter\(\{ request: panelJson \}\)/);
-  assert.match(clientSource, /createCodexRuntimeSelector/);
-  assert.match(clientSource, /createCodexApplicationCommands/);
-  assert.match(clientSource, /codexRuntime: codexCommands\.snapshot\(\)/);
-  assert.match(clientSource, /\/api\/bindings\/import/);
-  assert.match(clientSource, /\/api\/bindings\/mutations/);
-  assert.match(clientSource, /runtimeOwner: started\.runtimeOwner/);
-  assert.match(clientSource, /desktopHandoff: !automated/);
-  assert.match(clientSource, /waitForAppServerHandoff\(normalizedThreadId\)/);
-  assert.match(clientSource, /allowRuntimeFallback: false/);
-  assert.match(clientSource, /updateBindingRuntimeOwner/);
-  assert.match(clientSource, /uiThreadId: provisionalThreadId/);
-  assert.match(clientSource, /codexCommands\.resolveConversationId\(provisionalThreadId/);
-  assert.match(clientSource, /bindingMatchesThread\(binding, row\.getAttribute/);
-  assert.match(clientSource, /manual_review/);
-  assert.match(clientSource, /conversationBindingForThread/);
-  assert.match(clientSource, /async function bindIssueToThread/);
-  assert.match(clientSource, /codexCommands\.readConversation\(normalizedThreadId/);
-  assert.doesNotMatch(clientSource, /codexHost\./);
-  assert.match(clientSource, /function retryIssuePrompt/);
-  assert.match(clientSource, /firstMessageStatus: "pending"/);
-  assert.match(clientSource, /\/api\/issues\/\$\{encodeURIComponent\(state\.issueKey\)\}/);
-  assert.match(injectorSource, /new Set\(\["GET", "POST", "PUT", "DELETE"\]\)/);
+test("完整面板优先加载 Jira，并渐进补齐 App Server 上下文", async () => {
+  const appSource = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const bootSource = appSource.slice(appSource.indexOf("async function boot()"), appSource.indexOf("function openSettingsFromLocation"));
+  assert.ok(bootSource.indexOf('api("/api/config")') < bootSource.indexOf("loadCodexPanelContext"));
+  assert.match(bootSource, /void loadCodexPanelContext\(\{ quiet: true \}\)/);
+  assert.ok(bootSource.indexOf("await loadIssues()") < bootSource.indexOf("loadJxlSheets"));
+  assert.match(appSource, /const bindingTask = api\("\/api\/bindings"\)/);
+  assert.match(appSource, /const conversationTask = api\("\/api\/codex\/conversations\?limit=200"\)/);
+  assert.doesNotMatch(appSource, /\/api\/codex\/workspaces/);
+  assert.match(appSource, /Array\.isArray\(message\.projects\)/);
+  assert.match(appSource, /loadCodexSkillsForConfiguredProject/);
 });
 
-test("任务详情可解除持久化会话绑定且不删除任务或对话", async () => {
-  const [html, appSource, clientSource] = await Promise.all([
-    readFile(new URL("../public/index.html", import.meta.url), "utf8"),
-    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
-    readFile(new URL("../inject/client.js", import.meta.url), "utf8")
-  ]);
-
-  assert.match(html, /id="clear-binding-action"/);
-  assert.match(html, /id="clear-binding-dialog"/);
-  assert.match(html, /只清除关联记录/);
-  assert.match(html, /不会删除或归档 Codex 对话/);
-  assert.match(appSource, /type: "clear-task-binding"/);
-  assert.match(appSource, /message\.type === "binding-cleared"/);
-  assert.match(clientSource, /async function clearIssueBinding/);
-  assert.match(clientSource, /body: \{ upserts: \{\}, deletes: \[normalizedIssueKey\] \}/);
-  assert.match(clientSource, /writeStoredObject\(BINDINGS_KEY, bindings, \{ persist: false \}\)/);
-  assert.match(clientSource, /removeConversationIssueFloat\(\)/);
-
-  const clearStart = clientSource.indexOf("  async function clearIssueBinding");
-  const clearEnd = clientSource.indexOf("  async function retryIssuePrompt", clearStart);
-  const clearSource = clientSource.slice(clearStart, clearEnd);
-  assert.ok(clearStart >= 0 && clearEnd > clearStart);
-  assert.doesNotMatch(clearSource, /archiveConversation|deleteConversation|\/api\/issues|\/api\/svn/);
-});
-
-test("完整面板和会话浮窗跟随 Codex 深浅主题", async () => {
-  const [clientSource, appSource, styles] = await Promise.all([
-    readFile(new URL("../inject/client.js", import.meta.url), "utf8"),
-    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
-    readFile(new URL("../public/styles.css", import.meta.url), "utf8")
-  ]);
-
-  assert.match(clientSource, /electron-dark/);
-  assert.match(clientSource, /--color-token-main-surface-primary/);
-  assert.match(clientSource, /sendPanelMessage\("theme", snapshot\)/);
-  assert.match(clientSource, /attributeFilter: \["class", "style"\]/);
-  assert.match(clientSource, /normalizeCodexThemeTokens/);
-  assert.match(clientSource, /surfaceMatchesTheme/);
-  assert.match(clientSource, /buttonContrast < 4\.5/);
-  assert.match(clientSource, /tokenSource: "fallback"/);
-  assert.match(appSource, /message\.type === "theme"/);
-  assert.match(appSource, /--codex-theme-\$\{key\}/);
-  assert.match(styles, /:root\[data-theme="dark"\]/);
-  assert.match(styles, /--panel-bg: var\(--codex-theme-bg/);
-  assert.match(styles, /Codex host theme bridge/);
-  assert.match(styles, /\.issue-action-group \{[^}]*margin-left: auto;/);
-  assert.match(styles, /\.top-actions \.icon-button \{[^}]*width: 40px; height: 40px; min-width: 40px;/);
-  assert.doesNotMatch(styles, /\.top-actions \.icon-button::after/);
-  assert.match(appSource, /topActions\.addEventListener\("click"/);
-});
-
-test("SVN 选择器按项目构建文件树、分类变更并加载单文件差异", async () => {
-  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
-  const helperStart = clientSource.indexOf("  function svnChangeSelectable");
-  const helperEnd = clientSource.indexOf("  function svnVerdictLabel");
-  const helperSource = clientSource.slice(helperStart, helperEnd);
-  const helpers = new Function(`${helperSource}\nreturn { svnChangeSelectable, svnChangeCategory, buildSvnChangeTree };`)();
-  const context = { workingCopy: { scopePath: "server/project", scopeName: "project" } };
-  const changes = [
-    { path: "server/project/src/player.go", item: "modified", kind: "file", recommended: true },
-    { path: "server/project/conf/club.json", item: "modified", kind: "file", preExisting: true },
-    { path: "server/project/tmp/output.log", item: "unversioned", kind: "unknown" }
-  ];
-  const tree = helpers.buildSvnChangeTree(changes, context);
-
-  assert.equal(helpers.svnChangeSelectable(changes[0]), true);
-  assert.equal(helpers.svnChangeCategory(changes[0]), "reviewable");
-  assert.equal(helpers.svnChangeCategory(changes[1]), "blocked");
-  assert.equal(helpers.svnChangeCategory(changes[2]), "unmanaged");
-  assert.equal(tree.name, "project");
-  assert.deepEqual(tree.children.map((node) => node.name), ["conf", "src", "tmp"]);
-  assert.deepEqual(tree.selectablePaths, ["server/project/src/player.go"]);
-  assert.match(clientSource, /\/api\/svn\/diff\?threadId=/);
-  assert.match(clientSource, /系统已推荐并初选/);
-  assert.match(clientSource, /jira-codex-svn-change-browser/);
-});
-
-test("新版 Codex 项目行可为 App Server 提供本地工作目录", async () => {
-  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
-  const helperStart = clientSource.indexOf("  function projectWorkspaceFromRow");
-  const helperEnd = clientSource.indexOf("  function availableProjects");
-  const helperSource = clientSource.slice(helperStart, helperEnd);
-  const resolveWorkspace = new Function(`${helperSource}\nreturn projectWorkspaceFromRow;`)();
-  const row = {};
-  row["__reactProps$test"] = {
-    children: [{ props: { group: {
-      projectId: "project-1",
-      path: "F:\\workspace",
-      rootPaths: ["F:\\workspace"]
-    } } }]
-  };
-  assert.deepEqual(resolveWorkspace(row, "project-1"), {
-    projectPath: "F:\\workspace",
-    rootPaths: ["F:\\workspace"]
-  });
-  assert.match(clientSource, /cwd: projectWorkspace\?\.projectPath \|\| ""/);
-});
-
-test("SVN 语义审查在当前绑定会话启动真实 turn 并支持人工取消降级", async () => {
-  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
-  assert.match(clientSource, /function dispatchCurrentConversationSvnReview/);
-  assert.match(clientSource, /\/api\/svn\/reviews\/\$\{encodeURIComponent\(review\.id\)\}\/dispatch/);
-  assert.match(clientSource, /codexCommands\.sendAnalysisMessage/);
-  assert.match(clientSource, /attachments: \(review\.artifacts \|\| \[\]\)/);
-  assert.match(clientSource, /codexCommands\.interruptAnalysis/);
-  assert.match(clientSource, /auditTurnId/);
-  assert.match(clientSource, /function cancelSvnCodexReview/);
-  assert.match(clientSource, /返回文件选择并重新扫描/);
-  assert.match(clientSource, /function restartSvnReviewFromLatest/);
-  assert.match(clientSource, /resetSvnSelectionForReload/);
-  assert.doesNotMatch(clientSource, /function dispatchIndependentSvnAudit/);
-  assert.doesNotMatch(clientSource, /attachLocalFilesToComposer\(composerInput, artifacts\)/);
-});
-
-test("旧版分步创建的桌面会话可识别首个 turn 状态和失效创建窗口", async () => {
-  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
-  assert.match(clientSource, /function bindingNeedsInitialDesktopTurn/);
-  assert.match(clientSource, /function bindingHasUnavailableCreationWindow/);
-  assert.match(clientSource, /not materialized yet\|no rollout found/);
-  assert.match(clientSource, /knownLoadedThread: true/);
-  assert.match(clientSource, /freshDesktopThread: status === "sent" \? false : bindingNeedsInitialDesktopTurn/);
-
-  const directStart = clientSource.indexOf("        if (freshDesktopThread) {");
-  const directEnd = clientSource.indexOf(
-    "        try {\n          if (started.runtimeOwner === CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER",
-    directStart
-  );
-  const directSource = clientSource.slice(directStart, directEnd);
-  assert.ok(directStart >= 0 && directEnd > directStart);
-  assert.ok(
-    directSource.indexOf("submitStructuredIssuePrompt")
-      < directSource.indexOf("codexCommands.openConversation")
-  );
-  assert.doesNotMatch(directSource, /waitForLegacyConversationReady/);
-
-  const helperStart = clientSource.indexOf("  function bindingNeedsInitialDesktopTurn");
-  const helperEnd = clientSource.indexOf("  function composerAttachmentCount", helperStart);
-  const needsInitialTurn = new Function(
-    `${clientSource.slice(helperStart, helperEnd)}\nreturn bindingNeedsInitialDesktopTurn;`
-  )();
-  assert.equal(needsInitialTurn({ freshDesktopThread: true }), true);
-  assert.equal(needsInitialTurn({
-    firstMessageStatus: "failed",
-    firstMessageError: "thread is not materialized yet; includeTurns is unavailable before first user message"
-  }), true);
-  assert.equal(needsInitialTurn({ firstMessageStatus: "sent" }), false);
-
-  const hasUnavailableCreationWindow = new Function(
-    `${clientSource.slice(helperStart, helperEnd)}\nreturn bindingHasUnavailableCreationWindow;`
-  )();
-  assert.equal(hasUnavailableCreationWindow({
-    firstMessageStatus: "failed",
-    firstMessageError: "Please continue this conversation on the window where it was started."
-  }), true);
-  assert.equal(hasUnavailableCreationWindow({ firstMessageStatus: "sent" }), false);
-  assert.match(clientSource, /更改关联 → 新建并绑定/);
-});
-
-test("原子创建的新会话直接显示已加载线程，不读取尚未落盘的 rollout", async () => {
-  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
-  assert.match(
-    clientSource,
-    /const knownLoadedThread = started\.knownLoadedThread === true[\s\S]*CODEX_APPLICATION_RUNTIME_OWNER\.LEGACY_DESKTOP/
-  );
-  assert.match(
-    clientSource,
-    /codexCommands\.openConversation\(normalizedThreadId, knownLoadedThread \? \{[\s\S]*knownLoadedThread: true,[\s\S]*hostId: started\.hostId \|\| "local"/
-  );
-  assert.match(clientSource, /if \(knownLoadedThread\) \{[\s\S]*补充显示请求失败/);
-});
-
-test("主题桥接拒绝与深浅模式冲突或低对比度的宿主令牌", async () => {
-  const clientSource = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
-  const helperStart = clientSource.indexOf("  function themeTokenRgb");
-  const helperEnd = clientSource.indexOf("  function readCodexThemeSnapshot");
-  const helperSource = clientSource.slice(helperStart, helperEnd);
-  const normalize = new Function(`${helperSource}\nreturn normalizeCodexThemeTokens;`)();
-
-  assert.deepEqual(
-    normalize("dark", { surface: "#ffffff", text: "#1a1c1f", button: "#1a1c1f", "on-button": "#ffffff" }),
-    { tokens: {}, tokenSource: "fallback" }
-  );
-
-  const lowContrast = normalize("dark", {
-    surface: "#202123",
-    text: "#f2f3f5",
-    button: "rgb(242, 243, 245)",
-    "on-button": "#ffffff"
-  });
-  assert.equal(lowContrast.tokenSource, "host-with-button-fallback");
-  assert.equal(lowContrast.tokens.text, "#f2f3f5");
-  assert.equal(lowContrast.tokens.button, undefined);
-  assert.equal(lowContrast.tokens["on-button"], undefined);
-
-  assert.equal(normalize("light", {
-    surface: "#ffffff",
-    button: "#1a1c1f",
-    "on-button": "#ffffff"
-  }).tokenSource, "host");
+test("会话浮窗在 Jira 短暂失败时保留占位并自动退避恢复，SVN 浮层管理焦点", async () => {
+  const client = await readFile(new URL("../inject/client.js", import.meta.url), "utf8");
+  assert.match(client, /暂时无法读取任务详情/);
+  assert.match(client, /任务关联仍然有效；本地服务恢复后会自动重新读取详情/);
+  assert.match(client, /data-retry-float/);
+  assert.match(client, /Math\.min\(120_000, 5_000 \* \(2 \*\*/);
+  assert.match(client, /Date\.now\(\) >= Number\(floatState\.nextRetryAt/);
+  assert.match(client, /svnReturnFocus/);
+  assert.match(client, /svn-frame-ready/);
+  assert.match(client, /dataset\?\.transport === "desktop-bridge"/);
+  assert.match(client, /-webkit-app-region: no-drag !important/);
+  assert.match(client, /function onFocusIn/);
+  assert.match(client, /event\.key === "Tab" && svnOverlay/);
+  assert.match(client, /\.svn-overlay-close"\)\?\.focus/);
+  assert.match(client, /bounds\?\.width > 320 && bounds\?\.height > 280/);
+  assert.match(client, /surface\.querySelectorAll\("webview"\)/);
+  assert.match(client, /hideNativeHeader\(surface\)/);
 });

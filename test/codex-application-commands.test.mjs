@@ -15,12 +15,13 @@ function runtime(id, capabilities, methods = {}) {
   };
 }
 
-function commandHarness({ app = {}, legacy = {} } = {}) {
+function commandHarness({ app = {}, desktop = {} } = {}) {
   const calls = [];
-  const appRuntime = runtime(CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER, {
+  const appRuntime = runtime(CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER, {
     listSkills: true,
     listThreads: true,
     readThread: true,
+    renameThread: true,
     resolveThreadId: true,
     createThread: true,
     startTurn: true,
@@ -32,6 +33,10 @@ function commandHarness({ app = {}, legacy = {} } = {}) {
     listSkills: async () => { calls.push("app:listSkills"); return [{ name: "app", path: "app.md" }]; },
     listThreads: async () => { calls.push("app:listThreads"); return { data: [] }; },
     readThread: async (threadId) => { calls.push(`app:read:${threadId}`); return { threadId }; },
+    renameThread: async (threadId, name) => {
+      calls.push(`app:rename:${threadId}:${name}`);
+      return { threadId, name };
+    },
     resolveThreadId: async (threadId) => threadId,
     startConversation: async (_prompt, options) => {
       calls.push(`app:create:${options.cwd || ""}`);
@@ -41,7 +46,7 @@ function commandHarness({ app = {}, legacy = {} } = {}) {
     interruptTurn: async (threadId) => { calls.push(`app:interrupt:${threadId}`); return { threadId }; },
     ...app
   });
-  const legacyRuntime = runtime(CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP, {
+  const desktopRuntime = runtime(CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER, {
     listSkills: true,
     listThreads: false,
     readThread: true,
@@ -55,85 +60,96 @@ function commandHarness({ app = {}, legacy = {} } = {}) {
     navigateThread: true,
     renameThread: true
   }, {
-    listSkills: async () => { calls.push("legacy:listSkills"); return [{ name: "legacy", path: "legacy.md" }]; },
-    readThread: async (threadId) => { calls.push(`legacy:read:${threadId}`); return { threadId }; },
+    listSkills: async () => { calls.push("desktop:listSkills"); return [{ name: "desktop", path: "desktop.md" }]; },
+    readThread: async (threadId) => { calls.push(`desktop:read:${threadId}`); return { threadId }; },
     resolveThreadId: async (threadId) => threadId,
     resolveConversationTarget: async (projectId) => {
-      calls.push(`legacy:resolveTarget:${projectId}`);
+      calls.push(`desktop:resolveTarget:${projectId}`);
       return { cwd: "F:\\workspace" };
     },
-    startConversation: async () => { calls.push("legacy:create"); return { threadId: "legacy-thread" }; },
-    startTurn: async (threadId) => { calls.push(`legacy:turn:${threadId}`); return { threadId, turnId: "legacy-turn" }; },
-    interruptTurn: async (threadId) => { calls.push(`legacy:interrupt:${threadId}`); return { threadId }; },
-    navigateThread: async (threadId) => { calls.push(`legacy:open:${threadId}`); return threadId; },
+    startConversation: async () => { calls.push("desktop:create"); return { threadId: "desktop-thread" }; },
+    startTurn: async (threadId) => { calls.push(`desktop:turn:${threadId}`); return { threadId, turnId: "desktop-turn" }; },
+    interruptTurn: async (threadId) => { calls.push(`desktop:interrupt:${threadId}`); return { threadId }; },
+    navigateThread: async (threadId) => { calls.push(`desktop:open:${threadId}`); return threadId; },
     renameThread: async (threadId, name) => {
-      calls.push(`legacy:rename:${threadId}:${name}`);
+      calls.push(`desktop:rename:${threadId}:${name}`);
       return { threadId, name };
     },
-    ...legacy
+    ...desktop
   });
-  const selector = createCodexRuntimeSelector({ runtimes: [appRuntime, legacyRuntime] });
+  const selector = createCodexRuntimeSelector({ runtimes: [appRuntime, desktopRuntime] });
   return {
     calls,
     selector,
-    commands: createCodexApplicationCommands({ selector, legacyHost: legacyRuntime })
+    commands: createCodexApplicationCommands({ selector, desktopHost: desktopRuntime })
   };
 }
 
 test("Application Commands 默认优先使用官方 App Server", async () => {
   const harness = commandHarness();
   const result = await harness.commands.listAvailableSkills();
-  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER);
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER);
   assert.deepEqual(result.value, [{ name: "app", path: "app.md" }]);
   assert.deepEqual(harness.calls, ["app:listSkills"]);
 });
 
-test("只读请求失败时自动降级到 Legacy Desktop Host", async () => {
+test("只读请求失败时自动降级到 Codex Desktop App Server", async () => {
   const harness = commandHarness({
     app: { readThread: async () => { harness.calls.push("app:read:thread-1"); throw new Error("offline"); } }
   });
   const result = await harness.commands.readConversation("thread-1");
-  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP);
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER);
   assert.deepEqual(result.runtimeFallback, {
-    from: CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER,
-    to: CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP
+    from: CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER,
+    to: CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER
   });
-  assert.deepEqual(harness.calls, ["app:read:thread-1", "legacy:read:thread-1"]);
+  assert.deepEqual(harness.calls, ["app:read:thread-1", "desktop:read:thread-1"]);
 });
 
-test("非图片附件按能力直接路由到 Legacy，不先调用 App Server", async () => {
+test("非图片附件按能力直接路由到 Desktop App Server，不先调用 App Server", async () => {
   const harness = commandHarness();
   const result = await harness.commands.createAnalysisConversation("review", {
     projectId: "project-1",
     attachments: [{ path: "F:\\review.diff", mimeType: "text/plain" }]
   });
-  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP);
-  assert.deepEqual(harness.calls, ["legacy:resolveTarget:project-1", "legacy:create"]);
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER);
+  assert.deepEqual(harness.calls, ["desktop:resolveTarget:project-1", "desktop:create"]);
+});
+
+test("显式只读路径模式允许非图片文件走 App Server", async () => {
+  const harness = commandHarness();
+  const result = await harness.commands.createAnalysisConversation("review", {
+    projectId: "project-1",
+    referenceFiles: true,
+    attachments: [{ path: "F:\\review.diff", mimeType: "text/plain" }]
+  });
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER);
+  assert.deepEqual(harness.calls, ["desktop:resolveTarget:project-1", "app:create:F:\\workspace"]);
 });
 
 test("项目绑定的新会话解析 cwd 后优先交给 App Server", async () => {
   const harness = commandHarness();
   const result = await harness.commands.createAnalysisConversation("analyze", { projectId: "project-1" });
-  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER);
-  assert.deepEqual(harness.calls, ["legacy:resolveTarget:project-1", "app:create:F:\\workspace"]);
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER);
+  assert.deepEqual(harness.calls, ["desktop:resolveTarget:project-1", "app:create:F:\\workspace"]);
 });
 
-test("人工新建和重新绑定优先由桌面 App Server 创建，避免跨进程移交延迟", async () => {
+test("人工新建和重新绑定由当前 Codex Desktop 原子创建并发送首条消息", async () => {
   const harness = commandHarness();
   const result = await harness.commands.createAnalysisConversation("analyze", {
     projectId: "project-1",
-    desktopHandoff: true,
+    desktopOwned: true,
     attachments: [{ path: "F:\\review.diff", mimeType: "text/plain" }]
   });
-  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP);
-  assert.deepEqual(harness.calls, ["legacy:resolveTarget:project-1", "legacy:create"]);
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER);
+  assert.deepEqual(harness.calls, ["desktop:resolveTarget:project-1", "desktop:create"]);
 });
 
-test("无项目的新会话继续走 Legacy，避免重复创建独立工作目录", async () => {
+test("无项目的新会话也由 App Server 创建且不伪造项目目录", async () => {
   const harness = commandHarness();
   const result = await harness.commands.createAnalysisConversation("analyze");
-  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP);
-  assert.deepEqual(harness.calls, ["legacy:create"]);
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER);
+  assert.deepEqual(harness.calls, ["app:create:"]);
 });
 
 test("创建请求在 App Server 启动前失败时允许安全降级", async () => {
@@ -142,8 +158,8 @@ test("创建请求在 App Server 启动前失败时允许安全降级", async ()
     app: { startConversation: async () => { harness.calls.push("app:create:failed"); throw unavailable; } }
   });
   const result = await harness.commands.createAnalysisConversation("analyze", { projectId: "project-1" });
-  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP);
-  assert.deepEqual(harness.calls, ["legacy:resolveTarget:project-1", "app:create:failed", "legacy:create"]);
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER);
+  assert.deepEqual(harness.calls, ["desktop:resolveTarget:project-1", "app:create:failed", "desktop:create"]);
 });
 
 test("结果不确定的首条消息失败不会降级，防止重复会话", async () => {
@@ -155,73 +171,92 @@ test("结果不确定的首条消息失败不会降级，防止重复会话", as
     harness.commands.createAnalysisConversation("analyze", { projectId: "project-1" }),
     (error) => error === ambiguous
   );
-  assert.deepEqual(harness.calls, ["legacy:resolveTarget:project-1", "app:create:ambiguous"]);
+  assert.deepEqual(harness.calls, ["desktop:resolveTarget:project-1", "app:create:ambiguous"]);
 });
 
-test("已有绑定优先使用保存的 runtimeOwner，导航始终由 Legacy 执行", async () => {
+test("已有绑定优先使用保存的 runtimeOwner，导航始终由 Desktop App Server 执行", async () => {
   const harness = commandHarness();
   const state = await harness.commands.readConversation("thread-1", {
-    runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP
+    runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER
   });
   const opened = await harness.commands.openConversation("thread-1");
-  assert.equal(state.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP);
-  assert.equal(opened.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP);
-  assert.deepEqual(harness.calls, ["legacy:read:thread-1", "legacy:open:thread-1"]);
+  assert.equal(state.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER);
+  assert.equal(opened.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER);
+  assert.deepEqual(harness.calls, ["desktop:read:thread-1", "desktop:open:thread-1"]);
 });
 
-test("会话标题更新始终由桌面 Host 执行", async () => {
+test("会话标题更新默认走官方 App Server", async () => {
   const harness = commandHarness();
   const renamed = await harness.commands.renameConversation("thread-1", "分析 CT-1");
-  assert.equal(renamed.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP);
-  assert.deepEqual(harness.calls, ["legacy:rename:thread-1:分析 CT-1"]);
+  assert.equal(renamed.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER);
+  assert.deepEqual(harness.calls, ["app:rename:thread-1:分析 CT-1"]);
 });
 
-test("旧绑定在 Legacy 发送前预检失败时可切换到 App Server", async () => {
+test("旧绑定在 Desktop App Server 发送前预检失败时可切换到 App Server", async () => {
   const preflightError = Object.assign(new Error("desktop bridge unavailable"), {
-    code: "CODEX_LEGACY_HOST_UNAVAILABLE"
+    code: "CODEX_DESKTOP_HOST_UNAVAILABLE"
   });
   const harness = commandHarness({
-    legacy: {
+    desktop: {
       startTurn: async () => {
-        harness.calls.push("legacy:turn:failed");
+        harness.calls.push("desktop:turn:failed");
         throw preflightError;
       }
     }
   });
   const result = await harness.commands.sendAnalysisMessage("thread-1", "analyze", {
-    runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP
+    runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER
   });
-  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.APP_SERVER);
-  assert.deepEqual(harness.calls, ["legacy:turn:failed", "app:turn:thread-1"]);
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER);
+  assert.deepEqual(harness.calls, ["desktop:turn:failed", "app:turn:thread-1"]);
 });
 
-test("Legacy 已投递后超时仍不切换 Runtime", async () => {
+test("App Server 确认会话由桌面持有时安全降级到桌面通道", async () => {
+  const ownedElsewhere = Object.assign(new Error("running in another app"), {
+    code: "CODEX_THREAD_OWNED_ELSEWHERE"
+  });
+  const harness = commandHarness({
+    app: {
+      startTurn: async () => {
+        harness.calls.push("app:turn:owned");
+        throw ownedElsewhere;
+      }
+    }
+  });
+  const result = await harness.commands.sendAnalysisMessage("thread-1", "review", {
+    runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.STANDALONE_APP_SERVER
+  });
+  assert.equal(result.runtimeOwner, CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER);
+  assert.deepEqual(harness.calls, ["app:turn:owned", "desktop:turn:thread-1"]);
+});
+
+test("Desktop App Server 已投递后超时仍不切换 Runtime", async () => {
   const timeout = Object.assign(new Error("turn result timeout"), { code: "CODEX_APP_SERVER_TIMEOUT" });
   const harness = commandHarness({
-    legacy: {
+    desktop: {
       startTurn: async () => {
-        harness.calls.push("legacy:turn:timeout");
+        harness.calls.push("desktop:turn:timeout");
         throw timeout;
       }
     }
   });
   await assert.rejects(
     harness.commands.sendAnalysisMessage("thread-1", "analyze", {
-      runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP
+      runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER
     }),
     (error) => error === timeout
   );
-  assert.deepEqual(harness.calls, ["legacy:turn:timeout"]);
+  assert.deepEqual(harness.calls, ["desktop:turn:timeout"]);
 });
 
-test("desktop handoff can disable mutation fallback after the desktop owns the thread", async () => {
+test("desktop-owned turn can disable mutation fallback", async () => {
   const preflightError = Object.assign(new Error("desktop thread is not ready"), {
-    code: "CODEX_LEGACY_PREFLIGHT_FAILED"
+    code: "CODEX_DESKTOP_PREFLIGHT_FAILED"
   });
   const harness = commandHarness({
-    legacy: {
+    desktop: {
       startTurn: async () => {
-        harness.calls.push("legacy:turn:not-ready");
+        harness.calls.push("desktop:turn:not-ready");
         throw preflightError;
       }
     }
@@ -229,12 +264,12 @@ test("desktop handoff can disable mutation fallback after the desktop owns the t
 
   await assert.rejects(
     harness.commands.sendAnalysisMessage("thread-1", "analyze", {
-      runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.LEGACY_DESKTOP,
+      runtimeOwner: CODEX_APPLICATION_RUNTIME_OWNER.DESKTOP_APP_SERVER,
       allowFallback: false
     }),
     (error) => error === preflightError
   );
-  assert.deepEqual(harness.calls, ["legacy:turn:not-ready"]);
+  assert.deepEqual(harness.calls, ["desktop:turn:not-ready"]);
 });
 
 test("浏览器 App Server Adapter 归一化 HTTP 数据和会话忙碌状态", async () => {
@@ -264,7 +299,7 @@ test("浏览器 App Server Adapter 归一化 HTTP 数据和会话忙碌状态", 
         };
       }
       if (path === "/api/codex/app-server/analysis") {
-        return { result: { threadId: "thread-new", desktopHandoff: true } };
+        return { result: { threadId: "thread-new" } };
       }
       return { result: {} };
     }
@@ -274,17 +309,14 @@ test("浏览器 App Server Adapter 归一化 HTTP 数据和会话忙碌状态", 
   assert.equal(state.threadId, "thread-1");
   assert.equal(state.busy, true);
   assert.equal(state.activeTurnId, "turn-1");
-  assert.equal(state.handoffReady, false);
+  assert.equal(state.desktopAdoptable, false);
   const idle = await adapter.readThread("thread-idle");
   assert.equal(idle.busy, false);
-  assert.equal(idle.handoffReady, true);
-  const created = await adapter.startConversation("analyze", {
-    cwd: "F:\\repo",
-    desktopHandoff: true
-  });
-  assert.equal(created.desktopHandoff, true);
+  assert.equal(idle.desktopAdoptable, true);
+  const created = await adapter.startConversation("analyze", { cwd: "F:\\repo" });
+  assert.equal(created.threadId, "thread-new");
   assert.match(requests[0].path, /forceReload=true/);
   assert.deepEqual(requests[1].options.body, { threadId: "thread-1" });
   const analysisRequest = requests.find((request) => request.path === "/api/codex/app-server/analysis");
-  assert.equal(analysisRequest.options.body.desktopHandoff, true);
+  assert.equal(Object.hasOwn(analysisRequest.options.body, "desktopOwned"), false);
 });

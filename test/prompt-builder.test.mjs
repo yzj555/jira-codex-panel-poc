@@ -56,6 +56,18 @@ test("运行时技能不可用时只追加简短降级提示", () => {
   assert.equal(prompt.endsWith("附加技能当前不可用，已降级为项目只读分析。"), true);
 });
 
+test("绑定 Skill 可用时首条消息只携带事实，不再叠加降级模板", () => {
+  const prompt = buildIssuePrompt({ ...baseIssue, type: "bug", typeName: "Bug" }, {
+    includeAnalysisInstructions: false,
+    supplementalDescription: "仅在弱网下出现。"
+  });
+
+  assert.match(prompt, /^# Jira Bug/);
+  assert.match(prompt, /## Jira 描述/);
+  assert.match(prompt, /## 用户补充说明\n\n仅在弱网下出现。/);
+  assert.doesNotMatch(prompt, /## 分析要求|诊断结论|根因分析/);
+});
+
 test("自动 Bug 监控会在上下文中标记触发方式", () => {
   const prompt = buildIssuePrompt({ ...baseIssue, type: "bug" }, { automated: true });
   assert.match(prompt, /触发方式：Jira Bug 自动监控/);

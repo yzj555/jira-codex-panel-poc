@@ -15,23 +15,33 @@ import { JiraApiError, createJiraClient } from "./jira-client.mjs";
 import { createJxlClient } from "./jxl-client.mjs";
 import { materializeAttachment } from "./lib/attachment-cache.mjs";
 import { createAutomationManager } from "./lib/automation-manager.mjs";
+import { createBugMonitorService } from "./lib/bug-monitor-service.mjs";
+import { createDesktopCommandBroker, DesktopCommandError } from "./lib/desktop-command-broker.mjs";
 import {
   CodexAppServerError,
   createCodexAppServerClient
 } from "./lib/codex-app-server-client.mjs";
 import { createCodexRuntimeGateway } from "./lib/codex-runtime-gateway.mjs";
+import {
+  CodexConversationServiceError,
+  createCodexConversationService
+} from "./lib/codex-conversation-service.mjs";
 import { createCodexSessionReader } from "./lib/codex-session-reader.mjs";
 import {
   createIssueBindingStore,
   IssueBindingStoreError
 } from "./lib/issue-binding-store.mjs";
+import { createJiraWorkbenchService } from "./lib/jira-workbench-service.mjs";
 import {
   buildSvnCommitMessage,
   createSvnReviewManager,
   SvnReviewError
 } from "./lib/svn-review-manager.mjs";
+import { createSvnWorkbenchService } from "./lib/svn-workbench-service.mjs";
+import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "./mcp/jira-task-board-mcp.mjs";
+import { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
 
-const VERSION = "0.28.6";
+const VERSION = "0.31.1";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +60,7 @@ const issueBindings = createIssueBindingStore({
   file: process.env.JIRA_CODEX_BINDINGS_FILE
     || join(dirname(configStore.configFile), "issue-bindings.json")
 });
+const desktopCommands = createDesktopCommandBroker();
 const jira = createJiraClient();
 const boardIssueTypeCache = new Map();
 const collaboratorFieldCache = new Map();
@@ -60,9 +71,11 @@ const sessionReader = createCodexSessionReader({ sessionsRoot });
 const automation = createAutomationManager({
   stateFile: process.env.JIRA_CODEX_AUTOMATION_FILE || join(dirname(configStore.configFile), "automation.json"),
   configStore,
+  turnReader: codexRuntime,
   sessionReader
 });
 const svnReviews = createSvnReviewManager({
+  turnReader: codexRuntime,
   sessionReader,
   baselineFile: process.env.JIRA_CODEX_SVN_BASELINES_FILE
     || join(dirname(configStore.configFile), "svn-baselines.json"),
@@ -259,6 +272,318 @@ async function boardQueriesForConfig(config) {
   return buildBoardQueries(config.boardSources, { bugTypeNames });
 }
 
+async function loadTaskBoardIssues() {
+  const config = await configStore.load();
+  if (!config.configured || !config.token) {
+    throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
+      code: "JIRA_NOT_CONFIGURED",
+      statusCode: 428
+    });
+  }
+  const effectiveConfig = await resolveCollaboratorFieldConfig(config);
+  return effectiveConfig.boardSources?.legacy && effectiveConfig.jql
+    ? jira.fetchIssues(effectiveConfig)
+    : jira.fetchTaskBoardIssues(effectiveConfig, await boardQueriesForConfig(effectiveConfig));
+}
+
+async function materializeBugMonitorAttachments(issue, config) {
+  const attachments = Array.isArray(issue?.attachments) ? issue.attachments : [];
+  const materialized = [];
+  const failures = [];
+  for (const descriptor of attachments) {
+    const attachmentId = String(descriptor?.id || "").trim();
+    if (!/^\d+$/.test(attachmentId)) continue;
+    try {
+      const attachment = await jira.fetchAttachment(config, attachmentId);
+      const cached = await materializeAttachment({
+        cacheRoot: attachmentCacheRoot,
+        attachmentId,
+        attachment
+      });
+      materialized.push({
+        path: cached.path,
+        label: cached.filename,
+        mimeType: cached.mimeType
+      });
+    } catch (error) {
+      failures.push({ attachmentId, message: String(error?.message || error) });
+    }
+  }
+  if (failures.length) {
+    throw new JiraApiError(
+      `Jira 附件未能完整下载（${failures.map((failure) => failure.attachmentId).join("、")}），未创建缺少材料的分析会话。`,
+      { code: "JIRA_ATTACHMENTS_INCOMPLETE", details: { failures } }
+    );
+  }
+  return materialized;
+}
+
+function availableSkillsFromResult(result) {
+  const groups = [result?.data, result?.result?.data, result?.skills, result?.result?.skills]
+    .find((value) => Array.isArray(value)) || [];
+  return groups.flatMap((group) => Array.isArray(group?.skills) ? group.skills : group?.name ? [group] : [])
+    .flatMap((skill) => {
+      const name = String(skill?.name || "").trim();
+      const path = String(skill?.path || "").trim();
+      return name && path && skill?.enabled !== false ? [{ name, path, scope: String(skill?.scope || "") }] : [];
+    });
+}
+
+async function prepareManualIssueAnalysis(issueKey, supplementalDescription = "") {
+  const [{ issue }, config] = await Promise.all([
+    jiraWorkbench.getIssue(issueKey),
+    configStore.load()
+  ]);
+  const kind = isBugIssue(issue) ? "bug" : "requirement";
+  const template = config.promptTemplates?.[kind] || {};
+  const workspace = config.codexProjectId && config.codexProjectPath ? {
+    cwd: config.codexProjectPath,
+    workspaceRoots: config.codexProjectRoots?.length
+      ? config.codexProjectRoots
+      : [config.codexProjectPath],
+    projectId: config.codexProjectId,
+    projectLabel: config.codexProjectLabel || config.codexProjectId,
+    kind: "project",
+    source: "configured-codex-project"
+  } : null;
+  const availableSkills = availableSkillsFromResult(await codexRuntime.listSkills({
+    cwds: workspace?.cwd ? [workspace.cwd] : undefined,
+    forceReload: false
+  }).catch(() => ({})));
+  const configuredSkill = template.skill && typeof template.skill === "object" ? template.skill : null;
+  const selectedSkill = configuredSkill
+    ? availableSkills.find((skill) => configuredSkill.path && skill.path.toLowerCase() === String(configuredSkill.path).toLowerCase())
+      || availableSkills.find((skill) => skill.name === configuredSkill.name)
+    : null;
+  const fallbackSkill = {
+    name: "jira-first-turn-analysis",
+    path: join(root, "skills", "jira-first-turn-analysis", "SKILL.md"),
+    scope: "app"
+  };
+  const skills = selectedSkill ? [selectedSkill] : [fallbackSkill];
+  const fallbackNotice = configuredSkill && !selectedSkill
+    ? `绑定 Skill“${configuredSkill.name || configuredSkill.path}”当前不可用，已降级为分析模板和内置 Jira Skill。`
+    : "";
+  return {
+    issue,
+    message: buildIssuePrompt(issue, {
+      messageTemplate: template.content || config.messageTemplate || "",
+      includeAnalysisInstructions: !selectedSkill,
+      supplementalDescription,
+      fallbackNotice
+    }),
+    title: [`分析 ${issue.key}`, issue.title || ""].filter(Boolean).join(" ").slice(0, 180),
+    cwd: workspace?.cwd || "",
+    workspace,
+    skills,
+    attachments: await materializeBugMonitorAttachments(issue, config)
+  };
+}
+
+const bugMonitor = createBugMonitorService({
+  stateFile: process.env.JIRA_CODEX_BUG_MONITOR_FILE
+    || join(dirname(configStore.configFile), "bug-monitor.json"),
+  configStore,
+  loadIssues: loadTaskBoardIssues,
+  issueBindings,
+  runtime: codexRuntime,
+  automationManager: automation,
+  prepareAttachments: materializeBugMonitorAttachments,
+  resolveWorkspace: async (config) => {
+    return String(config?.codexProjectPath || "").trim();
+  },
+  fallbackSkill: {
+    name: "jira-first-turn-analysis",
+    path: join(root, "skills", "jira-first-turn-analysis", "SKILL.md"),
+    scope: "app"
+  }
+});
+
+const jiraWorkbench = createJiraWorkbenchService({
+  loadIssues: loadTaskBoardIssues,
+  loadConfig: () => configStore.load(),
+  resolveConfig: resolveCollaboratorFieldConfig,
+  jira,
+  jxl,
+  issueBindings
+});
+
+const codexConversations = createCodexConversationService({
+  runtime: codexRuntime,
+  issueBindings
+});
+
+const svnWorkbench = createSvnWorkbenchService({
+  loadConfig: () => configStore.load(),
+  resolveConfig: resolveCollaboratorFieldConfig,
+  jira,
+  issueBindings,
+  reviews: svnReviews,
+  runtime: codexRuntime,
+  buildCommitMessage: buildSvnCommitMessage
+});
+
+async function openIssueConversation(issueKey, { targetClientId = "" } = {}) {
+  const key = String(issueKey || "").trim().toUpperCase();
+  const state = await issueBindings.snapshot();
+  const binding = state.bindings?.[key];
+  if (!binding?.threadId) {
+    throw new CodexConversationServiceError(`${key} 当前没有已关联的 Codex 会话。`, {
+      code: "ISSUE_NOT_BOUND",
+      statusCode: 409
+    });
+  }
+  const result = await desktopCommands.request("open-thread", {
+    issueKey: key,
+    threadId: binding.threadId
+  }, { timeoutMs: 15_000, targetClientId });
+  return { opened: true, threadId: result?.threadId || binding.threadId };
+}
+
+async function createIssueAnalysis(issueKey, supplementalDescription = "", {
+  targetClientId = "",
+  expectedRevision
+} = {}) {
+  const key = String(issueKey || "").trim().toUpperCase();
+  const initialBindingState = await issueBindings.snapshot();
+  const baselineRevision = expectedRevision == null
+    ? initialBindingState.revision
+    : Number(expectedRevision);
+  if (!Number.isInteger(baselineRevision) || baselineRevision < 0) {
+    throw new CodexConversationServiceError("expectedRevision 必须是非负整数。", {
+      code: "INVALID_EXPECTED_REVISION",
+      statusCode: 400
+    });
+  }
+  if (baselineRevision !== initialBindingState.revision) {
+    throw new CodexConversationServiceError("会话绑定关系刚刚发生变化，请刷新后重新确认。", {
+      code: "ISSUE_BINDINGS_REVISION_CONFLICT",
+      statusCode: 409,
+      details: {
+        stage: "before_create",
+        issueKey: key,
+        expectedRevision: baselineRevision,
+        currentRevision: initialBindingState.revision
+      }
+    });
+  }
+  const prepared = await prepareManualIssueAnalysis(key, supplementalDescription);
+  const started = await desktopCommands.request("create-analysis", {
+    issueKey: key,
+    message: prepared.message,
+    title: prepared.title,
+    cwd: prepared.cwd,
+    skills: prepared.skills,
+    attachments: prepared.attachments
+  }, { timeoutMs: 55_000, targetClientId });
+  const threadId = String(started?.threadId || "").trim();
+  if (!threadId || threadId.startsWith("client-new-thread:")) {
+    throw new DesktopCommandError("Codex Desktop 未返回正式会话 ID，未保存 Jira 关联。", {
+      code: "DESKTOP_THREAD_ID_UNRESOLVED",
+      statusCode: 503
+    });
+  }
+  const boundAt = new Date().toISOString();
+  const binding = {
+    threadId,
+    threadTitle: prepared.title,
+    issueTitle: prepared.issue.title || "",
+    runtimeOwner: "desktop-appserver",
+    hostReference: "current-codex-window",
+    analysisTurnId: String(started?.turnId || ""),
+    firstMessageStatus: "sent",
+    firstMessageUpdatedAt: boundAt,
+    boundAt,
+    updatedAt: boundAt,
+    ...(prepared.workspace ? { workspace: { ...prepared.workspace, source: "desktop-analysis", observedAt: boundAt } } : prepared.cwd ? {
+      workspace: { cwd: prepared.cwd, workspaceRoots: [prepared.cwd], source: "desktop-analysis", observedAt: boundAt }
+    } : {})
+  };
+  let next;
+  try {
+    next = await issueBindings.applyMutations({
+      upserts: { [key]: binding },
+      expectedRevision: baselineRevision
+    });
+  } catch (error) {
+    if (error?.code !== "ISSUE_BINDINGS_REVISION_CONFLICT") throw error;
+    const currentBindingState = await issueBindings.snapshot();
+    throw new CodexConversationServiceError(
+      "Codex 会话已经创建，但绑定关系同时发生了变化，因此未自动覆盖现有绑定。请从已有会话中选择新会话并人工确认绑定。",
+      {
+        code: "ISSUE_ANALYSIS_CREATED_UNBOUND",
+        statusCode: 409,
+        details: {
+          stage: "created_unbound",
+          issueKey: key,
+          threadId,
+          turnId: String(started?.turnId || ""),
+          expectedRevision: baselineRevision,
+          currentRevision: currentBindingState.revision
+        }
+      }
+    );
+  }
+  void svnWorkbench.recordBaseline({ threadId, issueKey: key, boundAt }).catch((error) => {
+    console.warn(`[jira-poc] SVN baseline for ${key} skipped: ${error.message || error}`);
+  });
+  return {
+    issueKey: key,
+    threadId,
+    turnId: String(started?.turnId || ""),
+    binding: next.bindings?.[key] || binding,
+    bindingsRevision: next.revision,
+    issueSnapshot: buildIssueDetailSnapshot({
+      issue: prepared.issue,
+      binding: next.bindings?.[key] || binding,
+      bindingsRevision: next.revision
+    })
+  };
+}
+
+const mcpOptions = {
+  workbench: jiraWorkbench,
+  conversations: codexConversations,
+  svn: svnWorkbench,
+  automation: {
+    getStatus: () => bugMonitor.getStatus(),
+    setEnabled: async (enabled) => {
+      await configStore.setBugMonitorEnabled(enabled);
+      bugMonitor.wake();
+      return bugMonitor.getStatus();
+    }
+  },
+  version: VERSION
+};
+const handleMcp = createJiraTaskBoardMcpHttpHandler((request) => {
+  const requestedClientId = String(request.headers["x-jira-codex-desktop-client"] || "").trim();
+  const liveClients = desktopCommands.activeClients();
+  const targetClientId = requestedClientId || (liveClients.length === 1 ? liveClients[0] : "");
+  const requireDesktopTarget = () => {
+    if (targetClientId) return targetClientId;
+    throw new DesktopCommandError(
+      liveClients.length > 1
+        ? "当前有多个 Codex 窗口，官方 Plugin 无法确定应在哪个窗口执行。请从目标窗口的 Jira 任务面板操作。"
+        : "当前没有可用的 Codex Desktop 窗口。请先通过统一入口启动 Codex。",
+      {
+        code: liveClients.length > 1 ? "DESKTOP_TARGET_AMBIGUOUS" : "DESKTOP_TARGET_UNAVAILABLE",
+        statusCode: 409
+      }
+    );
+  };
+  return {
+    ...mcpOptions,
+    desktop: {
+      openIssueConversation: (issueKey) => openIssueConversation(issueKey, { targetClientId: requireDesktopTarget() }),
+      createIssueAnalysis: (issueKey, supplementalDescription) => createIssueAnalysis(
+        issueKey,
+        supplementalDescription,
+        { targetClientId: requireDesktopTarget() }
+      )
+    }
+  };
+});
+
 async function jiraConfigForPreview(request) {
   if (request.method !== "POST") return configStore.load();
   const input = await readJson(request);
@@ -274,12 +599,13 @@ async function jiraConfigForPreview(request) {
 }
 
 const staticFiles = new Map([
-  ["/", ["index.html", "text/html; charset=utf-8"]],
-  ["/index.html", ["index.html", "text/html; charset=utf-8"]],
-  ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
-  ["/prompt-builder.js", ["prompt-builder.js", "text/javascript; charset=utf-8"]],
-  ["/issue-views.js", ["issue-views.js", "text/javascript; charset=utf-8"]],
-  ["/styles.css", ["styles.css", "text/css; charset=utf-8"]]
+  ["/", [join(publicDir, "index.html"), "text/html; charset=utf-8"]],
+  ["/index.html", [join(publicDir, "index.html"), "text/html; charset=utf-8"]],
+  ["/app.js", [join(publicDir, "app.js"), "text/javascript; charset=utf-8"]],
+  ["/prompt-builder.js", [join(publicDir, "prompt-builder.js"), "text/javascript; charset=utf-8"]],
+  ["/issue-views.js", [join(publicDir, "issue-views.js"), "text/javascript; charset=utf-8"]],
+  ["/styles.css", [join(publicDir, "styles.css"), "text/css; charset=utf-8"]],
+  ["/mcp-app.html", [join(root, "mcp", "ui", "task-board.html"), "text/html; charset=utf-8"]]
 ]);
 
 function json(response, statusCode, payload) {
@@ -292,6 +618,13 @@ function json(response, statusCode, payload) {
 }
 
 async function readJson(request, { maxBytes = 64 * 1024 } = {}) {
+  const contentType = String(request.headers["content-type"] || "").trim();
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    throw new ConfigurationError("JSON 请求必须使用 application/json 内容类型。", {
+      code: "UNSUPPORTED_MEDIA_TYPE",
+      statusCode: 415
+    });
+  }
   const chunks = [];
   let bytes = 0;
   for await (const chunk of request) {
@@ -308,6 +641,47 @@ async function readJson(request, { maxBytes = 64 * 1024 } = {}) {
   }
 }
 
+function effectivePort(url) {
+  if (url.port) return url.port;
+  return url.protocol === "https:" ? "443" : "80";
+}
+
+function isLoopbackHostname(hostname) {
+  const normalized = String(hostname || "").toLowerCase();
+  return normalized === "127.0.0.1"
+    || normalized === "localhost"
+    || normalized === "[::1]"
+    || normalized === "::1";
+}
+
+function assertAllowedWriteOrigin(request, requestUrl) {
+  const method = String(request.method || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD") return;
+
+  const origin = String(request.headers.origin || "").trim();
+  // The desktop injection bridge, MCP clients and CLI calls do not send an
+  // Origin header. They remain valid local callers; this check only rejects
+  // browser write requests that explicitly identify a foreign origin.
+  if (!origin) return;
+
+  let originUrl;
+  try {
+    originUrl = new URL(origin);
+  } catch {
+    throw new ConfigurationError("不允许来自非本地页面的写请求。", {
+      code: "WRITE_ORIGIN_FORBIDDEN",
+      statusCode: 403
+    });
+  }
+
+  if (!isLoopbackHostname(originUrl.hostname) || effectivePort(originUrl) !== effectivePort(requestUrl)) {
+    throw new ConfigurationError("不允许来自非本地页面的写请求。", {
+      code: "WRITE_ORIGIN_FORBIDDEN",
+      statusCode: 403
+    });
+  }
+}
+
 async function handleApi(request, response, url) {
   if (request.method === "GET" && url.pathname === "/api/health") {
     const config = await configStore.getPublic();
@@ -319,12 +693,23 @@ async function handleApi(request, response, url) {
     });
   }
 
+  if (request.method === "GET" && url.pathname === "/api/desktop/commands/next") {
+    return json(response, 200, {
+      command: desktopCommands.take(url.searchParams.get("clientId") || "")
+    });
+  }
+
+  const desktopCommandResultMatch = url.pathname.match(/^\/api\/desktop\/commands\/([0-9a-f-]+)\/result$/i);
+  if (request.method === "PUT" && desktopCommandResultMatch) {
+    return json(response, 200, desktopCommands.complete(desktopCommandResultMatch[1], await readJson(request)));
+  }
+
   if (request.method === "GET" && url.pathname === "/api/config") {
     return json(response, 200, { config: await configStore.getPublic() });
   }
 
   if (request.method === "GET" && url.pathname === "/api/bindings") {
-    return json(response, 200, await issueBindings.snapshot());
+    return json(response, 200, await codexConversations.getBindings());
   }
 
   if (request.method === "PUT" && url.pathname === "/api/bindings/import") {
@@ -334,7 +719,77 @@ async function handleApi(request, response, url) {
 
   if (request.method === "PUT" && url.pathname === "/api/bindings/mutations") {
     const input = await readJson(request, { maxBytes: 1024 * 1024 });
-    return json(response, 200, await issueBindings.applyMutations(input));
+    return json(response, 200, await issueBindings.compareAndSwap(input));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/codex/conversations") {
+    const requestedLimit = Number(url.searchParams.get("limit") || 50);
+    return json(response, 200, await codexConversations.listThreads({
+      limit: Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 50,
+      searchTerm: url.searchParams.get("searchTerm") || "",
+      cwd: url.searchParams.get("cwd") || ""
+    }));
+  }
+
+  if (request.method === "PUT" && url.pathname === "/api/codex/bindings") {
+    return json(response, 200, await codexConversations.bindIssue(await readJson(request)));
+  }
+
+  const clearCodexBindingMatch = url.pathname.match(/^\/api\/codex\/bindings\/([A-Za-z][A-Za-z0-9_]*-\d+)$/);
+  if (request.method === "DELETE" && clearCodexBindingMatch) {
+    const input = await readJson(request);
+    return json(response, 200, await codexConversations.clearBinding({
+      issueKey: clearCodexBindingMatch[1],
+      expectedRevision: input.expectedRevision
+    }));
+  }
+
+  const openIssueConversationMatch = url.pathname.match(
+    /^\/api\/codex\/issues\/([A-Za-z][A-Za-z0-9_]*-\d+)\/open$/
+  );
+  if (request.method === "POST" && openIssueConversationMatch) {
+    const targetClientId = String(request.headers["x-jira-codex-desktop-client"] || "").trim();
+    if (!targetClientId) {
+      throw new ConfigurationError("缺少当前 Codex 窗口标识。", {
+        code: "DESKTOP_CLIENT_ID_REQUIRED",
+        statusCode: 400
+      });
+    }
+    return json(response, 200, await openIssueConversation(openIssueConversationMatch[1], { targetClientId }));
+  }
+
+  const createIssueAnalysisMatch = url.pathname.match(
+    /^\/api\/codex\/issues\/([A-Za-z][A-Za-z0-9_]*-\d+)\/analysis$/
+  );
+  if (request.method === "POST" && createIssueAnalysisMatch) {
+    const input = await readJson(request);
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new ConfigurationError("请求内容必须是 JSON 对象。", {
+        code: "INVALID_REQUEST_BODY",
+        statusCode: 400
+      });
+    }
+    if (input.supplementalDescription != null && typeof input.supplementalDescription !== "string") {
+      throw new ConfigurationError("supplementalDescription 必须是字符串。", {
+        code: "INVALID_SUPPLEMENTAL_DESCRIPTION",
+        statusCode: 400
+      });
+    }
+    const targetClientId = String(request.headers["x-jira-codex-desktop-client"] || "").trim();
+    if (!targetClientId) {
+      throw new ConfigurationError("缺少当前 Codex 窗口标识。", {
+        code: "DESKTOP_CLIENT_ID_REQUIRED",
+        statusCode: 400
+      });
+    }
+    return json(response, 200, await createIssueAnalysis(
+      createIssueAnalysisMatch[1],
+      input.supplementalDescription || "",
+      {
+        targetClientId,
+        expectedRevision: input.expectedRevision
+      }
+    ));
   }
 
   if (request.method === "GET" && url.pathname === "/api/codex/runtime") {
@@ -405,30 +860,11 @@ async function handleApi(request, response, url) {
       effort: input.effort,
       skills: input.skills,
       attachments: input.attachments,
-      requireAllAttachments: true,
-      desktopHandoff: input.desktopHandoff === true
+      referenceFiles: input.referenceFiles === true,
+      requireAllAttachments: input.referenceFiles !== true,
+      outputSchema: input.outputSchema
     };
-    let result;
-    if (analysisOptions.desktopHandoff) {
-      const handoffClient = createCodexAppServerClient({
-        command: codexAppServer.snapshot().command,
-        clientInfo: {
-          name: "jira_codex_panel_handoff",
-          title: "Jira Codex Panel Desktop Handoff",
-          version: VERSION
-        }
-      });
-      try {
-        result = {
-          ...await handoffClient.startReadOnlyAnalysis(analysisOptions),
-          runtimeOwner: codexRuntime.id
-        };
-      } finally {
-        await handoffClient.close();
-      }
-    } else {
-      result = await codexRuntime.startReadOnlyAnalysis(analysisOptions);
-    }
+    const result = await codexRuntime.startReadOnlyAnalysis(analysisOptions);
     return json(response, 200, { result, appServer: codexAppServer.snapshot() });
   }
 
@@ -441,7 +877,9 @@ async function handleApi(request, response, url) {
       effort: input.effort,
       skills: input.skills,
       attachments: input.attachments,
-      requireAllAttachments: true
+      referenceFiles: input.referenceFiles === true,
+      requireAllAttachments: input.referenceFiles !== true,
+      outputSchema: input.outputSchema
     });
     return json(response, 200, { result, appServer: codexAppServer.snapshot() });
   }
@@ -449,6 +887,12 @@ async function handleApi(request, response, url) {
   if (request.method === "POST" && url.pathname === "/api/codex/app-server/thread-state") {
     const input = await readJson(request);
     const result = await codexRuntime.readThread(input.threadId, { includeTurns: true });
+    return json(response, 200, { result, appServer: codexAppServer.snapshot() });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/codex/app-server/thread-name") {
+    const input = await readJson(request);
+    const result = await codexRuntime.renameThread(input.threadId, input.name);
     return json(response, 200, { result, appServer: codexAppServer.snapshot() });
   }
 
@@ -470,6 +914,7 @@ async function handleApi(request, response, url) {
       await jira.fetchIssues({ ...candidate, jql: queries.activeJql }, { maxResults: 1 });
     }
     const config = await configStore.save(candidate);
+    bugMonitor.wake();
     return json(response, 200, { config, connection: { ok: true } });
   }
 
@@ -479,34 +924,36 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/automation/status") {
-    const config = await configStore.getPublic();
-    return json(response, 200, {
-      monitorEnabled: config.bugMonitorEnabled,
-      monitorGeneration: config.monitorGeneration,
-      wecomConfigured: config.wecomConfigured,
-      ...(await automation.getStatus())
-    });
+    return json(response, 200, await bugMonitor.getStatus());
   }
 
   if (request.method === "PUT" && url.pathname === "/api/automation/monitor") {
     const input = await readJson(request);
     const config = await configStore.setBugMonitorEnabled(input.enabled);
+    bugMonitor.wake();
     return json(response, 200, {
       config,
-      automation: {
-        monitorEnabled: config.bugMonitorEnabled,
-        monitorGeneration: config.monitorGeneration,
-        wecomConfigured: config.wecomConfigured,
-        ...(await automation.getStatus())
-      }
+      automation: await bugMonitor.getStatus()
     });
+  }
+
+  if (request.method === "PUT" && url.pathname === "/api/automation/monitor/import") {
+    const input = await readJson(request);
+    const automation = await bugMonitor.importLegacyState(input);
+    bugMonitor.wake();
+    return json(response, 200, { automation });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/automation/scan") {
+    await bugMonitor.poll();
+    return json(response, 200, { automation: await bugMonitor.getStatus() });
   }
 
   if (request.method === "PUT" && url.pathname === "/api/automation/jobs") {
     const input = await readJson(request);
     return json(response, 200, {
       job: await automation.register(input),
-      automation: await automation.getStatus()
+      automation: await bugMonitor.getStatus()
     });
   }
 
@@ -514,7 +961,7 @@ async function handleApi(request, response, url) {
     const input = await readJson(request);
     return json(response, 200, {
       job: await automation.fail(input),
-      automation: await automation.getStatus()
+      automation: await bugMonitor.getStatus()
     });
   }
 
@@ -543,45 +990,20 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/issues") {
-    const config = await configStore.load();
-    if (!config.configured || !config.token) {
-      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
-        code: "JIRA_NOT_CONFIGURED",
-        statusCode: 428
-      });
-    }
-    const effectiveConfig = await resolveCollaboratorFieldConfig(config);
-    const result = effectiveConfig.boardSources?.legacy && effectiveConfig.jql
-      ? await jira.fetchIssues(effectiveConfig)
-      : await jira.fetchTaskBoardIssues(effectiveConfig, await boardQueriesForConfig(effectiveConfig));
-    return json(response, 200, result);
+    return json(response, 200, await jiraWorkbench.listTasks());
   }
 
   if (request.method === "GET" && url.pathname === "/api/svn/context") {
-    const config = await configStore.load();
-    if (!config.configured || !config.token) {
-      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
-        code: "JIRA_NOT_CONFIGURED",
-        statusCode: 428
-      });
-    }
-    const issueKey = url.searchParams.get("issueKey");
-    const threadId = url.searchParams.get("threadId");
-    const issue = await jira.fetchIssue(await resolveCollaboratorFieldConfig(config), issueKey);
-    return json(response, 200, {
-      context: await svnReviews.inspect({ threadId, issue }),
-      message: buildSvnCommitMessage(issue),
-      history: svnReviews.listCommitHistory({ threadId, issueKey }),
-      review: url.searchParams.get("includeReview") === "0"
-        ? null
-        : svnReviews.findLatestReview({ threadId, issueKey })
-    });
+    return json(response, 200, await svnWorkbench.context({
+      issueKey: url.searchParams.get("issueKey"),
+      threadId: url.searchParams.get("threadId"),
+      includeReview: url.searchParams.get("includeReview") !== "0"
+    }));
   }
 
   if (request.method === "GET" && url.pathname === "/api/svn/reviews/latest") {
-    await svnReviews.poll();
     return json(response, 200, {
-      review: svnReviews.findLatestReview({
+      review: await svnWorkbench.latestReview({
         threadId: url.searchParams.get("threadId"),
         issueKey: url.searchParams.get("issueKey")
       })
@@ -590,7 +1012,8 @@ async function handleApi(request, response, url) {
 
   if (request.method === "GET" && url.pathname === "/api/svn/diff") {
     return json(response, 200, {
-      preview: await svnReviews.previewDiff({
+      preview: await svnWorkbench.previewDiff({
+        issueKey: url.searchParams.get("issueKey"),
         threadId: url.searchParams.get("threadId"),
         path: url.searchParams.get("path")
       })
@@ -600,7 +1023,8 @@ async function handleApi(request, response, url) {
   if (request.method === "POST" && url.pathname === "/api/svn/diff/open") {
     const input = await readJson(request);
     return json(response, 200, {
-      result: await svnReviews.openExternalDiff({
+      result: await svnWorkbench.openExternalDiff({
+        issueKey: input.issueKey,
         threadId: input.threadId,
         path: input.path
       })
@@ -610,7 +1034,7 @@ async function handleApi(request, response, url) {
   if (request.method === "PUT" && url.pathname === "/api/svn/baselines") {
     const input = await readJson(request);
     return json(response, 200, {
-      baseline: await svnReviews.recordBaseline({
+      baseline: await svnWorkbench.recordBaseline({
         threadId: input.threadId,
         issueKey: input.issueKey,
         boundAt: input.boundAt
@@ -620,18 +1044,9 @@ async function handleApi(request, response, url) {
 
   if (request.method === "POST" && url.pathname === "/api/svn/reviews") {
     const input = await readJson(request);
-    const config = await configStore.load();
-    if (!config.configured || !config.token) {
-      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
-        code: "JIRA_NOT_CONFIGURED",
-        statusCode: 428
-      });
-    }
-    const issue = await jira.fetchIssue(config, input.issueKey);
-    return json(response, 201, await svnReviews.createReview({
+    return json(response, 201, await svnWorkbench.createReview({
       threadId: input.threadId,
-      activeThreadId: input.activeThreadId,
-      issue,
+      issueKey: input.issueKey,
       selectedPaths: input.selectedPaths,
       summary: input.summary,
       codexReviewEnabled: input.codexReviewEnabled === true
@@ -642,8 +1057,9 @@ async function handleApi(request, response, url) {
     ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})$/i)
     : null;
   if (svnReviewMatch) {
-    await svnReviews.poll();
-    return json(response, 200, { review: svnReviews.getReview(svnReviewMatch[1]) });
+    return json(response, 200, {
+      review: await svnWorkbench.getReview(svnReviewMatch[1], url.searchParams.get("issueKey"))
+    });
   }
 
   const svnCancelMatch = request.method === "POST"
@@ -652,7 +1068,7 @@ async function handleApi(request, response, url) {
   if (svnCancelMatch) {
     const input = await readJson(request);
     return json(response, 200, {
-      review: await svnReviews.cancel(svnCancelMatch[1], input.message)
+      review: await svnWorkbench.cancelReview(svnCancelMatch[1], input.message, input.issueKey)
     });
   }
 
@@ -662,10 +1078,10 @@ async function handleApi(request, response, url) {
   if (svnDispatchMatch) {
     const input = await readJson(request);
     return json(response, 200, {
-      review: await svnReviews.beginDispatch(svnDispatchMatch[1], {
+      review: await svnWorkbench.dispatchReview(svnDispatchMatch[1], {
         auditThreadId: input.auditThreadId,
         auditTurnId: input.auditTurnId
-      })
+      }, input.issueKey)
     });
   }
 
@@ -675,7 +1091,7 @@ async function handleApi(request, response, url) {
   if (svnDispatchFailedMatch) {
     const input = await readJson(request);
     return json(response, 200, {
-      review: await svnReviews.failDispatch(svnDispatchFailedMatch[1], input.message)
+      review: await svnWorkbench.failDispatch(svnDispatchFailedMatch[1], input.message, input.issueKey)
     });
   }
 
@@ -684,9 +1100,7 @@ async function handleApi(request, response, url) {
     : null;
   if (svnRetryMatch) {
     const input = await readJson(request);
-    const config = await configStore.load();
-    const issue = await jira.fetchIssue(config, input.issueKey);
-    return json(response, 200, await svnReviews.retryDispatch(svnRetryMatch[1], issue));
+    return json(response, 200, await svnWorkbench.retryReview(svnRetryMatch[1], input.issueKey));
   }
 
   const svnConfirmMatch = request.method === "POST"
@@ -694,10 +1108,7 @@ async function handleApi(request, response, url) {
     : null;
   if (svnConfirmMatch) {
     const input = await readJson(request);
-    const config = await configStore.load();
-    const issue = await jira.fetchIssue(config, input.issueKey);
-    return json(response, 200, await svnReviews.confirm(svnConfirmMatch[1], {
-      issue,
+    return json(response, 200, await svnWorkbench.confirmReview(svnConfirmMatch[1], {
       issueKey: input.issueKey,
       reviewed: input.reviewed,
       riskAcknowledged: input.riskAcknowledged,
@@ -710,11 +1121,9 @@ async function handleApi(request, response, url) {
     : null;
   if (svnCommitMatch) {
     const input = await readJson(request);
-    const config = await configStore.load();
-    const issue = await jira.fetchIssue(config, input.issueKey);
     return json(response, 200, {
-      review: await svnReviews.commit(svnCommitMatch[1], {
-        issue,
+      review: await svnWorkbench.commitReview(svnCommitMatch[1], {
+        issueKey: input.issueKey,
         confirmationToken: input.confirmationToken
       })
     });
@@ -724,8 +1133,9 @@ async function handleApi(request, response, url) {
     ? url.pathname.match(/^\/api\/svn\/reviews\/([0-9a-f-]{36})\/reconcile$/i)
     : null;
   if (svnReconcileMatch) {
+    const input = await readJson(request);
     return json(response, 200, {
-      review: await svnReviews.reconcileCommit(svnReconcileMatch[1])
+      review: await svnWorkbench.reconcileCommit(svnReconcileMatch[1], input.issueKey)
     });
   }
 
@@ -735,10 +1145,10 @@ async function handleApi(request, response, url) {
   if (svnConfirmCommittedMatch) {
     const input = await readJson(request);
     return json(response, 200, {
-      review: await svnReviews.confirmCommitted(svnConfirmCommittedMatch[1], {
+      review: await svnWorkbench.confirmCommitted(svnConfirmCommittedMatch[1], {
         acknowledged: input.acknowledged,
         revision: input.revision
-      })
+      }, input.issueKey)
     });
   }
 
@@ -748,10 +1158,10 @@ async function handleApi(request, response, url) {
   if (svnAbandonMatch) {
     const input = await readJson(request);
     return json(response, 200, {
-      review: await svnReviews.abandon(svnAbandonMatch[1], {
+      review: await svnWorkbench.abandonReview(svnAbandonMatch[1], {
         acknowledged: input.acknowledged,
         message: input.message
-      })
+      }, input.issueKey)
     });
   }
 
@@ -759,81 +1169,47 @@ async function handleApi(request, response, url) {
     ? url.pathname.match(/^\/api\/issues\/([A-Za-z][A-Za-z0-9_]*-\d+)$/)
     : null;
   if (issueMatch) {
-    const config = await configStore.load();
-    if (!config.configured || !config.token) {
-      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
-        code: "JIRA_NOT_CONFIGURED",
-        statusCode: 428
-      });
-    }
-    const effectiveConfig = await resolveCollaboratorFieldConfig(config);
-    return json(response, 200, {
-      issue: await jira.fetchIssue(effectiveConfig, issueMatch[1]),
-      fetchedAt: new Date().toISOString()
-    });
+    return json(response, 200, await jiraWorkbench.getIssue(issueMatch[1]));
   }
 
   const issueTransitionsMatch = ["GET", "POST"].includes(request.method)
     ? url.pathname.match(/^\/api\/issues\/([A-Za-z][A-Za-z0-9_]*-\d+)\/transitions$/)
     : null;
   if (issueTransitionsMatch) {
-    const config = await configStore.load();
-    if (!config.configured || !config.token) {
-      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
-        code: "JIRA_NOT_CONFIGURED",
-        statusCode: 428
-      });
-    }
     const issueKey = issueTransitionsMatch[1];
     if (request.method === "GET") {
-      return json(response, 200, await jira.fetchTransitions(config, issueKey));
+      return json(response, 200, await jiraWorkbench.listTransitions(issueKey));
     }
     const input = await readJson(request);
-    return json(response, 200, await jira.executeTransition(config, issueKey, input.transitionId));
+    const available = await jiraWorkbench.listTransitions(issueKey);
+    const selected = (available.transitions || []).find((transition) => String(transition.id) === String(input.transitionId || ""));
+    if (!selected || selected.requiresInput) {
+      throw new ConfigurationError("该 Jira 状态流转已不可用，或需要在 Jira 中补充字段。请刷新后重试。", {
+        code: "JIRA_TRANSITION_STALE_OR_REQUIRES_INPUT",
+        statusCode: 409
+      });
+    }
+    if (input.expectedTargetStatus && String(selected.to?.name || "") !== String(input.expectedTargetStatus)) {
+      throw new ConfigurationError("Jira 状态流转目标已经变化，请刷新后重新确认。", {
+        code: "JIRA_TRANSITION_TARGET_CHANGED",
+        statusCode: 409
+      });
+    }
+    return json(response, 200, await jiraWorkbench.executeTransition(issueKey, input.transitionId));
   }
 
   if (request.method === "GET" && url.pathname === "/api/jxl/sheets") {
-    const config = await configStore.load();
-    if (!config.configured || !config.token) {
-      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
-        code: "JIRA_NOT_CONFIGURED",
-        statusCode: 428
-      });
-    }
-    return json(response, 200, await jxl.listSheets(config));
+    return json(response, 200, await jiraWorkbench.listSheets());
   }
 
   const jxlSheetIssuesMatch = request.method === "GET"
     ? url.pathname.match(/^\/api\/jxl\/sheets\/(\d+)\/([A-Za-z0-9_-]+)\/issues$/)
     : null;
   if (jxlSheetIssuesMatch) {
-    const config = await configStore.load();
-    if (!config.configured || !config.token) {
-      throw new ConfigurationError("请先配置 Jira 地址和 Token。", {
-        code: "JIRA_NOT_CONFIGURED",
-        statusCode: 428
-      });
-    }
-    const sheet = await jxl.getSheet(config, {
+    return json(response, 200, await jiraWorkbench.getSheetIssues({
       projectId: jxlSheetIssuesMatch[1],
       sheetId: jxlSheetIssuesMatch[2]
-    });
-    if (!sheet) {
-      throw new JiraApiError("JXL Sheet 不存在或当前用户无权查看。", {
-        code: "JXL_SHEET_NOT_FOUND",
-        upstreamStatus: 404
-      });
-    }
-    if (sheet._scope?.type !== "jql" || !sheet._scope.value) {
-      throw new JiraApiError("当前 JXL Sheet 不是 JQL 范围，暂时只能在 Jira 中打开。", {
-        code: "JXL_SCOPE_UNSUPPORTED",
-        upstreamStatus: 400
-      });
-    }
-    const { _scope, ...sheetInfo } = sheet;
-    const effectiveConfig = await resolveCollaboratorFieldConfig(config);
-    const result = await jira.fetchIssues({ ...effectiveConfig, jql: _scope.value });
-    return json(response, 200, { ...result, sheet: sheetInfo });
+    }));
   }
 
   const attachmentMaterializeMatch = request.method === "GET"
@@ -894,8 +1270,7 @@ async function serveStatic(request, response, url) {
   const staticFile = request.method === "GET" ? staticFiles.get(url.pathname) : null;
   if (!staticFile) return json(response, 404, { error: "Not found", code: "NOT_FOUND" });
 
-  const [fileName, contentType] = staticFile;
-  const filePath = join(publicDir, fileName);
+  const [filePath, contentType] = staticFile;
   const fileStat = await stat(filePath);
   response.writeHead(200, {
     "content-type": contentType,
@@ -909,6 +1284,13 @@ async function serveStatic(request, response, url) {
 
 async function handleRequest(request, response) {
   const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
+  if (url.pathname === "/mcp" || url.pathname.startsWith("/api/")) {
+    assertAllowedWriteOrigin(request, url);
+  }
+  if (url.pathname === "/mcp") {
+    await handleMcp(request, response);
+    return;
+  }
   if (url.pathname.startsWith("/api/")) {
     const handled = await handleApi(request, response, url);
     if (handled !== false) return;
@@ -922,6 +1304,8 @@ const server = createServer((request, response) => {
       || error instanceof JiraApiError
       || error instanceof SvnReviewError
       || error instanceof IssueBindingStoreError
+      || error instanceof CodexConversationServiceError
+      || error instanceof DesktopCommandError
       || error instanceof CodexAppServerError;
     const statusCode = known ? error.statusCode || (error instanceof CodexAppServerError ? 503 : 500) : 500;
     console.error(`[jira-poc] ${request.method} ${request.url}: ${error.code || error.name}: ${error.message}`);
@@ -939,12 +1323,15 @@ await svnReviews.initialize();
 
 server.listen(port, host, () => {
   automation.start();
+  bugMonitor.start();
   svnReviews.start();
   console.log(`[jira-poc] panel server: http://${host}:${port}`);
   console.log(`[jira-poc] credential store: ${configStore.configFile}`);
 });
 
 async function shutdown() {
+  desktopCommands.close();
+  await bugMonitor.stop();
   automation.stop();
   await codexRuntime.close();
   await svnReviews.stop();

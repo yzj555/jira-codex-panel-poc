@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      if (window.location.hash === "#settings") document.documentElement.dataset.view = "settings-only";
+    </script>
     <title>Jira 任务面板</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -18,9 +21,15 @@
         </div>
         <div class="top-actions">
           <span id="health" class="health"><i></i><span id="health-label">正在初始化</span></span>
-          <button id="refresh" class="icon-button" type="button" aria-label="刷新 Jira 任务" title="刷新 Jira 任务">↻</button>
-          <button id="open-settings" class="icon-button" type="button" aria-label="配置 Jira" title="配置 Jira">⚙</button>
-          <button id="close-panel" class="icon-button" type="button" aria-label="关闭面板" title="返回 Codex">×</button>
+          <button id="refresh" class="icon-button" type="button" aria-label="刷新 Jira 任务" title="刷新 Jira 任务">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.35 5.66M20 5v6h-6" /></svg>
+          </button>
+          <button id="open-settings" class="icon-button" type="button" aria-label="配置 Jira" title="配置 Jira">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.25A3.25 3.25 0 1 0 12 8.75a3.25 3.25 0 0 0 0 6.5Z" /><path d="m19.4 15 .08.05a2 2 0 0 1 .73 2.73l-.2.34a2 2 0 0 1-2.73.73l-.08-.05a2 2 0 0 0-3 1.73v.1a2 2 0 0 1-2 2h-.4a2 2 0 0 1-2-2v-.1a2 2 0 0 0-3-1.73l-.08.05a2 2 0 0 1-2.73-.73l-.2-.34a2 2 0 0 1 .73-2.73L3.6 15a2 2 0 0 0 0-3.46l-.08-.05a2 2 0 0 1-.73-2.73l.2-.34a2 2 0 0 1 2.73-.73l.08.05a2 2 0 0 0 3-1.73v-.1a2 2 0 0 1 2-2h.4a2 2 0 0 1 2 2V6a2 2 0 0 0 3 1.73l.08-.05a2 2 0 0 1 2.73.73l.2.34a2 2 0 0 1-.73 2.73l-.08.05a2 2 0 0 0 0 3.46Z" /></svg>
+          </button>
+          <button id="close-panel" class="icon-button" type="button" aria-label="关闭面板" title="返回 Codex">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6.5 6.5 11 11m0-11-11 11" /></svg>
+          </button>
         </div>
       </header>
 
@@ -43,7 +52,7 @@
           </label>
           <span id="sync-summary" class="sync-summary"></span>
           <label class="search">
-            <span aria-hidden="true">⌕</span>
+            <svg class="ui-icon search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" /><path d="m15.5 15.5 4 4" /></svg>
             <input id="search" type="search" placeholder="搜索 Issue" autocomplete="off" />
           </label>
         </div>
@@ -69,6 +78,15 @@
           <button id="close-drawer" class="icon-button" type="button" aria-label="关闭详情">×</button>
         </div>
       </header>
+
+      <div id="association-wait" class="association-wait" aria-live="polite" hidden>
+        <div class="association-wait-card" role="status">
+          <span class="association-wait-spinner" aria-hidden="true"></span>
+          <strong id="association-wait-title">正在创建 Codex 会话…</strong>
+          <span id="association-wait-description">会话和首条分析消息确认成功后将自动跳转。</span>
+          <small>失败会立即恢复操作；超过 32 秒未收到结果也会自动解除等待。</small>
+        </div>
+      </div>
 
       <div class="issue-modal-body">
         <h2 id="detail-title"></h2>
@@ -124,6 +142,7 @@
         <div class="issue-action-group">
           <button id="clear-binding-action" class="clear-binding-action" type="button" hidden>解除关联</button>
           <button id="rebind-action" class="rebind-action" type="button" hidden>更改关联</button>
+          <button id="svn-action" class="plain-button" type="button" hidden>审核并提交 SVN</button>
           <button id="primary-action" class="primary-action" type="button">开始处理</button>
         </div>
       </footer>
@@ -154,8 +173,9 @@
             <div class="eyebrow">CODEX CONVERSATION</div>
             <h2 id="rebind-title">关联 Codex 会话</h2>
           </div>
-          <button id="close-rebind" class="icon-button" type="button" aria-label="关闭重新绑定">×</button>
+          <button id="close-rebind" class="plain-button rebind-back-action" type="button" aria-label="返回任务详情">← 返回任务详情</button>
         </header>
+        <div class="rebind-body">
         <p id="rebind-description" class="rebind-description">可以新建任务会话，也可以关联当前或已有 Codex 会话。</p>
         <div class="rebind-mode" role="radiogroup" aria-label="会话关联方式">
           <label><input type="radio" name="rebindMode" value="new" checked />新建并绑定</label>
@@ -185,6 +205,7 @@
           <small>新会话会携带完整 Jira 上下文、真实附件、精简分析模板及已绑定 Skill。</small>
         </div>
         <div id="rebind-status" class="settings-status" hidden></div>
+        </div>
         <footer class="rebind-actions">
           <button id="cancel-rebind" class="plain-button" type="button">取消</button>
           <button id="confirm-rebind" class="save-button" type="submit">绑定并打开对话</button>
@@ -227,12 +248,12 @@
         </header>
 
         <nav id="settings-section-tabs" class="settings-section-tabs" role="tablist" aria-label="设置分组">
-          <button class="settings-section-tab active" data-settings-section-tab="jira" type="button" role="tab" aria-selected="true">Jira 连接</button>
-          <button class="settings-section-tab" data-settings-section-tab="codex" type="button" role="tab" aria-selected="false">Codex 集成</button>
-          <button class="settings-section-tab" data-settings-section-tab="sync" type="button" role="tab" aria-selected="false">数据同步</button>
-          <button class="settings-section-tab" data-settings-section-tab="automation" type="button" role="tab" aria-selected="false">自动化通知</button>
-          <button class="settings-section-tab" data-settings-section-tab="templates" type="button" role="tab" aria-selected="false">消息模板</button>
-          <button class="settings-section-tab" data-settings-section-tab="advanced" type="button" role="tab" aria-selected="false">高级配置</button>
+          <button class="settings-section-tab active" data-settings-section-tab="jira" type="button" role="tab" aria-selected="true"><span>Jira 连接</span><small>地址与身份凭证</small></button>
+          <button class="settings-section-tab" data-settings-section-tab="codex" type="button" role="tab" aria-selected="false"><span>Codex 集成</span><small>项目与技能上下文</small></button>
+          <button class="settings-section-tab" data-settings-section-tab="sync" type="button" role="tab" aria-selected="false"><span>数据同步</span><small>刷新策略与频率</small></button>
+          <button class="settings-section-tab" data-settings-section-tab="automation" type="button" role="tab" aria-selected="false"><span>自动化通知</span><small>Bug 监控与机器人</small></button>
+          <button class="settings-section-tab" data-settings-section-tab="templates" type="button" role="tab" aria-selected="false"><span>消息模板</span><small>首条分析消息</small></button>
+          <button class="settings-section-tab" data-settings-section-tab="advanced" type="button" role="tab" aria-selected="false"><span>高级配置</span><small>任务来源与容量</small></button>
         </nav>
 
         <div class="form-grid">
@@ -247,7 +268,7 @@
             <select id="codex-project" name="codexProjectId">
               <option value="">不绑定项目（普通对话）</option>
             </select>
-            <small>选择项目后，新建的任务对话会归入该项目；留空则创建不带项目的普通对话。</small>
+            <small>项目来自当前 Codex 窗口的本地项目列表，与“绑定已有会话”分开；选择后，新建任务对话会使用该项目目录。</small>
           </label>
 
           <label class="field field-wide" data-settings-section="jira">

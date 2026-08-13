@@ -1,12 +1,12 @@
 # Jira Codex 任务面板
 
-> 当前版本：`0.28.6`<br>
+> 当前版本：`0.31.1`<br>
 > 运行环境：Windows Codex Desktop + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 
-Jira Codex 任务面板把 Jira 待办、JXL Sheets 和 Codex 对话连接到同一个本地工作台。用户可以在 Codex 侧栏打开“Jira 任务”，查看与自己有关的需求和 Bug、阅读详情及附件，并把 Jira Issue 绑定到对应的 Codex 对话。
+Jira Codex 任务面板把 Jira 待办、JXL Sheets 和 Codex 对话连接到同一个本地工作台。Codex 侧栏中的“Jira 任务”承载适合桌面操作的完整工作台；官方 Plugin + MCP Apps UI 同时保留为标准插件入口和 SVN 等能力组件。两种 UI 共用同一套本地服务、绑定数据和 App Server 会话能力，不形成第二份业务状态。
 
-这不是部署在 Jira 服务器上的插件。它通过本机服务读取 Jira，并只在用户明确确认时提交状态流转或已审核的 SVN 改动；面板通过 CDP 注入 Windows Codex 客户端，适合个人工作环境使用。
+这不是部署在 Jira 服务器上的插件。它通过本机服务读取 Jira，并只在用户明确确认时提交状态流转或已审核的 SVN 改动。任务首页、历史、Sheets、详情、状态流转、现有会话关联和 SVN 审核提交已经提供官方 Plugin + MCP Apps UI；侧栏入口、会话浮窗和 Codex Desktop 窗口跳转仍由最小兼容层承载，适合个人工作环境使用。
 
 ## 快速开始
 
@@ -34,21 +34,51 @@ cd jira-codex-panel-poc
 安装完成后：
 
 1. 从桌面或开始菜单打开安装器创建的“Codex”快捷方式。
-2. 在 Codex 左侧栏点击“Jira 任务”。
-3. 首次打开时填写 Jira 地址和 PAT。
+2. 在 Codex 左侧栏点击“Jira 任务”，直接进入完整任务工作台。
+3. 首次使用时点击工作台右上角设置，在面板内填写 Jira 地址和 PAT。
 4. 点击“保存并连接”，开始读取当前用户的 Jira 任务。
 
 > 安装器创建的“Codex”快捷方式已经包含面板需要的启动参数。Microsoft Store 原始入口无法被安全修改；从原始入口启动的普通 Codex 不会加载 Jira 面板。
 
-安装器默认执行一次 `npm install -g @openai/codex@latest`（已有独立 CLI 时不会重复安装），并记录真实的 npm vendor 可执行文件路径。该 CLI 只作为本地 App Server 控制面使用，不替换 Microsoft Store 桌面应用；安装失败时面板会明确降级到桌面兼容桥接，不影响 Jira 面板基本启动。若不希望安装，可传入 `-InstallCodexCli:$false`。
+安装器默认执行一次 `npm install -g @openai/codex@latest`（已有独立 CLI 时不会重复安装），并记录真实的 npm vendor 可执行文件路径。该 CLI 只作为本地 App Server 控制面使用，不替换 Microsoft Store 桌面应用；缺少它会使会话、Skill、后台 turn 和审查等 App Server 能力不可用，但不会让本地 Jira 配置或只读服务丢失。若不希望安装，可传入 `-InstallCodexCli:$false`。
 
-Plugin、MCP、本地服务、App Server Adapter 和当前 CDP 兼容层都属于同一个“Jira Codex 助手”。用户不需要分别维护这些组件；统一生命周期入口负责安装、覆盖升级、修复、状态检查和卸载。当前 `0.28.6` 已交付 Application Commands、Runtime 自动选择和统一生命周期；官方 Plugin 与 MCP 在组件清单中保持“可选且未安装”，后续加入真实组件后仍沿用同一入口。
+Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属于同一个“Jira Codex 助手”。用户不需要分别维护这些组件；统一生命周期入口负责安装、覆盖升级、修复、状态检查和卸载。安装器会准备本地服务依赖、注册 `jira-codex-local` Marketplace，并安装 `jira-codex-assistant` Plugin；卸载时会先清理 Plugin 与 Marketplace，再删除程序目录。Plugin 注册失败时会明确报告组件异常；侧栏完整工作台仍可使用同一套本地服务，但 Plugin/MCP Apps 能力会保持不可用状态，不会伪装成安装成功。
+
+## 官方 Plugin 工作台
+
+当前版本已经把可由公开协议稳定承载的主流程迁入官方 Plugin：
+
+- Plugin 清单：`plugins/jira-codex-assistant/.codex-plugin/plugin.json`。
+- 本地 Marketplace：`.agents/plugins/marketplace.json`。
+- MCP 地址：`http://127.0.0.1:47823/mcp`，使用 Streamable HTTP。
+- 只读工具：任务首页/历史、Issue 详情、JXL Sheets、可用状态流转、App Server 会话列表、SVN 状态/差异/审核结果和提交回执核对。
+- 本地写工具：会话关联、解除关联、创建/取消/确认/放弃审核草稿；这些操作不修改 Jira、Codex 对话正文或 SVN 工作副本。
+- 外部写工具：执行 Jira 状态流转与 SVN commit；都与只读工具分开声明权限、安全注解和人工确认边界。
+- UI Resource：`ui://jira-codex-assistant/workbench-v3.html`，使用 MCP Apps 的 `_meta.ui.resourceUri`、`ui/*` bridge、`tools/call`、私有组件状态和空外联 CSP。
+
+这些工具复用本地服务已经保存的 Jira 地址、PAT、协同处理人字段、面板查询配置和服务端会话绑定；Plugin 本身不保存 Token。工作台包含“待我处理 / Jira Sheets / 处理历史”三个页签，首页和历史继续按需求与 Bug 分成左右两栏，详情包含描述、协同处理人、附件元数据、状态和会话关联状态。关联窗口通过官方 App Server 列出现有会话；保存关联前读取目标会话并使用绑定 revision 做并发校验，不发送首条消息。即使宿主不渲染 UI，工具仍返回结构化结果和简短回退说明。
+
+状态流转必须先读取 Jira 最新可用操作，在 UI 中由用户明确确认后签发短时一次性凭据；执行时再次由 Jira 客户端校验 transition，凭据一经使用立即失效。需要额外字段的流转继续要求在 Jira 页面完成。
+
+官方工作台通过 `jira-workbench-service`、`codex-conversation-service` 和 `svn-workbench-service` 访问统一业务边界，不会形成两套 Jira、绑定或 SVN 规则。附件预览、自动 Bug 监控、会话绑定和 SVN 状态全部由本地服务负责；注入层只保留四项官方 Desktop API 尚不能替代的能力：侧栏启动入口、当前会话轻量 Jira 浮窗、桌面会话跳转，以及当前窗口 App Server 命令适配。新会话创建仍由当前 Desktop 窗口原子执行，但提示词、附件、Skill、绑定和基线均由服务端编排。
+
+开发验证命令：
+
+~~~powershell
+npm test
+npm run mcp:probe
+python "$env:USERPROFILE\.codex\skills\.system\plugin-creator\scripts\validate_plugin.py" .\plugins\jira-codex-assistant
+codex plugin marketplace add .
+codex plugin add jira-codex-assistant@jira-codex-local
+~~~
+
+安装或更新 Plugin 后，需要新建 Codex 对话，才能稳定加载新的工具与 UI 资源。
 
 ## 页面说明
 
 ### 主题适配
 
-完整 Jira 面板和会话右侧 Jira 浮窗都会实时跟随 Codex 的浅色/深色主题。主题切换时无需刷新面板或重启 Codex；面板会复用 Codex 当前的背景、文字、边框、强调色和状态色。仅在浏览器中单独打开本地面板时，才会按系统主题作为回退。
+桌面任务工作台、官方 MCP Apps 工作台和会话右侧 Jira 浮窗都会跟随 Codex 的浅色/深色主题。设置默认在任务工作台内部打开；独立 `#settings` 页面只作为维护回退入口。
 
 工作台顶部包含三个页面级页签。
 
@@ -136,16 +166,16 @@ Issue 详情包括：
 
 1. 根据设置创建普通 Codex 对话，或创建到指定 Codex 项目下。
 2. 允许补充 Jira 中缺失的背景、业务规则、环境或复现信息；补充内容独立标记为“用户补充说明”，不覆盖或回写 Jira。
-3. 从 Jira 下载当前 Issue 的原始附件，并通过 Codex 原生输入真实挂载到新对话。
+3. 由本地服务从 Jira 下载当前 Issue 的原始附件，校验后作为 App Server 输入挂载到新对话。
 4. 自动发送一次紧凑首条消息：只保留单号、标题、链接、描述和附件清单；状态、人员、项目等面板中已有的低价值字段不再重复。图片以 Codex 原生 `localImage` 输入发送，其他附件作为文件输入发送。
 5. 把内置 Jira 降级 Skill 和用户选择的专业 Skill 作为结构化 Skill 输入提交。
-6. 通过 Codex 原生通道一次性创建会话并提交首条消息，取得正式会话 ID 后再保存 Issue 绑定、自动分析登记和 SVN 基线；流程不依赖新会话是否已经渲染到左侧列表。已有临时绑定在打开对应会话时仍会自动修复。
+6. 官方 MCP 工具把已经准备好的结构化请求交给当前窗口 App Server 适配器，一次性创建会话并提交首条消息；取得正式会话 ID 后，本地服务才保存 Issue 绑定、自动分析登记和 SVN 基线。流程不依赖新会话是否已经渲染到左侧列表。
 
 如果任一附件没有成功挂载，首条消息不会发送，避免对话在缺少附件的情况下开始分析。
 
-绑定已有会话时，可以选择当前或侧栏会话，也可以直接输入会话 ID。系统只验证并保存关联后跳转，不会自动插入 Jira 消息。若目标会话已关联其他 Issue，必须人工确认后才会转移关联。
+绑定已有会话时，候选列表来自 App Server；系统读取目标会话、校验绑定 revision 后保存关联，不会自动插入 Jira 消息。若目标会话已关联其他 Issue，必须人工确认后才会转移关联。
 
-“新建并绑定”会在同一个 Codex 桌面命令中完成会话创建和首条消息提交，只有命令成功返回正式会话 ID 后才替换旧关联。新会话返回后直接使用 Codex 已加载的内存状态显示，不会立即读取仍可能为空的 rollout 文件。若操作失败，旧关联和补充说明都会保留，可直接重试。旧版本分步创建且已经失去创建窗口的空会话无法安全补发，面板会立即提示重新执行“更改关联 → 新建并绑定”，不再长时间等待后报错。
+“新建并绑定”会在同一个 Codex 桌面命令中完成会话创建和首条消息提交，只有命令成功返回正式会话 ID 后才替换旧关联。服务端不会读取 rollout 文件来确认新会话；若操作失败，旧关联和补充说明都会保留，可直接重试，也不会创建第二个补偿会话。
 
 ### 已绑定的任务
 
@@ -155,36 +185,34 @@ Issue 详情包括：
 - 如果目标会话不在当前侧栏，通过 Codex 原生任务导航按会话 ID 打开。
 - 不会再次发送首条消息。
 
-任务详情同时提供“解除关联”。二次确认后会从本地服务主存储和 Codex 页面兼容缓存中清除该 Issue 的绑定，并移除当前会话中的 Jira 浮窗与临时关联提示；原 Codex 对话不会被删除或归档，Jira 状态、SVN 记录和未发送的补充说明草稿也不会改变。解除后，该任务立即恢复为可重新关联状态；已完成任务也允许修正错误绑定。
+任务详情同时提供“解除关联”。二次确认后会从本地服务主存储中清除该 Issue 的绑定，并移除当前会话中的 Jira 浮窗；原 Codex 对话不会被删除或归档，Jira 状态、SVN 记录和未发送的补充说明草稿也不会改变。解除后，该任务立即恢复为可重新关联状态；已完成任务也允许修正错误绑定。
 
 ### 会话右侧 Jira 浮窗
 
-进入已绑定的 Codex 会话后，消息区右侧会自动显示当前 Issue 的轻量浮窗：
+进入已绑定的 Codex 会话后，消息区右侧会自动显示当前 Issue 的最小浮窗：
 
 - 浮窗固定在宿主层，不改变或挤压 Codex 消息区宽度。
-- 展示 Jira 原始状态、标题、负责人、优先级、项目、描述、协同处理人和附件入口。
-- 可刷新详情、打开 Jira 原页面，并执行当前用户可用且不要求额外字段的状态流转。
-- 可进入独立的 SVN 审核窗口；审核窗口是居中宽屏界面，不占用浮窗的信息展示宽度。
-- 可收起为 Issue Key 状态胶囊；同一 Codex 运行周期内再次进入该会话时保持收起状态。
+- 展示 Issue 类型、Key、标题、原始状态和摘要。
+- 只提供“在 Jira 中打开”和“打开会话”两个快捷操作；详情、附件、状态流转和 SVN 审核统一在官方工作台中完成。
 - 切换到未绑定会话、新对话或其他原生页面时会自动移除，不会残留上一张单子。
-- 打开完整“Jira 任务”工作台时暂时隐藏，返回绑定会话后恢复。
+- 打开“Jira 任务”启动页时暂时隐藏，返回绑定会话后恢复。
 
-浮窗按 Issue Key 直接读取 Jira 最新详情，不依赖该任务是否仍存在于当前看板筛选结果中。附件入口仍通过本机代理读取，Jira PAT 不会进入 Codex 页面。
+浮窗按 Issue Key 通过本机服务读取 Jira 最新摘要，不依赖该任务是否仍存在于当前看板筛选结果中；Jira PAT 不会进入 Codex 页面。
 
 ### SVN 审核与提交
 
-在绑定会话的右侧浮窗中点击“审核并提交 SVN”。本地服务会从该 Codex 会话日志读取真实项目目录，再定位其 SVN 工作副本；不需要额外维护项目路径映射。状态扫描默认限定在当前 Codex 项目目录，即使多个项目共用同一个 SVN 工作副本，也不会把其他项目的改动混入选择界面。
+在官方工作台的 Issue 详情中进入“审核并提交 SVN”。本地服务首先使用绑定记录中持久化的工作区；旧绑定缺少工作区时才通过官方 App Server `thread/read` 恢复上下文，再定位 SVN 工作副本。新业务不依赖 session/rollout 文件。状态扫描默认限定在当前 Codex 项目目录，即使多个项目共用同一个 SVN 工作副本，也不会把其他项目的改动混入选择界面。
 
 文件选择区按“可提交 / 未纳管 / 阻断项 / 全部”分类，以目录树展示；目录复选框支持半选。单击文件名会在右侧按需读取该文件的 SVN 差异，不会在首次打开时批量加载全部 diff。
 
 每个提交草稿固定关联一个 Jira Issue、一个 Codex 会话和一个 SVN 工作副本。同一 Jira 可以创建任意多次提交；提交成功只保存一条 revision 历史，不会结束会话，也不会自动流转 Jira 状态。
 
-1. 系统结合任务绑定时的 dirty 基线和当前 Codex 会话成功修改过的文件，生成本次需求候选集。会话直接修改的文件为高置信推荐，绑定后出现但没有直接会话证据的文件为普通推荐；推荐文件会作为初始勾选。
+1. 系统结合任务绑定时的 dirty 基线、App Server 返回的结构化文件改动和当前 SVN 状态生成本次需求候选集。结构化文件证据为高置信推荐；缺少该证据时只按绑定后的 SVN 差异给出普通推荐，不扫描 rollout 猜测改动归属。
 2. 用户在文件树中人工增删候选，最终选择始终以人工判断为准。绑定前改动、未纳管文件、目录和冲突等阻断项不会进入初始勾选。如果选定文件也被其他 Jira 的未完成草稿引用，界面会显示关联单号，提交前必须人工确认混入风险。
 3. 本地服务读取 `svn info`、`svn status --xml` 和所选路径的 `svn diff`，检查冲突、缺失、阻塞、switched、混合版本、属性改动、未纳管文件、二进制差异及项目范围中的其他改动。内置差异用颜色区分新增、删除、区块和元数据；双击文件或点击按钮可以调用 TortoiseSVN 查看，但 TortoiseSVN 不参与提交。
 4. 系统生成不可变审核快照、规范提交信息和三份本地审核材料：原任务需求上下文、SVN 原生 diff、审核清单。`svn diff` 是本次改动事实的主证据；原任务对话与该 Jira 的历史 revision 只提供需求、调用链和历史行为上下文。
-5. 文件选择区顶部的“本次提交方式”默认选中“人工审核”，Codex 辅助审查需要用户主动选择。选择后，面板把三份审核材料作为原生文件附件，通过 Codex 当前会话启动一个真实审查 turn；不会创建独立任务，也不会操作或清空输入框。该审查可能耗时较长，必须等待审查完成，或主动取消并降级为人工审核，之后才能继续提交。若会话正忙会立即失败，不会排队抢占正在执行的工作。
-6. 审查启动后，Jira 浮窗显示“挂起 · Codex 检查中”。本地服务按 `reviewId + snapshotHash + turnId` 跟踪当前会话日志；用户可以等待结果，也可以随时中断 turn 并降级为人工审核。投递失败、执行失败和超时都提供相同的人工降级入口，晚到结果不会覆盖取消后的人工状态。
+5. 文件选择区顶部的“本次提交方式”默认选中“人工审核”，Codex 辅助审查需要用户主动选择。选择后，本地服务把三份审核材料的不可变绝对路径作为只读上下文，通过官方 App Server 在绑定会话启动真实审查 turn；不会把非图片文件伪装成原生附件，不会创建独立任务，也不会操作或清空输入框。该审查可能耗时较长，必须等待审查完成，或主动取消并降级为人工审核，之后才能继续提交。若会话正忙会立即失败，不会排队抢占正在执行的工作。
+6. 审查启动后，官方工作台显示“挂起 · Codex 检查中”。本地服务按 `reviewId + snapshotHash + threadId + turnId` 跟踪官方 App Server 的 `item/completed` 与 `turn/completed` 事件；服务重启后使用 `thread/read(includeTurns: true)` 恢复最终状态。用户可以等待结果，也可以随时中断 turn 并降级为人工审核。投递失败、执行失败和超时都提供相同的人工降级入口，晚到结果不会覆盖取消后的人工状态。
 7. Codex 按证据重新拆解需求覆盖，检查实现完整性和准确性、逐文件改动、调用方与被调用方、接口/事件/数据/配置/性能影响、历史 revision、工程合规性、潜在回归和测试证据，并明确列出无法核实的范围。审查仅提供建议，不会自动提交。
 8. 关闭或取消 Codex 审查后，用户基于不可变快照、完整差异和机械检查自行审核需求符合性与影响风险。机械检查或 Codex 结果为“阻断”时不能提交；存在警告或跨任务文件重叠时，会合并显示在最终确认文案中。
 9. 真正提交前只需勾选一次合并确认，表示已完成改动审核并理解当前列出的风险，再点击提交按钮；系统已从当前 Jira 上下文确定单号，不再要求手工重复输入 Issue Key。
@@ -194,7 +222,7 @@ Issue 详情包括：
 
 任何文件内容、SVN 属性、选择路径、提交说明、审核模式、Jira 标题/描述/修复版本或仓库状态发生变化，原审核都会失效。所选文件还会记录 SHA-256 内容指纹，因此二进制文件即使 `svn diff` 只返回通用提示也能被复检。
 
-审核记录会原子写入当前用户数据目录的 `svn-reviews.json`。服务或 Codex 重启后会恢复未过期的审核、当前会话 ID、Turn ID、完成结果和已提交历史，并继续轮询运行中的审查；旧材料只会在原绑定会话中按 `reviewId + snapshotHash` 补关联。人工确认产生的一次性令牌只保存在内存中，有效期 90 秒，调用一次后立即作废；服务重启后必须重新人工确认。若 `svn commit` 的命令退出状态、输出或服务重启导致结果不明确，记录会进入“提交结果待核对”，禁止自动重试；用户可以重新读取 SVN 日志，或人工核实并登记实际 revision。只有确认本次操作没有产生有效提交时，才应放弃草稿。
+审核记录会原子写入当前用户数据目录的 `svn-reviews.json`。服务或 Codex 重启后会恢复未过期的审核、当前会话 ID、Turn ID、完成结果和已提交历史，并通过 App Server 继续轮询运行中的审查；迁移前的旧材料才会在原绑定会话中按 `reviewId + snapshotHash` 使用本地会话日志补关联。人工确认产生的一次性令牌只保存在内存中，有效期 90 秒，调用一次后立即作废；服务重启后必须重新人工确认。若 `svn commit` 的命令退出状态、输出或服务重启导致结果不明确，记录会进入“提交结果待核对”，禁止自动重试；用户可以重新读取 SVN 日志，或人工核实并登记实际 revision。只有确认本次操作没有产生有效提交时，才应放弃草稿。
 
 已取消、已完成、人工审核、失败、超时、阻断或失效的草稿都提供“返回文件选择并重新扫描”。该操作会明确废弃当前面板草稿并重新读取工作副本，不会撤销或修改 Jira、SVN 中已经提交的内容；因此关闭再打开面板时也不会重新恢复旧草稿。已成功提交的记录则通过“新建下一次提交”进入同样的最新状态扫描。
 
@@ -239,7 +267,7 @@ CT-13349 【系统】优化3.0-护具-护具优化
 2. 后续进入列表的新 Bug 会被周期检测。
 3. 系统串行创建 Codex 新对话、挂载附件并发送只读诊断消息。
 4. 每个 Bug 在当前监控记录中只处理一次。
-5. 本地服务从 Codex 会话日志读取真实 `task_complete` 事件和最终分析文本。
+5. 本地服务保存 App Server 返回的真实 `threadId + turnId`，优先接收 `item/completed`、`turn/completed`，并在重启后通过 `thread/read` 恢复最终分析文本；只有迁移前没有 Turn ID 的旧任务才读取本地会话日志。
 6. 如果配置了企业微信群机器人 Webhook，则将结果推送到群；未配置时跳过推送。
 
 关闭 Jira 面板或切换到其他 Codex 页面不会停止已经启用的监控。关闭开关后不再创建新的自动分析任务。
@@ -371,7 +399,7 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 Jira PAT 和企业微信 Webhook 使用 Windows DPAPI 加密后保存，只能由写入它们的 Windows 用户解密。公开配置接口不会返回这两个密钥。
 
-会话绑定由本地服务持久化，Codex 页面 `localStorage` 只保留兼容缓存。升级后会自动导入旧绑定，并记录绑定所属的 Codex Runtime；每位 Windows 用户仍然彼此独立。
+会话绑定由本地服务作为唯一数据源持久化。升级后的注入层只会读取一次旧 `localStorage` 绑定并导入服务端，成功后立即删除旧值；后续读取、并发 revision 校验、写入和解除都不再使用浏览器双状态。每位 Windows 用户仍然彼此独立。
 
 ## 开发运行
 
@@ -406,7 +434,7 @@ npm run codex:probe
 
 验证浏览器 Runtime Adapter、本地 HTTP API、会话读取和 App Server 的完整只读链路可执行 `npm run codex:probe:http`。若开发机只有 Microsoft Store 版 Codex，这两个命令会提示安装独立 CLI。也可以通过 `JIRA_CODEX_APP_SERVER_COMMAND` 指向 npm 包内真实的 `codex.exe`。
 
-测试覆盖 Jira 认证与字段映射、单 Issue 详情、任务分类、Sheets 排序筛选、JXL 权限、附件缓存、需求/Bug 模板迁移、Codex 技能发现与结构化输入、内嵌文档、会话浮窗注入、会话导航、配置加密、自动分析结果推送，以及 SVN 状态解析、审核快照、人工确认和显式路径提交。
+测试覆盖 Jira 认证与字段映射、单 Issue 详情、任务分类、Sheets 排序筛选、JXL 权限、附件缓存、需求/Bug 模板迁移、Codex 技能发现与结构化输入、MCP Apps UI、最小会话浮窗注入、会话导航、服务端绑定、配置加密、本地 Bug 监控及结果推送，以及 SVN 状态解析、审核快照、人工确认和显式路径提交。
 
 ### 截图
 
@@ -421,33 +449,50 @@ npm run capture
 ## 架构
 
 ~~~mermaid
-flowchart LR
-    Shortcut["安装器创建的 Codex 快捷方式"] --> Codex["Windows Codex Desktop<br/>CDP :47824"]
-    Injector["injector.mjs"] <--> Codex
-    Injector --> Panel["Codex 内嵌 Jira 面板<br/>srcdoc"]
-    Injector --> Float["对话右侧 Jira 浮窗"]
-    Panel --> Commands["Application Commands<br/>业务命令层"]
+flowchart TB
+    Codex["Windows Codex Desktop"] --> Plugin["官方 Plugin + MCP Apps UI<br/>标准入口 / SVN 能力组件"]
+    Plugin <-->|Streamable HTTP| Server["本地 Jira / SVN 服务<br/>127.0.0.1:47823"]
+    Server <-->|官方 JSON-RPC / stdio| AppServer["Codex App Server<br/>会话、Skill、turn、结构化输出"]
+
+    Injector["最小 UI 注入层"] <--> Codex
+    Injector --> Sidebar["侧栏完整任务工作台<br/>面板内设置"]
+    Injector --> Float["当前会话 Jira 浮窗<br/>详情 / 流转 / SVN 入口"]
+    Injector --> Navigation["桌面会话跳转"]
+    Injector --> DesktopAdapter["当前窗口 App Server 适配"]
+    Sidebar --> Commands["Application Commands<br/>统一能力与归属路由"]
     Float --> Commands
-    Commands --> Selector["Runtime Selector<br/>能力与归属路由"]
-    Selector -->|官方能力优先| Server
-    Selector -->|兼容降级 / 原生导航| Legacy["Legacy Desktop Host"]
-    Legacy <--> Codex
-    Panel <-->|受限请求桥接| Injector
-    Float <-->|受限请求桥接| Injector
-    Injector <-->|127.0.0.1| Server["本地服务<br/>server.mjs :47823"]
-    Server <-->|官方 JSON-RPC / stdio| AppServer["独立 Codex App Server<br/>npm CLI"]
+    Navigation --> Commands
+    DesktopAdapter --> Commands
+    Commands <-->|受限本机 API| Server
+    Commands <-->|当前桌面会话协议适配| Codex
+
     Server --> Jira["Jira Data Center / JXL"]
     Server --> UserData["DPAPI 配置<br/>附件缓存 / 自动任务状态"]
-    Server --> Sessions["Codex 本地会话日志"]
+    Server -.-> LegacySessions["迁移前会话日志<br/>仅用于旧记录恢复"]
     Server -->|人工确认后显式路径提交| SVN["SVN 工作副本 / 仓库"]
     Server -->|可选| WeCom["企业微信群机器人"]
 ~~~
 
-Codex 的内容安全策略不允许主页面直接加载本机 HTTP iframe，因此安装版会把 HTML、CSS 和脚本组装成 `srcdoc` 内嵌文档。面板请求经注入器使用每次启动生成的临时令牌桥接到本地服务。
+当前采用“官方业务协议为主、桌面展示适配最小化”的混合架构。完整桌面工作台与官方 Plugin/MCP Apps UI 都通过按权限拆分的服务接口访问同一业务边界；待办、历史、Sheets、详情、状态流转、会话关联和 SVN 审核没有两套数据规则。Skill、会话列表/读取/命名、后台分析 turn、中断以及 SVN 审查的 `outputSchema` 通过 App Server 协议。图片使用官方 `localImage`；PDF、diff、JSON 等非图片文件不会伪装成原生附件，而是以只读绝对路径上下文提供给沙箱读取。
 
-当前采用渐进式混合架构。界面只调用 Application Commands，不再直接依赖某一种 Codex Host；Runtime Selector 根据会话归属、附件类型和能力矩阵选择执行通道。Skill、会话读取、项目目录明确的新会话和普通分析 turn 优先使用官方 App Server；App Server 未安装或启动前失败时自动降级到 Legacy Desktop Host。无项目普通会话、非图片附件、原生窗口导航等 App Server 尚不能完整承载的能力仍走 Legacy Host。
+只读命令可以在任一 Runtime 失败后安全降级。创建会话和发送消息只会在能够确认请求尚未产生副作用时降级；超时、`CODEX_TURN_START_FAILED` 等结果不确定的错误不会自动重试，以免创建重复会话或发送重复消息。交互式新会话由当前 Codex Desktop 窗口持有的 App Server Runtime 原子创建并发送首个 turn，成功确认后才保存绑定和显示；独立 App Server 继续负责后台分析、读取、命名和审查等不要求桌面窗口持有的协议操作。旧的“独立 App Server 先建空会话、桌面接管后再补发首条消息”分步流程已经删除。
 
-只读命令可以在任一 Runtime 失败后安全降级。创建会话和发送消息只会在能够确认请求尚未产生副作用时降级；超时、`CODEX_TURN_START_FAILED` 等结果不确定的错误不会自动重试，以免创建重复会话或发送重复消息。绑定数据会保存 `runtimeOwner`，后续操作优先回到原 Runtime。新版 Codex 项目行中的本地 `path/rootPaths` 会直接提供给 App Server；提取不到时才使用旧工作区桥接。侧栏入口、详情弹窗、会话右侧浮窗及原生窗口导航仍必须运行在 Codex Desktop 页面内，因此 CDP 注入暂时不能完全移除。
+注入层只组装桌面 UI 外壳：侧栏入口、完整工作台的 `srcdoc` 容器、当前会话浮窗、SVN MCP Apps 弹层、桌面任务跳转和当前窗口 App Server 命令适配。它不查找输入框、不扫描侧栏会话或项目、不调用 `DOM.setFileInputFiles`、不粘贴附件或模拟发送，也不维护绑定、不调度 Bug 监控、不实现 Jira/SVN 业务规则。旧 `localStorage` 绑定与监控状态只执行一次导入，迁移前的本地会话日志只用于旧记录恢复，不作为新会话、自动分析或 SVN 业务的默认数据源。
+
+当前迁移状态：
+
+| 能力 | 当前实现 |
+| --- | --- |
+| Jira 待办、历史、Sheets、详情 | 桌面完整工作台 + 官方 Plugin/MCP Apps UI；共用 `jira-workbench-service` |
+| Jira 状态流转 | 官方 MCP 写工具；UI 确认、短时一次性凭据、执行前复检 |
+| Jira、JXL 的 MCP 与本地设置接口 | 共用 `jira-workbench-service`，无双份业务规则 |
+| App Server 会话列表、读取、关联与解除 | 官方 MCP 工具 + `codex-conversation-service`；revision 并发校验，不发送消息 |
+| SVN 状态、差异、审核、确认、提交与回执核对 | 官方 MCP 工具 + `svn-workbench-service`；迁移期本地路由仅委托同一服务 |
+| 附件缓存、SVN 命令执行 | 统一的本地服务；Plugin 不接触 Jira PAT 或 SVN 凭据 |
+| Skill、会话读取/命名、turn、中断、结构化审查结果 | 官方 App Server 协议 |
+| 人工新建会话与首条消息 | 当前 Codex Desktop 持有的 App Server Runtime 原子执行 |
+| 侧栏完整工作台、右侧浮窗、Codex Desktop 跳转/当前窗口接管 | 最小桌面 UI 兼容层；公开协议暂无等价 Desktop API |
+| 旧绑定、监控状态与审查恢复 | 一次性导入或兼容读取；不作为新业务通道 |
 
 App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.com/docs/app-server) 实现；项目内部的 Adapter 和命令层负责隔离实验协议变化。
 
@@ -455,25 +500,30 @@ App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.
 
 | 文件或目录 | 职责 |
 | --- | --- |
-| `server.mjs` | 本地静态页面和 API，仅监听 `127.0.0.1` |
+| `server.mjs` | 本地 Jira/SVN/MCP/桌面命令服务，仅监听 `127.0.0.1` |
 | `config-store.mjs` | 配置校验和 Windows DPAPI 密钥存储 |
 | `jira-client.mjs` | Jira REST 请求、单 Issue 详情、Issue 字段和状态映射 |
 | `jxl-client.mjs` | JXL Directory、分块数据及访问权限解析 |
-| `injector.mjs` | CDP 注入、内嵌文档组装和受限请求桥接 |
-| `inject/client.js` | Codex 侧栏入口、页面切换、会话绑定、右侧 Jira 浮窗、SVN 审核界面、附件挂载和自动 Bug 监控 |
-| `public/` | Jira 工作台界面、详情、Sheets 和消息模板 |
+| `lib/jira-workbench-service.mjs` | 官方工作台使用的 Jira、JXL、附件和状态流转服务边界 |
+| `lib/codex-conversation-service.mjs` | 官方 App Server 会话发现、会话存在性验证和带 revision 的 Jira 绑定服务边界 |
+| `lib/svn-workbench-service.mjs` | 官方工作台使用的 SVN 状态、差异、审核、确认和提交服务边界 |
+| `lib/action-confirmation-store.mjs` | 官方写工具的短时、一次性人工确认凭据 |
+| `mcp/` | 官方 MCP 工具、Streamable HTTP 端点和 MCP Apps 工作台 UI |
+| `injector.mjs` | 编译完整桌面工作台文档并安装最小 CDP UI 宿主 |
+| `inject/client.js` | 实现侧栏工作台容器、当前会话 Jira 浮窗、SVN MCP Apps 弹层、桌面跳转和当前窗口 App Server 命令适配 |
+| `public/` | Codex 内的完整桌面任务工作台及面板内设置；业务数据全部来自共享服务 |
 | `skills/jira-first-turn-analysis/` | 不进入可见消息正文的首轮只读分析边界和输出要求 |
-| `lib/codex-navigation.mjs` | Codex Desktop 兼容宿主适配器：导航、Skill 发现，以及读取、启动或中断当前会话 turn |
+| `lib/codex-navigation.mjs` | 当前 Codex Desktop 会话适配器与原生导航；用于桌面持有会话及官方尚未公开的跳转能力 |
 | `lib/codex-app-server-client.mjs` | 官方 App Server JSON-RPC 客户端、npm CLI 自动发现、只读能力探测及明确降级状态 |
 | `lib/codex-runtime-gateway.mjs` | 面向面板业务的稳定 Runtime 能力接口，隔离 App Server 协议细节并标记会话归属 |
 | `lib/codex-application-commands.mjs` | Application Commands、浏览器 App Server Adapter、Runtime 能力选择、安全降级和诊断快照 |
-| `lib/issue-binding-store.mjs` | 本地服务端会话绑定主存储，负责旧 `localStorage` 绑定迁移和 Runtime 归属持久化 |
-| `lib/codex-session-reader.mjs` | 从 Codex 会话日志读取项目目录、任务完成结果，并按会话、审核 ID 与快照恢复审查 turn |
-| `lib/automation-manager.mjs` | 自动分析状态、串行跟踪和企业微信推送 |
+| `lib/issue-binding-store.mjs` | 服务端会话绑定唯一存储，负责 revision 并发校验和旧 `localStorage` 一次性迁移 |
+| `lib/codex-session-reader.mjs` | 兼容读取迁移前的本地会话目录、文件操作证据和旧审核 turn；新建后台分析与审查结果不再以此为主通道 |
+| `lib/bug-monitor-service.mjs` | 服务端 Bug 发现、去重队列、App Server 分析调度和重启恢复 |
+| `lib/automation-manager.mjs` | 自动分析任务状态、结果跟踪和企业微信推送 |
 | `lib/svn-review-manager.mjs` | SVN 只读检查、审核状态持久化、可选 Codex 审核、人工确认令牌、提交前复检和显式路径 commit |
-| `lib/panel-document.mjs` | 生成不依赖外部 iframe 的内嵌面板文档 |
 | `installer/lifecycle.ps1` | 产品唯一生命周期入口：安装、覆盖升级、修复、状态检查、卸载和完全清除 |
-| `installer/product-manifest.json` | 同一产品下的组件清单；当前兼容层与后续官方 Plugin/MCP 共用一套生命周期 |
+| `installer/product-manifest.json` | 官方 Plugin、MCP、本地服务与最小桌面适配层共用的产品组件清单 |
 | `installer/install.ps1`、`installer/uninstall.ps1` | 由统一入口调用的底层安装与清理执行器 |
 
 ## 常见问题
@@ -490,17 +540,17 @@ App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.
 
 完全退出所有 Codex 窗口，然后只使用安装器创建的快捷方式。若任务栏固定的是商店版原入口，请先取消固定。
 
-### 点击 Jira 面板后空白、闪回或内容崩溃
+### 点击 Jira 任务后没有打开工作台
 
-先重新运行安装器升级到同一版本的完整文件，再检查 `.runtime` 中的 `server.stderr.log` 和 `injector.stderr.log`。面板版本必须与注入器版本一致。
+侧栏“Jira 任务”会在 Codex 主内容区挂载完整桌面工作台，设置在工作台内部打开；SVN 审核从浮窗或任务详情进入 MCP Apps 弹层。面板的 Jira、绑定和配置操作调用本机共享服务，Skill 与会话由 App Server 读取。若入口或页面无法打开，先查看 `.runtime` 中的 `server.stderr.log` 和 `injector.stderr.log`，再通过维护助手核对 Plugin 和服务状态；注入器异常只影响 UI 入口、浮窗和桌面跳转，不会产生第二份任务或绑定数据。
 
 ### 已绑定会话无法打开
 
-在 Issue 详情中点击“更改关联”。可以绑定当前或侧栏中的已有会话、直接输入会话 ID，也可以新建会话。绑定已有会话不会发送消息。
+在 Issue 详情中点击“更改关联”。可以从 App Server 返回的已有会话中选择，也可以新建会话。绑定已有会话不会发送消息。
 
 ### App Server 显示不可用
 
-先执行 `npm run codex:probe`。如果错误指向 `WindowsApps`、`EPERM` 或 `EACCES`，说明系统命令解析到了 Store 包内部受保护的程序；重新运行安装器，或手工执行 `npm install -g @openai/codex@latest`。面板不会因此阻塞，只读查询、Skill、会话验证和安全的新会话操作会按能力回退到桌面兼容通道。
+先执行 `npm run codex:probe`。如果错误指向 `WindowsApps`、`EPERM` 或 `EACCES`，说明系统命令解析到了 Store 包内部受保护的程序；重新运行安装器，或手工执行 `npm install -g @openai/codex@latest`。Jira 只读查询仍可工作，但依赖 App Server 的 Skill、会话验证、后台分析和 Codex 审查会明确不可用，不会悄悄扫描 session/rollout 作为新业务回退。
 
 ### 没有显示 JXL Sheet
 
@@ -513,19 +563,19 @@ App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.
 - Jira 配置连接正常。
 - “自动分析新 Bug”开关处于开启状态。
 - Bug 位于当前待修复或处理中的 Bug 列表。
-- 本地服务和注入器仍在运行。
+- 本地服务仍在运行；关闭官方工作台或退出 Codex 页面不会停止服务端监控。
 - 该 Bug 没有已经进入当前监控记录或正在分析。
 
 ## 安全与已知限制
 
-- Jira 写操作仅限用户在 Issue 详情或会话浮窗中二次确认的状态流转；没有修改摘要、描述、评论或附件的接口。
+- Jira 写操作仅限用户在官方 Issue 详情中二次确认的状态流转；没有修改摘要、描述、评论或附件的接口。
 - SVN 是直接写入远端仓库的操作：只有审核未阻断、快照仍一致且用户人工勾选确认后才可执行。Codex 审查可以关闭或取消，但关闭后必须由用户明确确认已完成人工审核；Codex 审查 turn 本身永远不会触发 commit。
 - SVN commit 只接收审核快照中的显式相对路径，不会以整个工作副本 `.` 作为提交目标，也不会保存 SVN 凭据。
 - 提交命令结束不等于成功：系统优先通过 SVN 日志唯一确认 revision；结果不明确时禁止自动重试。人工核实仓库后可以登记实际 revision，或在确认未提交时放弃草稿。
 - 同一 Jira 可以多次提交，SVN 提交记录与 Jira 状态完全解耦。
 - 状态流转提交前会重新校验 Jira 当前可用 transitions；要求额外字段的操作只能在 Jira 原页面完成。
 - 企业微信推送是另一项可选外部写操作，只有配置 Webhook 并启用自动分析后才会发生。
-- App Server 控制面使用官方文档描述的 JSON-RPC 协议，但官方目前仍将 `app-server` 标为实验能力，因此协议变化被限制在 Runtime Adapter 内；Codex Desktop 当前没有公开 Jira 面板 UI 扩展位，侧栏和浮窗仍属于非官方 CDP 注入，客户端升级后可能需要更新 DOM 或桌面桥接适配。
+- App Server 控制面使用官方文档描述的 JSON-RPC 协议，协议变化被限制在 Runtime Adapter 内；官方 Plugin/MCP Apps UI 与侧栏完整工作台复用同一业务服务。Codex Desktop 当前没有公开的自定义侧栏入口、完整主区工作台、当前会话浮窗和按 ID 桌面跳转接口，因此这些桌面展示能力及当前窗口命令适配仍属于最小 CDP 层，客户端升级后可能需要调整。
 - CDP 没有面向其他本机进程的身份认证，只应在可信设备上使用，不要将 `47823` 或 `47824` 转发到局域网或公网。
 - 面板请求桥接限制目标来源、HTTP 方法、请求头和传输大小，它不是通用网络代理。
 - 当前产品配置固定为 Jira Data Center，不提供 Jira Cloud 切换。

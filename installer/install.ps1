@@ -20,6 +20,8 @@ $stateSchemaVersion = 2
 $uninstallRegistryPath = $UninstallRegistryPath
 $sourceRoot = Split-Path -Parent $PSScriptRoot
 $userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc'
+$pluginMarketplaceName = 'jira-codex-local'
+$pluginSelector = "jira-codex-assistant@$pluginMarketplaceName"
 
 function Get-FullPath([string]$Path) {
   [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($Path))
@@ -54,7 +56,9 @@ function New-Shortcut {
     [string]$Arguments,
     [string]$WorkingDirectory,
     [string]$Description,
-    [string]$IconLocation
+    [string]$IconLocation,
+    [ValidateRange(1, 7)]
+    [int]$WindowStyle = 7
   )
 
   New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null
@@ -64,7 +68,7 @@ function New-Shortcut {
   $shortcut.Arguments = $Arguments
   $shortcut.WorkingDirectory = $WorkingDirectory
   $shortcut.Description = $Description
-  $shortcut.WindowStyle = 7
+  $shortcut.WindowStyle = $WindowStyle
   if ($IconLocation) { $shortcut.IconLocation = "$IconLocation,0" }
   $shortcut.Save()
 }
@@ -203,6 +207,126 @@ function Find-CodexCliExecutable {
   return ''
 }
 
+function ConvertTo-NormalizedPath([string]$Path) {
+  if (-not $Path) { return '' }
+  $normalized = Get-FullPath $Path
+  if ($normalized.StartsWith('\\?\', [System.StringComparison]::Ordinal)) {
+    $normalized = $normalized.Substring(4)
+  }
+  return $normalized.TrimEnd('\')
+}
+
+function Get-CodexPluginRegistration {
+  param(
+    [string]$CodexCommand,
+    [string]$PluginSelector,
+    [string]$MarketplaceName,
+    [string]$MarketplaceRoot
+  )
+
+  $result = [ordered]@{
+    probeAvailable = $false
+    pluginRegistered = $false
+    pluginEnabled = $false
+    marketplaceRegistered = $false
+    marketplaceRootMatches = $false
+    healthy = $false
+  }
+  if (-not $CodexCommand) { return $result }
+
+  try {
+    $pluginOutput = @(& $CodexCommand plugin list --json 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $result }
+    $marketplaceOutput = @(& $CodexCommand plugin marketplace list --json 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $result }
+    $plugins = ($pluginOutput -join "`n") | ConvertFrom-Json
+    $marketplaces = ($marketplaceOutput -join "`n") | ConvertFrom-Json
+    $plugin = @($plugins.installed) | Where-Object { [string]$_.pluginId -eq $PluginSelector } | Select-Object -First 1
+    $marketplace = @($marketplaces.marketplaces) | Where-Object { [string]$_.name -eq $MarketplaceName } | Select-Object -First 1
+    $result.probeAvailable = $true
+    $result.pluginRegistered = [bool]($plugin -and ($null -eq $plugin.installed -or [bool]$plugin.installed))
+    $result.pluginEnabled = [bool]($plugin -and ($null -eq $plugin.enabled -or [bool]$plugin.enabled))
+    $result.marketplaceRegistered = [bool]$marketplace
+    $result.marketplaceRootMatches = [bool]($marketplace -and (
+      (ConvertTo-NormalizedPath ([string]$marketplace.root)) -eq (ConvertTo-NormalizedPath $MarketplaceRoot)
+    ))
+    $result.healthy = $result.pluginRegistered -and $result.pluginEnabled `
+      -and $result.marketplaceRegistered -and $result.marketplaceRootMatches
+  } catch {}
+  return $result
+}
+
+function Remove-ObsoleteManifestComponents {
+  param(
+    [object]$PreviousManifest,
+    [object]$CurrentManifest,
+    [string]$ApplicationRoot
+  )
+
+  if (-not $PreviousManifest) { return }
+  $rootBoundary = (Get-FullPath $ApplicationRoot).TrimEnd('\') + '\'
+  $currentPaths = @($CurrentManifest.components | ForEach-Object { [string]$_.path } | Where-Object { $_ })
+  foreach ($component in @($PreviousManifest.components)) {
+    $relativePath = [string]$component.path
+    if (-not $relativePath) { continue }
+    $stillManaged = @($currentPaths | Where-Object { $_ -eq $relativePath }).Count -gt 0
+    if ($stillManaged) { continue }
+
+    $target = Get-FullPath (Join-Path $ApplicationRoot $relativePath)
+    if (-not $target.StartsWith($rootBoundary, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "旧组件路径超出产品目录，已拒绝清理：$relativePath"
+    }
+    if (Test-Path -LiteralPath $target) {
+      Remove-Item -LiteralPath $target -Recurse -Force
+      Write-Host "已清理废弃组件：$relativePath"
+    }
+  }
+}
+
+function Install-CodexPlugin {
+  param(
+    [string]$CodexCommand,
+    [string]$MarketplaceRoot,
+    [string]$PreviousPluginSelector = '',
+    [string]$PreviousMarketplaceName = ''
+  )
+
+  if (-not $CodexCommand) {
+    throw '未找到 Codex CLI，无法注册核心 Codex Plugin。安装尚未完成。'
+  }
+
+  # Update/repair must not leave a cache snapshot pointing at an older install.
+  foreach ($selector in @($pluginSelector, $PreviousPluginSelector) | Where-Object { $_ } | Select-Object -Unique) {
+    & $CodexCommand plugin remove $selector --json 2>$null | Out-Null
+  }
+  foreach ($marketplace in @($pluginMarketplaceName, $PreviousMarketplaceName) | Where-Object { $_ } | Select-Object -Unique) {
+    & $CodexCommand plugin marketplace remove $marketplace --json 2>$null | Out-Null
+  }
+
+  & $CodexCommand plugin marketplace add $MarketplaceRoot --json | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "无法注册核心 Codex Plugin Marketplace（退出码 $LASTEXITCODE）。安装尚未完成。"
+  }
+  & $CodexCommand plugin add $pluginSelector --json | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    $pluginExitCode = $LASTEXITCODE
+    & $CodexCommand plugin marketplace remove $pluginMarketplaceName --json 2>$null | Out-Null
+    throw "无法安装核心 Codex Plugin（退出码 $pluginExitCode）。安装尚未完成。"
+  }
+  $registration = Get-CodexPluginRegistration `
+    -CodexCommand $CodexCommand `
+    -PluginSelector $pluginSelector `
+    -MarketplaceName $pluginMarketplaceName `
+    -MarketplaceRoot $MarketplaceRoot
+  if (-not $registration.healthy) {
+    & $CodexCommand plugin remove $pluginSelector --json 2>$null | Out-Null
+    & $CodexCommand plugin marketplace remove $pluginMarketplaceName --json 2>$null | Out-Null
+    throw 'Codex CLI 已返回成功，但未能核验核心 Plugin/Marketplace 注册。安装尚未完成。'
+  }
+  Write-Host "已安装官方 Codex Plugin：$pluginSelector"
+  return $true
+}
+
 if ($env:OS -ne 'Windows_NT') {
   throw '此安装器仅支持 Windows。'
 }
@@ -222,14 +346,17 @@ if ($nodeVersion.Major -lt 22) {
 }
 $npmCommand = Get-Command npm.cmd -ErrorAction SilentlyContinue
 if (-not $npmCommand) { $npmCommand = Get-Command npm -ErrorAction SilentlyContinue }
+if (-not $npmCommand) {
+  throw '未找到 npm。本地 MCP 服务需要 npm 安装运行依赖。'
+}
 
 $codexPackage = Get-AppxPackage -Name 'OpenAI.Codex' -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $codexPackage) {
   throw '未找到 Microsoft Store 版 Codex（OpenAI.Codex）。'
 }
 
-$requiredFiles = @('package.json', 'server.mjs', 'injector.mjs', 'jira-client.mjs', 'jxl-client.mjs', 'config-store.mjs', 'README.md')
-$requiredDirectories = @('public', 'inject', 'lib', 'scripts', 'installer', 'skills')
+$requiredFiles = @('package.json', 'package-lock.json', 'server.mjs', 'injector.mjs', 'jira-client.mjs', 'jxl-client.mjs', 'config-store.mjs', 'README.md')
+$requiredDirectories = @('public', 'inject', 'lib', 'mcp', 'scripts', 'installer', 'skills')
 foreach ($relativePath in @($requiredFiles + $requiredDirectories)) {
   if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot $relativePath))) {
     throw "安装源缺少必要文件：$relativePath"
@@ -268,6 +395,10 @@ $existingStatePath = @(
 $existingState = if ($existingStatePath) {
   try { Get-Content -Raw -LiteralPath $existingStatePath | ConvertFrom-Json } catch { $null }
 } else { $null }
+$previousManifestPath = Join-Path $InstallRoot 'installer\product-manifest.json'
+$previousProductManifest = if ((Get-FullPath $sourceRoot) -ne (Get-FullPath $InstallRoot) -and (Test-Path -LiteralPath $previousManifestPath)) {
+  try { Get-Content -Raw -LiteralPath $previousManifestPath | ConvertFrom-Json } catch { $null }
+} else { $null }
 if ($Operation -eq 'Auto') { $Operation = if ($existingState) { 'Update' } else { 'Install' } }
 $action = switch ($Operation) {
   'Repair' { '修复' }
@@ -277,23 +408,23 @@ $action = switch ($Operation) {
 if (-not $PSCmdlet.ShouldProcess($InstallRoot, "$action $productName")) {
   Write-Host "[WhatIf] 将把程序安装到：$InstallRoot"
   Write-Host "[WhatIf] 登录自启：$StartAtLogon；桌面快捷方式：$DesktopShortcut；安装后启动：$LaunchAfterInstall"
-  Write-Host "[WhatIf] 独立 Codex CLI：$InstallCodexCli（用于官方 App Server；失败时仍保留桌面兼容桥接）"
+  Write-Host "[WhatIf] 独立 Codex CLI：$InstallCodexCli（用于官方 App Server 与核心 Plugin；缺失会使安装失败）"
   return
 }
 
 $codexCliPath = Find-CodexCliExecutable -NpmCommand $npmCommand
 if (-not $codexCliPath -and $InstallCodexCli) {
   if (-not $npmCommand) {
-    Write-Warning '未找到 npm，无法安装独立 Codex CLI；面板将继续使用桌面兼容桥接。'
+    throw '未找到 npm，无法安装核心 Codex CLI。'
   } else {
     Write-Host '正在安装当前用户 Node 环境的官方 Codex CLI，用于 App Server 稳定接口……'
     & $npmCommand.Source install -g '@openai/codex@latest'
     if ($LASTEXITCODE -ne 0) {
-      Write-Warning "Codex CLI 安装失败（退出码 $LASTEXITCODE）；面板仍可通过桌面兼容桥接运行。"
+      throw "Codex CLI 安装失败（退出码 $LASTEXITCODE）。"
     }
     $codexCliPath = Find-CodexCliExecutable -NpmCommand $npmCommand
     if (-not $codexCliPath) {
-      Write-Warning '没有找到 npm 版 Codex CLI 的独立可执行文件；App Server 将保持降级状态。'
+      throw 'Codex CLI 安装命令已结束，但没有找到可执行文件。'
     }
   }
 }
@@ -306,6 +437,10 @@ if ((Get-FullPath $sourceRoot) -ne (Get-FullPath $InstallRoot)) {
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 $sourceIsInstallRoot = (Get-FullPath $sourceRoot).TrimEnd('\') -eq (Get-FullPath $InstallRoot).TrimEnd('\')
 if (-not $sourceIsInstallRoot) {
+  Remove-ObsoleteManifestComponents `
+    -PreviousManifest $previousProductManifest `
+    -CurrentManifest $productManifest `
+    -ApplicationRoot $InstallRoot
   foreach ($file in $requiredFiles) {
     Copy-Item -LiteralPath (Join-Path $sourceRoot $file) -Destination (Join-Path $InstallRoot $file) -Force
   }
@@ -339,19 +474,38 @@ if (-not $sourceIsInstallRoot) {
   }
 }
 
+Write-Host '正在安装本地服务运行依赖……'
+Push-Location $InstallRoot
+try {
+  & $npmCommand.Source ci --omit=dev --no-audit --no-fund
+  if ($LASTEXITCODE -ne 0) {
+    throw "本地服务依赖安装失败（npm 退出码 $LASTEXITCODE）。"
+  }
+} finally {
+  Pop-Location
+}
+
+$previousPluginSelector = if ($existingState -and $existingState.codexPluginSelector) { [string]$existingState.codexPluginSelector } else { '' }
+$previousMarketplaceName = if ($existingState -and $existingState.codexPluginMarketplace) { [string]$existingState.codexPluginMarketplace } else { '' }
+$pluginRegistered = Install-CodexPlugin `
+  -CodexCommand $codexCliPath `
+  -MarketplaceRoot $InstallRoot `
+  -PreviousPluginSelector $previousPluginSelector `
+  -PreviousMarketplaceName $previousMarketplaceName
+
 $launcherPath = Join-Path $InstallRoot 'scripts\launch-codex-jira.ps1'
 $lifecyclePath = Join-Path $InstallRoot 'installer\lifecycle.ps1'
 $launcherArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPath`""
 $backgroundArguments = "$launcherArguments -Background"
 $maintenanceArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$lifecyclePath`" -Action Menu -InstallRoot `"$InstallRoot`" -UninstallRegistryPath `"$uninstallRegistryPath`""
 
-New-Shortcut -Path $startMenuShortcut -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动带 Jira 任务面板的 Codex' -IconLocation $iconPath
-New-Shortcut -Path $maintenanceShortcut -TargetPath $powerShellPath -Arguments $maintenanceArguments -WorkingDirectory $InstallRoot -Description '修复或卸载 Jira Codex 助手' -IconLocation $iconPath
+New-Shortcut -Path $startMenuShortcut -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动 Jira Codex 助手' -IconLocation $iconPath
+New-Shortcut -Path $maintenanceShortcut -TargetPath $powerShellPath -Arguments $maintenanceArguments -WorkingDirectory $InstallRoot -Description '修复或卸载 Jira Codex 助手' -IconLocation $iconPath -WindowStyle 1
 Remove-LegacyLifecycleShortcut -Path $legacyUninstallShortcut -ExpectedRoot $InstallRoot
 Remove-ManagedShortcut -Path $legacyStartMenuShortcut -ExpectedRoot $InstallRoot
 
 if ($DesktopShortcut) {
-  New-Shortcut -Path $desktopShortcutPath -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动带 Jira 任务面板的 Codex' -IconLocation $iconPath
+  New-Shortcut -Path $desktopShortcutPath -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动 Jira Codex 助手' -IconLocation $iconPath
 } elseif (Test-Path -LiteralPath $desktopShortcutPath) {
   Remove-ManagedShortcut -Path $desktopShortcutPath -ExpectedRoot $InstallRoot
 }
@@ -395,6 +549,9 @@ $metadata = [ordered]@{
   userDataRoot = $userDataRoot
   codexAppServerCommand = $codexCliPath
   codexAppServerInstallAttempted = $InstallCodexCli
+  codexPluginSelector = $pluginSelector
+  codexPluginMarketplace = $pluginMarketplaceName
+  codexPluginRegistered = $pluginRegistered
   startAtLogon = $StartAtLogon
   desktopShortcut = $DesktopShortcut
   startMenuDirectory = $StartMenuDirectory
@@ -409,6 +566,8 @@ $metadata = [ordered]@{
     registryKeys = @($uninstallRegistryPath)
     programRoot = $InstallRoot
     userDataRoot = $userDataRoot
+    codexPlugin = $pluginSelector
+    codexPluginMarketplace = $pluginMarketplaceName
   }
 }
 $metadataJson = $metadata | ConvertTo-Json -Depth 8
@@ -440,11 +599,7 @@ Write-Host "Windows 已安装的应用：$productName"
 if ($DesktopShortcut) { Write-Host "桌面快捷方式：$desktopShortcutPath" }
 if ($StartAtLogon) { Write-Host '登录自启：已启用。' } else { Write-Host '登录自启：未启用，避免与商店版原入口同时打开两个实例。' }
 Write-Host "Jira Token：未写入安装目录，首次打开面板时由当前用户配置。"
-if ($codexCliPath) {
-  Write-Host "Codex App Server：已配置独立 CLI（$codexCliPath）。"
-} else {
-  Write-Warning 'Codex App Server：独立 CLI 不可用，当前版本会自动降级到桌面兼容桥接。'
-}
+Write-Host "Codex App Server 与核心 Plugin：已配置并核验独立 CLI（$codexCliPath）。"
 if ($ordinaryCodexRunning) {
   Write-Warning '当前已有不带参数的 Codex 正在运行。首次启动快捷方式时会询问是否正常重启 Codex。'
 }

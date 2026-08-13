@@ -23,28 +23,69 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.match(lifecycle, /\$PSBoundParameters\.ContainsKey\('StartAtLogon'\)/);
   assert.match(lifecycle, /if \(-not \$desktopShortcutSpecified\)/);
   assert.match(lifecycle, /function Get-LifecycleStatus/);
+  assert.match(lifecycle, /function Wait-LifecycleMenu/);
+  assert.match(lifecycle, /function Write-LifecycleStatusSummary/);
+  assert.match(lifecycle, /按 Enter 返回维护菜单/);
+  assert.match(lifecycle, /while \(\$true\)/);
+  assert.match(lifecycle, /操作失败：/);
   assert.match(lifecycle, /missingRequiredComponents/);
   assert.match(lifecycle, /registryPresent/);
+  assert.match(lifecycle, /plugin list --json/);
+  assert.match(lifecycle, /plugin marketplace list --json/);
+  assert.match(lifecycle, /codexRegistrationHealthy/);
   assert.match(install, /install-state\.json/);
   assert.match(install, /foreach \(\$component in @\(\$productManifest\.components\)\)/);
   assert.match(install, /组件路径超出产品目录/);
+  assert.match(install, /npmCommand\.Source ci --omit=dev/);
+  assert.match(install, /plugin marketplace add \$MarketplaceRoot/);
+  assert.match(install, /plugin add \$pluginSelector/);
+  assert.match(install, /plugin add \$pluginSelector --json \| Out-Null/);
+  assert.match(install, /function Remove-ObsoleteManifestComponents/);
+  assert.match(install, /未找到 Codex CLI，无法注册核心 Codex Plugin/);
+  assert.match(install, /未能核验核心 Plugin\/Marketplace 注册/);
   assert.match(install, /Windows\\CurrentVersion\\Uninstall\\JiraCodexAssistant/);
   assert.match(install, /维护 Jira Codex 助手\.lnk/);
+  assert.match(install, /-Description '修复或卸载 Jira Codex 助手' -IconLocation \$iconPath -WindowStyle 1/);
   assert.match(uninstall, /install-state\.json/);
   assert.match(uninstall, /Remove-Item -LiteralPath \$uninstallRegistryPath/);
+  assert.match(uninstall, /plugin remove \$pluginSelector/);
+  assert.match(uninstall, /plugin marketplace remove \$pluginMarketplaceName/);
+  assert.match(uninstall, /metadata\.codexAppServerCommand/);
+  assert.match(uninstall, /function Get-CodexRegistrationCleanupStatus/);
+  assert.match(uninstall, /卸载未完成：无法确认核心 Plugin\/Marketplace 注册已清理/);
   assert.equal(manifest.productId, "jira-codex-panel");
   assert.equal(manifest.displayName, "Jira Codex 助手");
   assert.equal(manifest.components.some((component) => (
     component.id === "official-plugin"
-    && !component.required
-    && component.path === ".codex-plugin/plugin.json"
+    && component.required
+    && component.path === "plugins/jira-codex-assistant"
   )), true);
-  assert.equal(manifest.components.some((component) => component.id === "mcp-server" && !component.required), true);
+  assert.equal(manifest.components.some((component) => component.id === "plugin-marketplace" && component.required), true);
+  assert.equal(manifest.components.some((component) => (
+    component.id === "settings-ui"
+    && component.required
+    && component.path === "public"
+  )), true);
+  assert.equal(manifest.components.some((component) => component.id === "mcp-server" && component.required), true);
+  assert.equal(manifest.components.some((component) => (
+    component.id === "minimal-desktop-ui-host"
+    && component.required
+    && component.path === "injector.mjs"
+  )), true);
   assert.equal(manifest.components.some((component) => (
     component.id === "codex-application-commands"
     && component.required
     && component.path === "lib/codex-application-commands.mjs"
   )), true);
+  for (const [id, path] of [
+    ["jira-workbench-service", "lib/jira-workbench-service.mjs"],
+    ["codex-conversation-service", "lib/codex-conversation-service.mjs"],
+    ["svn-workbench-service", "lib/svn-workbench-service.mjs"]
+  ]) {
+    assert.equal(manifest.components.some((component) => (
+      component.id === id && component.required && component.path === path
+    )), true);
+  }
 });
 
 test("lifecycle status works without an installed product", {
@@ -96,7 +137,113 @@ test("lifecycle status detects missing installed components from the live filesy
     assert.deepEqual(status.missingRequiredComponents, ["panel-ui"]);
     assert.equal(status.components.find((component) => component.id === "local-service").installed, true);
     assert.equal(status.components.find((component) => component.id === "official-plugin").installed, false);
+    assert.equal(status.codexRegistrationHealthy, false);
     assert.equal(status.healthy, false);
+  } finally {
+    await rm(installRoot, { recursive: true, force: true });
+  }
+});
+
+test("uninstall preserves program files when Codex registration cleanup cannot be verified", {
+  skip: process.platform !== "win32"
+}, async () => {
+  const installRoot = await mkdtemp(join(tmpdir(), "jira-codex-uninstall-plugin-guard-"));
+  try {
+    const fakeCodex = join(installRoot, "fake-codex.cmd");
+    const pluginJson = JSON.stringify({
+      installed: [{ pluginId: "jira-codex-assistant@jira-codex-local", installed: true, enabled: true }]
+    });
+    const marketplaceJson = JSON.stringify({
+      marketplaces: [{ name: "jira-codex-local", root: installRoot }]
+    });
+    await writeFile(fakeCodex, [
+      "@echo off",
+      `if \"%*\"==\"plugin list --json\" (echo ${pluginJson}& exit /b 0)`,
+      `if \"%*\"==\"plugin marketplace list --json\" (echo ${marketplaceJson}& exit /b 0)`,
+      "exit /b 0"
+    ].join("\r\n"), "utf8");
+    await writeFile(join(installRoot, "install-state.json"), JSON.stringify({
+      productId: "jira-codex-panel",
+      userDataRoot: join(installRoot, "user-data-not-owned"),
+      shortcuts: [],
+      codexAppServerCommand: fakeCodex,
+      codexPluginSelector: "jira-codex-assistant@jira-codex-local",
+      codexPluginMarketplace: "jira-codex-local",
+      codexPluginRegistered: true
+    }), "utf8");
+
+    assert.throws(() => execFileSync("powershell.exe", [
+      "-NoProfile",
+      "-ExecutionPolicy", "Bypass",
+      "-File", join(root, "installer", "uninstall.ps1"),
+      "-InstallRoot", installRoot,
+      "-Force"
+    ], { encoding: "utf8", windowsHide: true, stdio: "pipe" }));
+    const preservedState = JSON.parse(await readFile(join(installRoot, "install-state.json"), "utf8"));
+    assert.equal(preservedState.productId, "jira-codex-panel");
+  } finally {
+    await rm(installRoot, { recursive: true, force: true });
+  }
+});
+
+test("lifecycle status verifies live Codex plugin and marketplace registration", {
+  skip: process.platform !== "win32"
+}, async () => {
+  const installRoot = await mkdtemp(join(tmpdir(), "jira-codex-lifecycle-plugin-status-"));
+  try {
+    const manifest = {
+      productId: "jira-codex-panel",
+      components: [
+        { id: "official-plugin", required: true, path: "plugins/jira-codex-assistant" },
+        { id: "plugin-marketplace", required: true, path: ".agents/plugins/marketplace.json" }
+      ]
+    };
+    const fakeCodex = join(installRoot, "fake-codex.cmd");
+    const pluginJson = JSON.stringify({
+      installed: [{
+        pluginId: "jira-codex-assistant@jira-codex-local",
+        installed: true,
+        enabled: true
+      }]
+    });
+    const marketplaceJson = JSON.stringify({
+      marketplaces: [{ name: "jira-codex-local", root: installRoot }]
+    });
+    await mkdir(join(installRoot, "installer"), { recursive: true });
+    await mkdir(join(installRoot, "plugins", "jira-codex-assistant"), { recursive: true });
+    await mkdir(join(installRoot, ".agents", "plugins"), { recursive: true });
+    await writeFile(join(installRoot, "installer", "product-manifest.json"), JSON.stringify(manifest), "utf8");
+    await writeFile(join(installRoot, ".agents", "plugins", "marketplace.json"), "{}", "utf8");
+    await writeFile(fakeCodex, [
+      "@echo off",
+      `if \"%*\"==\"plugin list --json\" (echo ${pluginJson}& exit /b 0)`,
+      `if \"%*\"==\"plugin marketplace list --json\" (echo ${marketplaceJson}& exit /b 0)`,
+      "exit /b 1"
+    ].join("\r\n"), "utf8");
+    await writeFile(join(installRoot, "install-state.json"), JSON.stringify({
+      productId: "jira-codex-panel",
+      version: "0.27.0",
+      shortcuts: [],
+      codexAppServerCommand: fakeCodex,
+      codexPluginSelector: "jira-codex-assistant@jira-codex-local",
+      codexPluginMarketplace: "jira-codex-local",
+      uninstallRegistryPath: "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JiraCodexAssistantPluginStatusTest"
+    }), "utf8");
+
+    const output = execFileSync("powershell.exe", [
+      "-NoProfile",
+      "-ExecutionPolicy", "Bypass",
+      "-File", join(root, "installer", "lifecycle.ps1"),
+      "-Action", "Status",
+      "-InstallRoot", installRoot
+    ], { encoding: "utf8", windowsHide: true });
+    const status = JSON.parse(output);
+    assert.equal(status.codexRegistration.probeAvailable, true);
+    assert.equal(status.codexRegistration.pluginRegistered, true);
+    assert.equal(status.codexRegistration.pluginEnabled, true);
+    assert.equal(status.codexRegistration.marketplaceRegistered, true);
+    assert.equal(status.codexRegistration.marketplaceRootMatches, true);
+    assert.equal(status.codexRegistrationHealthy, true);
   } finally {
     await rm(installRoot, { recursive: true, force: true });
   }

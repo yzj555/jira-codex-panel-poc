@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildSvnCommitMessage,
+  buildSvnReviewOutputSchema,
   createSvnReviewManager,
   normalizeSvnRelativePath,
   parseSvnInfoXml,
@@ -78,6 +79,7 @@ function createHarness({
   reviewStateFile = "",
   findReviewTurn = null,
   externalDiffLauncher = null,
+  turnReader = null,
   commitLogMode: initialCommitLogMode = "record",
   commitLogMessageTransform = (value) => value,
   now = () => Date.now()
@@ -139,6 +141,7 @@ function createHarness({
     readTouchedFiles: async () => touchedFiles
   };
   const createManager = () => createSvnReviewManager({
+    turnReader,
     sessionReader,
     commandRunner,
     reviewArtifactsRoot,
@@ -286,6 +289,76 @@ test("只扫描当前 Codex 项目，并用会话文件操作证据推荐候选�
   );
 });
 
+test("新 SVN 业务使用服务端绑定工作区，并只采信 App Server 的结构化文件证据", async () => {
+  const officialThread = {
+    thread: {
+      id: "thread-official",
+      cwd: workingCopyRoot,
+      turns: [{
+        id: "turn-1",
+        startedAt: "2026-08-12T08:00:00.000Z",
+        items: [{
+          id: "change-1",
+          type: "fileChange",
+          changes: [{ path: "src/player.go", kind: "update" }]
+        }]
+      }]
+    }
+  };
+  const harness = createHarness({
+    touchedFiles: [{ path: `${workingCopyRoot}\\untrusted-rollout.go`, type: "update" }],
+    turnReader: {
+      readThread: async () => officialThread,
+      readTurnResult: async () => null
+    }
+  });
+
+  const context = await harness.manager.inspect({
+    threadId: "thread-official",
+    issue,
+    workspaceContext: {
+      cwd: workingCopyRoot,
+      workspaceRoots: [workingCopyRoot],
+      projectId: "project-1",
+      source: "service-binding"
+    }
+  });
+
+  assert.equal(context.session.source, "service-binding");
+  assert.equal(context.session.projectId, "project-1");
+  assert.equal(context.changes[0].recommended, true);
+  assert.equal(context.changes[0].recommendationConfidence, "high");
+  assert.equal(context.changes[0].recommendationReason, "当前 Codex 会话直接修改");
+});
+
+test("绑定工作区没有结构化文件证据时使用 SVN 基线推荐，不回读 rollout 归因", async () => {
+  const harness = createHarness({
+    touchedFiles: [{ path: `${workingCopyRoot}\\src\\player.go`, type: "update" }]
+  });
+  harness.setStatus("<?xml version=\"1.0\"?><status><target path=\".\"></target></status>");
+  const workspaceContext = {
+    cwd: workingCopyRoot,
+    workspaceRoots: [workingCopyRoot],
+    source: "service-binding"
+  };
+  await harness.manager.recordBaseline({
+    threadId: "thread-bound",
+    issueKey: issue.key,
+    boundAt: Date.now(),
+    workspaceContext
+  });
+  harness.setStatus(statusXml);
+  const context = await harness.manager.inspect({
+    threadId: "thread-bound",
+    issue,
+    workspaceContext
+  });
+
+  assert.equal(context.changes[0].recommended, true);
+  assert.equal(context.changes[0].recommendationConfidence, "medium");
+  assert.equal(context.changes[0].recommendationReason, "任务绑定后出现的变更");
+});
+
 test("结构化 Codex 审核结果必须绑定审核 ID，未运行测试至少降级为 warning", () => {
   const result = parseSvnReviewResult(`SVN_REVIEW_RESULT_V1\n${JSON.stringify({
     reviewId: "audit-1",
@@ -301,6 +374,17 @@ test("结构化 Codex 审核结果必须绑定审核 ID，未运行测试至少�
     () => parseSvnReviewResult(semanticResult("another-id", "pass", "hash"), "audit-1", "hash"),
     (error) => error instanceof SvnReviewError && error.code === "SVN_REVIEW_ID_MISMATCH"
   );
+});
+
+test("官方 App Server 的纯 JSON 结构化审核结果无需旧标记也可解析", () => {
+  const rawJson = semanticResult("audit-json", "pass", "snapshot-json")
+    .split("SVN_REVIEW_RESULT_V1\n")[1];
+  const result = parseSvnReviewResult(rawJson, "audit-json", "snapshot-json");
+  assert.equal(result.verdict, "pass");
+  const schema = buildSvnReviewOutputSchema({ id: "audit-json", snapshotHash: "snapshot-json" });
+  assert.equal(schema.properties.reviewId.const, "audit-json");
+  assert.equal(schema.properties.snapshotHash.const, "snapshot-json");
+  assert.equal(schema.additionalProperties, false);
 });
 
 test("审核完成后必须人工确认，SVN commit 只包含显式审核路径且确认令牌只能使用一次", async () => {
@@ -705,6 +789,71 @@ test("旧版因 CRLF 差异误判并放弃的成功提交会从完整回执恢�
   }
 });
 
+test("running SVN reviews prefer the official App Server turn result", async () => {
+  let expectedReview = null;
+  const calls = [];
+  const harness = createHarness({
+    turnReader: {
+      readTurnResult: async (threadId, turnId) => {
+        calls.push({ threadId, turnId });
+        if (!expectedReview) return { threadId, turnId, status: "running", source: "app-server-thread-read" };
+        return {
+          threadId,
+          turnId,
+          status: "completed",
+          completedAt: new Date().toISOString(),
+          result: semanticResult(expectedReview.id, "pass", expectedReview.snapshotHash),
+          source: "app-server-thread-read"
+        };
+      }
+    }
+  });
+  const created = await harness.manager.createReview({
+    threadId: "019fcaa1-7ac6-7031-bcc5-3f85a3143ca4",
+    issue,
+    selectedPaths: ["src/player.go"]
+  });
+  expectedReview = created.review;
+  await harness.manager.beginDispatch(created.review.id, {
+    auditThreadId: created.review.threadId,
+    auditTurnId: "turn-official-review"
+  });
+  await harness.manager.poll();
+  const review = harness.manager.getReview(created.review.id);
+  assert.equal(review.status, "completed");
+  assert.equal(review.semantic.summary.length > 0, true);
+  assert.deepEqual(calls, [{
+    threadId: "019fcaa1-7ac6-7031-bcc5-3f85a3143ca4",
+    turnId: "turn-official-review"
+  }]);
+});
+
+test("App Server 审查不可读时保持等待，不会回退扫描 rollout", async () => {
+  const harness = createHarness({
+    turnReader: {
+      readTurnResult: async () => { throw new Error("temporary app-server read failure"); }
+    }
+  });
+  const manager = harness.manager;
+  const created = await manager.createReview({
+    threadId: "thread-no-rollout-fallback",
+    issue,
+    selectedPaths: ["src/player.go"]
+  });
+  await manager.beginDispatch(created.review.id, {
+    auditThreadId: created.review.threadId,
+    auditTurnId: "turn-app-server-only"
+  });
+  harness.setCompletion({
+    status: "completed",
+    turnId: "legacy-rollout-turn",
+    completedAt: new Date().toISOString(),
+    result: semanticResult(created.review.id, "pass", created.review.snapshotHash)
+  });
+  await manager.poll();
+  assert.equal(manager.getReview(created.review.id).status, "running");
+});
+
 test("双击差异只对当前项目文件调用 TortoiseSVN 启动器", async () => {
   const opened = [];
   const harness = createHarness({
@@ -840,6 +989,47 @@ test("当前会话审查使用原任务需求、SVN 原生 diff 与快照清单�
     assert.deepEqual(manifest.selectedPaths, ["src/player.go"]);
     assert.match(created.prompt, /SVN_REVIEW_REQUEST_V2/);
     assert.match(created.prompt, /svn info、svn status、svn diff、svn cat/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("新审核附件的会话上下文来自官方 App Server thread/read", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-codex-official-context-"));
+  try {
+    const harness = createHarness({
+      reviewArtifactsRoot: directory,
+      turnReader: {
+        readTurnResult: async () => null,
+        readThread: async () => ({
+          thread: {
+            id: "thread-official-context",
+            cwd: workingCopyRoot,
+            turns: [{
+              id: "turn-context",
+              items: [
+                { type: "userMessage", content: [{ type: "text", text: "官方需求上下文" }] },
+                { type: "agentMessage", text: "官方分析结论" }
+              ]
+            }]
+          }
+        })
+      }
+    });
+    const created = await harness.manager.createReview({
+      threadId: "thread-official-context",
+      issue,
+      selectedPaths: ["src/player.go"],
+      workspaceContext: {
+        cwd: workingCopyRoot,
+        workspaceRoots: [workingCopyRoot],
+        source: "service-binding"
+      }
+    });
+    const requirements = await readFile(created.review.artifacts[0].path, "utf8");
+    assert.match(requirements, /官方需求上下文/);
+    assert.match(requirements, /官方分析结论/);
+    assert.doesNotMatch(requirements, /恢复状态/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
