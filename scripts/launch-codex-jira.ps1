@@ -126,7 +126,37 @@ public static class JiraCodexWindowActivator {
   }
 }
 
+function Complete-PendingUpdateAfterRestart {
+  param([bool]$CodexStartedThisRun)
+
+  if (-not $CodexStartedThisRun) { return }
+  $updateStatePath = Join-Path $userDataRoot 'update-state.json'
+  $packagePath = Join-Path $projectRoot 'package.json'
+  if (-not (Test-Path -LiteralPath $updateStatePath) -or -not (Test-Path -LiteralPath $packagePath)) { return }
+  try {
+    $pending = Get-Content -Raw -LiteralPath $updateStatePath | ConvertFrom-Json
+    $installedVersion = [string](Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json).version
+    if ([string]$pending.state -ne 'restart_required' -or [string]$pending.targetVersion -ne $installedVersion) { return }
+    $next = [ordered]@{}
+    foreach ($property in $pending.PSObject.Properties) { $next[$property.Name] = $property.Value }
+    $next.state = 'completed'
+    $next.currentVersion = $installedVersion
+    $next.phase = 'completed'
+    $next.operationProgress = 100
+    $next.message = "Jira Codex Assistant was updated successfully to v$installedVersion."
+    $next.error = ''
+    $next.restartRequired = $false
+    $next.updatedAt = (Get-Date).ToString('o')
+    $temporary = "$updateStatePath.$PID.tmp"
+    $next | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temporary -Encoding UTF8
+    Move-Item -LiteralPath $temporary -Destination $updateStatePath -Force
+  } catch {
+    Write-Warning "Unable to acknowledge the completed update: $($_.Exception.Message)"
+  }
+}
+
 try {
+  $initialCodexProcessIds = @(Get-CodexMainProcesses | ForEach-Object { [int]$_.ProcessId })
   $cdpReady = Test-CdpEndpoint
   if (-not $cdpReady) {
     $codexProcesses = @(Get-CodexMainProcesses)
@@ -163,6 +193,11 @@ try {
   if (-not $health.ok) {
     throw "Jira 面板服务未能在端口 $PanelPort 正常启动。"
   }
+
+  $codexStartedThisRun = @(
+    Get-CodexMainProcesses | Where-Object { [int]$_.ProcessId -notin $initialCodexProcessIds }
+  ).Count -gt 0
+  Complete-PendingUpdateAfterRestart -CodexStartedThisRun $codexStartedThisRun
 
   Write-LauncherStatus -State 'ready' -Message 'Codex 与 Jira 面板均已就绪。'
   if (-not $Background) {

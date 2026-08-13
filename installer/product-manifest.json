@@ -80,6 +80,11 @@
       "path": "installer/update-bootstrap.ps1"
     },
     {
+      "id": "release-updater-host",
+      "required": true,
+      "path": "scripts/update-launcher.mjs"
+    },
+    {
       "id": "update-manager",
       "required": true,
       "path": "lib/update-manager.mjs"

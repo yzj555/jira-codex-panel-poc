@@ -9,12 +9,13 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
 test("one lifecycle entry owns install, repair and uninstall", async () => {
-  const [command, lifecycle, install, uninstall, updater, manifestText] = await Promise.all([
+  const [command, lifecycle, install, uninstall, updater, launcher, manifestText] = await Promise.all([
     readFile(join(root, "install.cmd"), "utf8"),
     readFile(join(root, "installer", "lifecycle.ps1"), "utf8"),
     readFile(join(root, "installer", "install.ps1"), "utf8"),
     readFile(join(root, "installer", "uninstall.ps1"), "utf8"),
     readFile(join(root, "installer", "update-bootstrap.ps1"), "utf8"),
+    readFile(join(root, "scripts", "launch-codex-jira.ps1"), "utf8"),
     readFile(join(root, "installer", "product-manifest.json"), "utf8")
   ]);
   const manifest = JSON.parse(manifestText);
@@ -60,12 +61,19 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.match(updater, /rolling back/);
   assert.match(updater, /Stop-CodexGracefully/);
   assert.match(updater, /Installed integrity check failed/);
+  assert.match(updater, /\[string\]\$OperationId/);
+  assert.match(updater, /-Phase 'backing_up' -OperationProgress 45/);
+  assert.match(updater, /-Phase 'completed' -OperationProgress 100/);
   assert.match(updater, /if \(-not \$RestartCodex -or -not \$codexRestarted\)/);
+  assert.match(launcher, /Complete-PendingUpdateAfterRestart/);
+  assert.match(launcher, /\$next\.state = 'completed'/);
   assert.doesNotMatch(updater, /Stop-Process[^\r\n]*ChatGPT/i);
   assert.equal(manifest.productId, "jira-codex-panel");
   assert.equal(manifest.displayName, "Jira Codex 助手");
   assert.equal(manifest.components.some((component) => component.id === "release-updater"
     && component.required && component.path === "installer/update-bootstrap.ps1"), true);
+  assert.equal(manifest.components.some((component) => component.id === "release-updater-host"
+    && component.required && component.path === "scripts/update-launcher.mjs"), true);
   assert.equal(manifest.components.some((component) => component.id === "update-manager"
     && component.required && component.path === "lib/update-manager.mjs"), true);
   assert.equal(manifest.components.some((component) => component.id === "github-update-checker"

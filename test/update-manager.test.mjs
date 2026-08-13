@@ -25,12 +25,14 @@ function releaseUpdate(version, bytes) {
   };
 }
 
-async function fixture({ corruptHash = false, blockers = [] } = {}) {
+async function fixture({ corruptHash = false, blockers = [], acknowledgeUpdater = true } = {}) {
   const root = await mkdtemp(join(tmpdir(), "jira-update-manager-"));
   const installRoot = join(root, "app");
   const userDataRoot = join(root, "data");
   const updaterSource = join(installRoot, "installer", "update-bootstrap.ps1");
+  const updaterLauncherSource = join(installRoot, "scripts", "update-launcher.mjs");
   await mkdir(join(installRoot, "installer"), { recursive: true });
+  await mkdir(join(installRoot, "scripts"), { recursive: true });
   await mkdir(userDataRoot, { recursive: true });
   await writeFile(join(installRoot, "install-state.json"), `\uFEFF${JSON.stringify({
     productId: "jira-codex-panel",
@@ -38,6 +40,7 @@ async function fixture({ corruptHash = false, blockers = [] } = {}) {
     version: "0.31.2"
   })}`, "utf8");
   await writeFile(updaterSource, "# updater", "utf8");
+  await writeFile(updaterLauncherSource, "// launcher", "utf8");
   const archive = Buffer.from("safe-release-archive");
   const version = "0.32.0";
   const update = releaseUpdate(version, archive);
@@ -65,11 +68,31 @@ async function fixture({ corruptHash = false, blockers = [] } = {}) {
     installRoot,
     userDataRoot,
     updaterSource,
+    updaterLauncherSource,
     fetchImpl,
     blockerProvider: async () => blockers,
+    updaterHandshakeTimeoutMs: 250,
     spawnImpl: (command, args, options) => {
       spawned.push({ command, args, options });
-      return { pid: 4242, unref() {} };
+      if (acknowledgeUpdater) {
+        queueMicrotask(async () => {
+          const stateFile = join(userDataRoot, "update-state.json");
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
+          const current = JSON.parse(await readFile(stateFile, "utf8"));
+          const launchConfig = JSON.parse(await readFile(args[1], "utf8"));
+          const operationIndex = launchConfig.args.indexOf("-OperationId");
+          await writeFile(stateFile, JSON.stringify({
+            ...current,
+            state: "installing",
+            updaterProcessId: 4242,
+            operationId: launchConfig.args[operationIndex + 1],
+            phase: "waiting_for_service",
+            operationProgress: 8,
+            updatedAt: new Date().toISOString()
+          }), "utf8");
+        });
+      }
+      return { pid: 4242, once() {}, unref() {}, kill() {} };
     }
   });
   return { root, installRoot, userDataRoot, updaterSource, archive, update, manager, spawned, fetchCalls };
@@ -125,9 +148,11 @@ test("人工确认后只启动用户数据目录中的独立更新器", async (t
   assert.equal(status.state, "installing");
   assert.equal(value.spawned.length, 1);
   assert.equal(value.spawned[0].options.detached, true);
-  assert.ok(value.spawned[0].args.includes("-RestartCodex"));
-  const updaterIndex = value.spawned[0].args.indexOf("-File") + 1;
-  assert.match(value.spawned[0].args[updaterIndex], /data[\\/]updater[\\/]update-bootstrap\.ps1$/i);
+  assert.match(value.spawned[0].args[0], /data[\\/]updater[\\/]update-launcher\.mjs$/i);
+  const launchConfig = JSON.parse(await readFile(value.spawned[0].args[1], "utf8"));
+  assert.ok(launchConfig.args.includes("-RestartCodex"));
+  const updaterIndex = launchConfig.args.indexOf("-File") + 1;
+  assert.match(launchConfig.args[updaterIndex], /data[\\/]updater[\\/]update-bootstrap\.ps1$/i);
 });
 
 test("选择稍后手动重启时会持续保留重启要求", async (t) => {
@@ -138,7 +163,8 @@ test("选择稍后手动重启时会持续保留重启要求", async (t) => {
   const status = await value.manager.install({ confirmVersion: "0.32.0", restartCodex: false });
   assert.equal(status.state, "installing");
   assert.equal(status.restartRequired, true);
-  assert.equal(value.spawned[0].args.includes("-RestartCodex"), false);
+  const launchConfig = JSON.parse(await readFile(value.spawned[0].args[1], "utf8"));
+  assert.equal(launchConfig.args.includes("-RestartCodex"), false);
 });
 
 test("并发下载和并发安装都只能启动一个实际操作", async (t) => {
@@ -196,5 +222,20 @@ test("服务重启后会核对孤立安装器，不会无限卡在安装中", as
   const status = await value.manager.status(value.update);
   assert.equal(status.state, "restart_required");
   assert.equal(status.restartRequired, true);
+  assert.equal(status.canReset, true);
+});
+
+test("独立更新器未确认接管时不会永久卡在 installing", async (t) => {
+  const value = await fixture({ acknowledgeUpdater: false });
+  t.after(() => rm(value.root, { recursive: true, force: true }));
+  await value.manager.startDownload(value.update);
+  await value.manager.waitForIdle();
+  await assert.rejects(
+    value.manager.install({ confirmVersion: "0.32.0", restartCodex: true }),
+    (error) => error.code === "UPDATE_UPDATER_HANDSHAKE_FAILED"
+  );
+  const status = await value.manager.status(value.update);
+  assert.equal(status.state, "failed");
+  assert.equal(status.phase, "failed");
   assert.equal(status.canReset, true);
 });

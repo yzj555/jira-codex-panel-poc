@@ -73,6 +73,13 @@ const updateCheckLink = document.querySelector("#update-check-link");
 const checkUpdatesNow = document.querySelector("#check-updates-now");
 const updateDownloadProgress = document.querySelector("#update-download-progress");
 const updateInstallDetail = document.querySelector("#update-install-detail");
+const updateOperation = document.querySelector("#update-operation");
+const updateOperationIndicator = document.querySelector("#update-operation-indicator");
+const updateOperationTitle = document.querySelector("#update-operation-title");
+const updateOperationPercent = document.querySelector("#update-operation-percent");
+const updateOperationProgress = document.querySelector("#update-operation-progress");
+const updateOperationSteps = Array.from(document.querySelectorAll("[data-update-step]"));
+const updateOperationHint = document.querySelector("#update-operation-hint");
 const downloadUpdate = document.querySelector("#download-update");
 const cancelUpdateDownload = document.querySelector("#cancel-update-download");
 const installUpdateLater = document.querySelector("#install-update-later");
@@ -328,6 +335,55 @@ function safeGitHubUpdateUrl(value) {
   }
 }
 
+const UPDATE_PHASE_VIEW = {
+  downloading: { title: "正在下载安装包", hint: "安装包下载完成后会自动进行大小与 SHA-256 校验。", activeStep: 0 },
+  verified: { title: "安装包已校验", hint: "更新包已准备就绪，确认后才会开始修改本机安装。", activeStep: -1, completedThrough: 0 },
+  launching: { title: "正在启动独立更新器", hint: "更新器确认接管后，本地服务才会安全退出。", activeStep: 1, completedThrough: 0 },
+  waiting_for_service: { title: "正在安全移交安装", hint: "本地服务正在退出，面板可能短暂断开；安装会在后台继续。", activeStep: 1, completedThrough: 0 },
+  extracting: { title: "正在校验并解压更新包", hint: "尚未替换现有安装文件。", activeStep: 1, completedThrough: 0 },
+  backing_up: { title: "正在备份当前版本", hint: "如果新版本验证失败，将自动恢复此备份。", activeStep: 1, completedThrough: 0 },
+  installing: { title: "正在安装新版本", hint: "正在替换程序文件并重新注册 Plugin，请不要重复启动安装。", activeStep: 2, completedThrough: 1 },
+  restarting: { title: "正在安全重启 Codex", hint: "Codex 会正常关闭并重新打开，不会强制终止进程。", activeStep: 4, completedThrough: 2 },
+  verifying: { title: "正在验证安装结果", hint: "正在检查本地服务、核心组件与 Plugin 注册状态。", activeStep: 3, completedThrough: 2 },
+  restart_required: { title: "安装完成，等待重启", hint: "使用安装器创建的 Codex 快捷方式重启后，会自动确认更新成功。", activeStep: 4, completedThrough: 3 },
+  completed: { title: "更新安装成功", hint: "新版本已经生效。", activeStep: -1, completedThrough: 4 },
+  rolling_back: { title: "验证失败，正在自动回滚", hint: "正在恢复更新前的安全备份，请勿关闭维护进程。", activeStep: 2, completedThrough: 1 },
+  failed: { title: "更新未完成", hint: "请查看错误信息；现有安装未修改或已自动回滚。", activeStep: -1, completedThrough: -1 }
+};
+
+function renderUpdateOperation(installation) {
+  const installState = String(installation?.state || "idle");
+  const fallbackPhase = installState === "ready" ? "verified"
+    : installState === "rolled_back" || installState === "failed" ? "failed"
+      : installState;
+  const reportedPhase = String(installation?.phase || "");
+  const phase = UPDATE_PHASE_VIEW[reportedPhase] ? reportedPhase : String(fallbackPhase || "idle");
+  const view = UPDATE_PHASE_VIEW[phase];
+  const visible = Boolean(view) && !["idle", "available", "cancelled"].includes(installState);
+  updateOperation.hidden = !visible;
+  if (!visible) return;
+
+  const failed = installState === "failed" || installState === "rolled_back";
+  const completed = installState === "completed";
+  const fallbackProgress = completed ? 100
+    : installState === "restart_required" ? 97
+      : installState === "ready" ? 25
+        : failed ? 100 : 0;
+  const reportedProgress = Number(installation?.operationProgress || 0);
+  const progress = Math.max(0, Math.min(100, reportedProgress > 0 ? reportedProgress : fallbackProgress));
+  updateOperation.classList.toggle("is-failed", failed);
+  updateOperation.classList.toggle("is-completed", completed);
+  updateOperationIndicator.classList.toggle("is-spinning", !failed && !completed && installState !== "ready" && installState !== "restart_required");
+  updateOperationTitle.textContent = view.title;
+  updateOperationPercent.textContent = `${Math.round(progress)}%`;
+  updateOperationProgress.value = progress;
+  updateOperationHint.textContent = view.hint;
+  updateOperationSteps.forEach((step, index) => {
+    step.classList.toggle("is-complete", index <= Number(view.completedThrough ?? -1));
+    step.classList.toggle("is-active", index === Number(view.activeStep ?? -1));
+  });
+}
+
 function renderUpdateStatus() {
   const update = state.updateStatus;
   const installation = state.updateInstallation;
@@ -376,6 +432,8 @@ function renderUpdateStatus() {
     ? `${installation.message || "更新失败"} ${installation.error}`
     : installation?.message || "";
   updateInstallDetail.classList.toggle("error", Boolean(installation?.error));
+  renderUpdateOperation(installation);
+  if (!updateOperation.hidden && !installation?.error) updateInstallDetail.hidden = true;
 
   downloadUpdate.hidden = !installation?.canDownload;
   cancelUpdateDownload.hidden = !installation?.canCancelDownload;

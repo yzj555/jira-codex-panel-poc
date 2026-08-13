@@ -532,11 +532,34 @@ h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.02em; }
 .update-settings-heading small { color: var(--panel-text-muted); font-size: 11px; line-height: 1.5; }
 .update-check-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 42px; padding: 9px 11px; border: 1px solid var(--panel-border); border-radius: 7px; background: var(--panel-surface-under); color: var(--panel-text-muted); font-size: 11px; }
 .update-check-row.update-available { border-color: color-mix(in srgb, var(--panel-warning) 42%, var(--panel-border)); background: var(--panel-warning-soft); color: var(--panel-warning); }
-.update-check-row.update-error { border-color: color-mix(in srgb, var(--panel-danger) 42%, var(--panel-border)); }
+.update-check-row.update-error { border-color: color-mix(in srgb, var(--panel-error) 42%, var(--panel-border)); }
 .update-check-summary { display: grid; min-width: 0; flex: 1; gap: 5px; }
 .update-check-summary progress { width: min(420px, 100%); height: 7px; overflow: hidden; accent-color: var(--panel-accent); }
 .update-check-summary small { color: var(--panel-text-muted); line-height: 1.45; overflow-wrap: anywhere; }
-.update-check-summary small.error { color: var(--panel-danger); }
+.update-check-summary small.error { color: var(--panel-error); }
+.update-operation { display: grid; gap: 9px; margin-top: 4px; padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--panel-accent) 28%, var(--panel-border)); border-radius: 7px; background: color-mix(in srgb, var(--panel-accent-soft) 58%, var(--panel-surface)); color: var(--panel-text-secondary); }
+.update-operation[hidden] { display: none; }
+.update-operation.is-completed { border-color: color-mix(in srgb, var(--panel-success) 38%, var(--panel-border)); background: var(--panel-success-soft); }
+.update-operation.is-failed { border-color: color-mix(in srgb, var(--panel-error) 38%, var(--panel-border)); background: var(--panel-error-soft); }
+.update-operation-head { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.update-operation-head strong { color: var(--panel-text); font-size: 12px; }
+.update-operation-head > span:last-child { color: var(--panel-text-muted); font: 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.update-operation-indicator { width: 10px; height: 10px; border: 2px solid color-mix(in srgb, var(--panel-accent) 28%, transparent); border-top-color: var(--panel-accent); border-radius: 50%; }
+.update-operation-indicator.is-spinning { animation: update-operation-spin .8s linear infinite; }
+.update-operation.is-completed .update-operation-indicator { border-color: var(--panel-success); background: var(--panel-success); box-shadow: inset 0 0 0 2px var(--panel-surface); }
+.update-operation.is-failed .update-operation-indicator { border-color: var(--panel-error); background: var(--panel-error); box-shadow: inset 0 0 0 2px var(--panel-surface); }
+.update-operation progress { width: 100%; height: 6px; overflow: hidden; accent-color: var(--panel-accent); }
+.update-operation.is-completed progress { accent-color: var(--panel-success); }
+.update-operation.is-failed progress { accent-color: var(--panel-error); }
+.update-operation-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; margin: 0; padding: 0; list-style: none; }
+.update-operation-steps li { position: relative; min-width: 0; padding-top: 9px; color: var(--panel-text-muted); font-size: 9px; text-align: center; white-space: nowrap; }
+.update-operation-steps li::before { position: absolute; top: 0; left: 0; width: 100%; height: 3px; border-radius: 3px; background: var(--panel-border); content: ""; }
+.update-operation-steps li.is-complete { color: var(--panel-success); }
+.update-operation-steps li.is-complete::before { background: var(--panel-success); }
+.update-operation-steps li.is-active { color: var(--panel-accent); font-weight: 700; }
+.update-operation-steps li.is-active::before { background: var(--panel-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--panel-accent) 16%, transparent); }
+.update-operation > small { color: var(--panel-text-muted); font-size: 10px; line-height: 1.45; }
+@keyframes update-operation-spin { to { transform: rotate(360deg); } }
 .update-check-actions { display: flex; flex: none; align-items: center; gap: 7px; }
 .update-check-actions .plain-button { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 5px 9px; text-decoration: none; white-space: nowrap; }
 .update-check-actions .primary-soft { border-color: color-mix(in srgb, var(--panel-accent) 55%, var(--panel-border)); background: var(--panel-accent-soft); color: var(--panel-accent); font-weight: 700; }

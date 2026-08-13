@@ -10,6 +10,10 @@ param(
   [string]$UserDataRoot,
   [Parameter(Mandatory = $true)]
   [string]$StatePath,
+  [Parameter(Mandatory = $true)]
+  [string]$HandoffPayload,
+  [Parameter(Mandatory = $true)]
+  [string]$OperationId,
   [int]$ServerProcessId = 0,
   [switch]$RestartCodex
 )
@@ -74,8 +78,8 @@ function Write-UpdateLog([string]$Message) {
 }
 
 function Read-UpdateState {
-  if (-not (Test-Path -LiteralPath $StatePath)) { return [ordered]@{} }
-  try { return Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json } catch { return [ordered]@{} }
+  if (-not (Test-Path -LiteralPath $StatePath)) { return [pscustomobject]@{} }
+  try { return Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json } catch { return [pscustomobject]@{} }
 }
 
 function Write-UpdateState {
@@ -84,6 +88,8 @@ function Write-UpdateState {
     [string]$Message,
     [string]$ErrorMessage = '',
     [bool]$RestartRequired = $false,
+    [string]$Phase = '',
+    [int]$OperationProgress = -1,
     [hashtable]$Extra = @{}
   )
   $previous = Read-UpdateState
@@ -91,7 +97,7 @@ function Write-UpdateState {
   foreach ($property in $previous.PSObject.Properties) { $next[$property.Name] = $property.Value }
   $next.schemaVersion = $updateSchemaVersion
   $next.state = $State
-  $next.currentVersion = if ($State -eq 'completed') { $script:targetVersion } else { $script:previousVersion }
+  $next.currentVersion = if ($State -in @('completed', 'restart_required')) { $script:targetVersion } else { $script:previousVersion }
   if ($script:targetVersion) { $next.targetVersion = $script:targetVersion }
   if ($script:previousVersion) { $next.previousVersion = $script:previousVersion }
   $next.message = $Message
@@ -99,7 +105,10 @@ function Write-UpdateState {
   $next.restartRequired = $RestartRequired
   $next.updatedAt = (Get-Date).ToString('o')
   $next.updaterProcessId = $PID
+  $next.operationId = $OperationId
   $next.logPath = $logPath
+  if ($Phase) { $next.phase = $Phase }
+  if ($OperationProgress -ge 0) { $next.operationProgress = [Math]::Max(0, [Math]::Min(100, $OperationProgress)) }
   foreach ($key in $Extra.Keys) { $next[$key] = $Extra[$key] }
   $directory = Split-Path -Parent $StatePath
   New-Item -ItemType Directory -Path $directory -Force | Out-Null
@@ -234,14 +243,27 @@ function Invoke-InstalledStatus {
 try {
   Write-UpdateLog "Updater started. InstallRoot: $InstallRoot"
   $installedState = Assert-ManagedInstallation
+  try {
+    $pendingJson = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($HandoffPayload))
+    $pendingState = $pendingJson | ConvertFrom-Json
+  } catch {
+    throw 'Update handoff state is invalid.'
+  }
+  if ([string]$pendingState.operationId -ne $OperationId -or [string]$pendingState.state -ne 'installing') {
+    throw 'Update operation id no longer matches the pending installation.'
+  }
+  $pendingState | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $StatePath -Encoding UTF8
+  $manifestPreview = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
+  $script:targetVersion = [string]$manifestPreview.version
+  Write-UpdateState -State 'installing' -Message "Updater accepted the installation; validating v$script:targetVersion..." -RestartRequired $true -Phase 'waiting_for_service' -OperationProgress 30
   $manifest = Assert-ManifestAndPackage
   $script:targetVersion = [string]$manifest.version
-  Write-UpdateState -State 'installing' -Message "Waiting for the local service before installing v$script:targetVersion..." -RestartRequired $true
 
   if (-not (Wait-ProcessExit -TargetProcessId $ServerProcessId -TimeoutSeconds 30)) {
     throw 'The local service did not exit within 30 seconds; no files were replaced.'
   }
 
+  Write-UpdateState -State 'installing' -Message "Validating and extracting v$script:targetVersion..." -RestartRequired $true -Phase 'extracting' -OperationProgress 36
   $stagingParent = Join-Path $UserDataRoot 'updates\staging'
   $backupParent = Join-Path $UserDataRoot 'updates\backups'
   New-Item -ItemType Directory -Path $stagingParent -Force | Out-Null
@@ -260,15 +282,16 @@ try {
   if ($stagedVersion -ne $script:targetVersion) { throw 'The staged package version does not match the manifest.' }
 
   Write-UpdateLog "Backing up v$script:previousVersion to $script:backupRoot"
+  Write-UpdateState -State 'installing' -Message "Backing up the current v$script:previousVersion installation..." -RestartRequired $true -Phase 'backing_up' -OperationProgress 45 -Extra @{ backupPath = $script:backupRoot }
   Invoke-Robocopy -Source $InstallRoot -Destination $script:backupRoot -ExtraArguments @('/XD', (Join-Path $InstallRoot 'node_modules'), (Join-Path $InstallRoot '.runtime'))
   $script:mutationStarted = $true
-  Write-UpdateState -State 'installing' -Message "Backup complete; installing v$script:targetVersion..." -RestartRequired $true -Extra @{ backupPath = $script:backupRoot }
+  Write-UpdateState -State 'installing' -Message "Backup complete; installing v$script:targetVersion..." -RestartRequired $true -Phase 'installing' -OperationProgress 65 -Extra @{ backupPath = $script:backupRoot }
 
   & $stagedLifecycle -Action Update -InstallRoot $InstallRoot -LaunchAfterInstall:$false -InstallCodexCli:$false
 
   $codexRestarted = $false
   if ($RestartCodex) {
-    Write-UpdateState -State 'installing' -Message "v$script:targetVersion is installed; restarting Codex gracefully..." -RestartRequired $true
+    Write-UpdateState -State 'installing' -Message "v$script:targetVersion is installed; restarting Codex safely..." -RestartRequired $true -Phase 'restarting' -OperationProgress 86
     if (Stop-CodexGracefully) {
       Start-InstalledRuntime -RestartDesktop $true
       $codexRestarted = $true
@@ -280,6 +303,7 @@ try {
     Start-InstalledRuntime -RestartDesktop $false
   }
 
+  Write-UpdateState -State 'installing' -Message "Verifying the v$script:targetVersion service and installation..." -RestartRequired $true -Phase 'verifying' -OperationProgress 93 -Extra @{ backupPath = $script:backupRoot }
   if (-not (Test-Health -ExpectedVersion $script:targetVersion -TimeoutSeconds 30)) {
     throw "Health check failed for v$script:targetVersion."
   }
@@ -289,9 +313,9 @@ try {
   }
 
   if (-not $RestartCodex -or -not $codexRestarted) {
-    Write-UpdateState -State 'restart_required' -Message "v$script:targetVersion is installed. Save your work and restart Codex manually." -RestartRequired $true -Extra @{ backupPath = $script:backupRoot }
+    Write-UpdateState -State 'restart_required' -Message "v$script:targetVersion is installed and verified. Save your work and restart Codex manually." -RestartRequired $true -Phase 'restart_required' -OperationProgress 97 -Extra @{ backupPath = $script:backupRoot }
   } else {
-    Write-UpdateState -State 'completed' -Message "Jira Codex Assistant was updated to v$script:targetVersion." -RestartRequired $false -Extra @{ backupPath = $script:backupRoot }
+    Write-UpdateState -State 'completed' -Message "Jira Codex Assistant was updated successfully to v$script:targetVersion." -RestartRequired $false -Phase 'completed' -OperationProgress 100 -Extra @{ backupPath = $script:backupRoot }
   }
   Write-UpdateLog "Update completed: v$script:previousVersion -> v$script:targetVersion"
 } catch {
@@ -299,22 +323,23 @@ try {
   Write-UpdateLog "Update failed: $message"
   if ($script:mutationStarted -and $script:backupRoot -and (Test-Path -LiteralPath $script:backupRoot)) {
     try {
-      Write-UpdateState -State 'installing' -Message 'New version validation failed; rolling back...' -ErrorMessage $message
+      Write-UpdateState -State 'installing' -Message 'New version validation failed; rolling back...' -ErrorMessage $message -Phase 'rolling_back' -OperationProgress 72
       Stop-TrackedRuntimeProcesses -ApplicationRoot $InstallRoot
       Invoke-Robocopy -Source $script:backupRoot -Destination $InstallRoot -ExtraArguments @('/PURGE')
       $repair = Join-Path $InstallRoot 'installer\lifecycle.ps1'
       & $repair -Action Repair -InstallRoot $InstallRoot -LaunchAfterInstall:$false -InstallCodexCli:$false
       Start-InstalledRuntime -RestartDesktop $false
       $rollbackHealthy = Test-Health -ExpectedVersion $script:previousVersion -TimeoutSeconds 30
-      Write-UpdateState -State 'rolled_back' -Message "Update failed and was rolled back to v$script:previousVersion." -ErrorMessage $message -RestartRequired $RestartCodex.IsPresent -Extra @{ backupPath = $script:backupRoot; rollbackHealthy = $rollbackHealthy }
+      Write-UpdateState -State 'rolled_back' -Message "Update failed and was rolled back to v$script:previousVersion." -ErrorMessage $message -RestartRequired $RestartCodex.IsPresent -Phase 'failed' -OperationProgress 100 -Extra @{ backupPath = $script:backupRoot; rollbackHealthy = $rollbackHealthy }
       Write-UpdateLog "Rollback completed. Healthy: $rollbackHealthy"
     } catch {
       $rollbackError = $_.Exception.Message
       Write-UpdateLog "Automatic rollback failed: $rollbackError"
-      Write-UpdateState -State 'failed' -Message 'Update and automatic rollback failed. Run Repair from the maintenance assistant.' -ErrorMessage "$message; rollback error: $rollbackError" -RestartRequired $true -Extra @{ backupPath = $script:backupRoot }
+      Write-UpdateState -State 'failed' -Message 'Update and automatic rollback failed. Run Repair from the maintenance assistant.' -ErrorMessage "$message; rollback error: $rollbackError" -RestartRequired $true -Phase 'failed' -OperationProgress 100 -Extra @{ backupPath = $script:backupRoot }
     }
   } else {
-    Write-UpdateState -State 'failed' -Message 'No files were replaced; the existing installation is unchanged.' -ErrorMessage $message -RestartRequired $false
+    try { Start-InstalledRuntime -RestartDesktop $false } catch { Write-UpdateLog "Unable to restart the existing local service after the failed update: $($_.Exception.Message)" }
+    Write-UpdateState -State 'failed' -Message 'No files were replaced; the existing installation is unchanged.' -ErrorMessage $message -RestartRequired $false -Phase 'failed' -OperationProgress 100
   }
   exit 1
 } finally {

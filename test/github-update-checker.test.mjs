@@ -65,6 +65,37 @@ test("没有 Release 时回退到远端 main 的 package.json", async () => {
   assert.equal(status.updateAvailable, false);
   assert.equal(status.installable, false);
   assert.equal(status.installabilityReason, "RELEASE_NOT_PUBLISHED");
+  assert.equal(calls.length, 3);
+});
+
+test("GitHub API 限流时使用公开 Release 更新清单继续提供安装", async () => {
+  const calls = [];
+  const checker = createGitHubUpdateChecker({
+    currentVersion: "0.31.2",
+    fetchImpl: async (url) => {
+      calls.push(String(url));
+      if (String(url).startsWith("https://api.github.com/")) {
+        return new Response("rate limited", { status: 403 });
+      }
+      return new Response(JSON.stringify({
+        schemaVersion: 1,
+        productId: "jira-codex-panel",
+        version: "0.31.3",
+        asset: {
+          name: "jira-codex-assistant-0.31.3-win-x64.zip",
+          size: 123,
+          sha256: "a".repeat(64)
+        }
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+  });
+
+  const status = await checker.check({ force: true });
+  assert.equal(status.source, "release");
+  assert.equal(status.latestVersion, "0.31.3");
+  assert.equal(status.updateAvailable, true);
+  assert.equal(status.installable, true);
+  assert.equal(status.assets.length, 2);
   assert.equal(calls.length, 2);
 });
 
