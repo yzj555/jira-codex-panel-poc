@@ -1,6 +1,6 @@
 {
   "name": "jira-codex-panel-poc",
-  "version": "0.31.5",
+  "version": "0.31.6",
   "private": true,
   "type": "module",
   "description": "Local Jira and SVN service with an official Codex Plugin, MCP Apps workbench, App Server integration, and a minimal Windows desktop UI host.",

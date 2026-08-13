@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -317,4 +318,45 @@ test("重启成功留下的 completed 状态会在新服务首次读取时自动
   const persisted = JSON.parse(await readFile(value.manager.stateFile, "utf8"));
   assert.equal(persisted.state, "idle");
   assert.equal(persisted.targetVersion, "");
+});
+
+test("Windows 重启助手按 UTF-8 读取无 BOM 的中文状态文件", {
+  skip: process.platform !== "win32"
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "jira-restart-helper-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const installRoot = join(root, "app");
+  const userDataRoot = join(root, "data");
+  const statePath = join(userDataRoot, "update-state.json");
+  const scriptPath = join(installRoot, "scripts", "restart-codex-after-update.ps1");
+  await mkdir(join(installRoot, "scripts"), { recursive: true });
+  await mkdir(userDataRoot, { recursive: true });
+  await copyFile(new URL("../scripts/restart-codex-after-update.ps1", import.meta.url), scriptPath);
+  await writeFile(join(installRoot, "package.json"), JSON.stringify({ version: "0.31.5" }), "utf8");
+  await writeFile(join(installRoot, "scripts", "launch-codex-jira.ps1"), "exit 0\n", "utf8");
+  await writeFile(statePath, JSON.stringify({
+    schemaVersion: 1,
+    state: "restart_required",
+    currentVersion: "0.31.5",
+    targetVersion: "0.31.4",
+    message: "中文状态用于验证无 BOM UTF-8。",
+    error: "",
+    phase: "restart_required",
+    operationProgress: 97,
+    restartRequired: true
+  }, null, 2), "utf8");
+
+  const powerShell = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const result = spawnSync(powerShell, [
+    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+    "-File", scriptPath,
+    "-InstallRoot", installRoot,
+    "-UserDataRoot", userDataRoot,
+    "-StatePath", statePath
+  ], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  const persisted = JSON.parse(await readFile(statePath, "utf8"));
+  assert.equal(persisted.phase, "restart_required");
+  assert.match(persisted.error, /pending update does not match/i);
+  assert.equal(persisted.restartProcessId, 0);
 });

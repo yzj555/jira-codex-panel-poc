@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $runtimeDirectory = Join-Path $projectRoot '.runtime'
 $userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc'
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $installMetadataPath = @(
   (Join-Path $projectRoot 'install-state.json'),
   (Join-Path $projectRoot 'install-metadata.json')
@@ -134,7 +135,7 @@ function Complete-PendingUpdateAfterRestart {
   $packagePath = Join-Path $projectRoot 'package.json'
   if (-not (Test-Path -LiteralPath $updateStatePath) -or -not (Test-Path -LiteralPath $packagePath)) { return }
   try {
-    $pending = Get-Content -Raw -LiteralPath $updateStatePath | ConvertFrom-Json
+    $pending = [System.IO.File]::ReadAllText($updateStatePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
     $installedVersion = [string](Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json).version
     if ([string]$pending.state -ne 'restart_required' -or [string]$pending.targetVersion -ne $installedVersion) { return }
     $next = [ordered]@{}
@@ -148,7 +149,8 @@ function Complete-PendingUpdateAfterRestart {
     $next.restartRequired = $false
     $next.updatedAt = (Get-Date).ToString('o')
     $temporary = "$updateStatePath.$PID.tmp"
-    $next | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temporary -Encoding UTF8
+    $json = $next | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText($temporary, $json, $utf8NoBom)
     Move-Item -LiteralPath $temporary -Destination $updateStatePath -Force
   } catch {
     Write-Warning "Unable to acknowledge the completed update: $($_.Exception.Message)"

@@ -73,10 +73,8 @@ const updateCheckLink = document.querySelector("#update-check-link");
 const checkUpdatesNow = document.querySelector("#check-updates-now");
 const updateInstallDetail = document.querySelector("#update-install-detail");
 const updateOperation = document.querySelector("#update-operation");
-const updateOperationIndicator = document.querySelector("#update-operation-indicator");
 const updateOperationTitle = document.querySelector("#update-operation-title");
 const updateOperationPercent = document.querySelector("#update-operation-percent");
-const updateOperationProgress = document.querySelector("#update-operation-progress");
 const updateOperationSteps = Array.from(document.querySelectorAll("[data-update-step]"));
 const updateOperationHint = document.querySelector("#update-operation-hint");
 const downloadUpdate = document.querySelector("#download-update");
@@ -341,13 +339,33 @@ const UPDATE_PHASE_VIEW = {
   backing_up: { title: "正在备份当前版本", hint: "若验证失败，将自动恢复到更新前状态。", activeStep: 1, completedThrough: 0 },
   installing: { title: "正在安装新版本", hint: "正在更新组件与 Plugin，请勿重复操作。", activeStep: 1, completedThrough: 0 },
   verifying: { title: "正在确认安装结果", hint: "检查本地服务、必要组件与 Plugin 注册。", activeStep: 1, completedThrough: 0 },
-  restart_launching: { title: "正在准备重启 Codex", hint: "请保持当前窗口打开，Codex 即将正常关闭。", activeStep: 2, completedThrough: 1 },
+  restart_launching: { title: "正在准备重启 Codex", hint: "请保持当前窗口打开；窗口关闭后，重启助手会继续完成后台退出与重新启动。", activeStep: 2, completedThrough: 1 },
   restarting: { title: "正在重启 Codex", hint: "重新打开后会自动确认更新并清理临时状态。", activeStep: 2, completedThrough: 1 },
   restart_required: { title: "需要重启以完成更新", hint: "新版本已经安装并验证；保存工作后重启即可完整生效。", activeStep: 2, completedThrough: 1 },
   completed: { title: "更新已完整生效", hint: "临时更新状态将自动清理。", activeStep: -1, completedThrough: 2 },
   rolling_back: { title: "正在恢复原版本", hint: "新版本验证未通过，正在自动恢复安全备份。", activeStep: 1, completedThrough: 0 },
   failed: { title: "更新未完成", hint: "请查看错误信息；现有安装未修改或已自动回滚。", activeStep: -1, completedThrough: -1 }
 };
+
+function localizedUpdateError(value) {
+  const message = String(value || "").trim();
+  if (!message) return "";
+  if (/Codex did not close normally/i.test(message)) {
+    return "Codex 窗口已收到关闭请求，但后台进程未在规定时间内退出。请保存工作后重试。";
+  }
+  if (/Codex processes remained active/i.test(message)) {
+    return "Codex 的残留进程仍未退出。请从任务管理器关闭 Codex 后重试。";
+  }
+  return message;
+}
+
+function localizedUpdateMessage(value) {
+  const message = String(value || "").trim();
+  if (!message) return "";
+  const restartRequired = message.match(/^v(.+?) is installed and requires a Codex restart\.?$/i);
+  if (restartRequired) return `v${restartRequired[1]} 已安装，需要重启 Codex 才能完整生效。`;
+  return message;
+}
 
 function renderUpdateOperation(installation) {
   const installState = String(installation?.state || "idle");
@@ -373,10 +391,10 @@ function renderUpdateOperation(installation) {
   updateOperation.classList.toggle("is-failed", failed);
   updateOperation.classList.toggle("is-completed", completed);
   updateOperation.classList.toggle("needs-restart", waitingForRestart);
-  updateOperationIndicator.classList.toggle("is-spinning", !failed && !completed && installState !== "ready" && !waitingForRestart);
   updateOperationTitle.textContent = view.title;
-  updateOperationPercent.textContent = waitingForRestart ? "等待重启" : `${Math.round(progress)}%`;
-  updateOperationProgress.style.width = `${progress}%`;
+  updateOperationPercent.textContent = failed ? "未完成"
+    : completed ? "已完成"
+      : waitingForRestart ? "待重启" : `${Math.round(progress)}%`;
   updateOperationHint.textContent = view.hint;
   updateOperationSteps.forEach((step, index) => {
     step.classList.toggle("is-complete", index <= Number(view.completedThrough ?? -1));
@@ -388,6 +406,7 @@ function renderUpdateStatus() {
   const update = state.updateStatus;
   const installation = state.updateInstallation;
   const installState = String(installation?.state || "idle");
+  const updateInProgress = ["downloading", "ready", "installing"].includes(installState);
   const restartRequired = installState === "restart_required";
   const currentVersion = String(update?.currentVersion || "—");
   const updateUrl = safeGitHubUpdateUrl(update?.url);
@@ -408,7 +427,13 @@ function renderUpdateStatus() {
   updateCheckDetail.closest(".update-check-row")?.classList.toggle("update-available", Boolean(update?.updateAvailable));
   updateCheckDetail.closest(".update-check-row")?.classList.toggle("update-error", Boolean(installation?.error));
 
-  if (restartRequired) {
+  if (updateInProgress) {
+    const fromVersion = String(installation?.previousVersion || currentVersion);
+    const targetVersion = String(installation?.targetVersion || update?.latestVersion || "");
+    updateCheckDetail.textContent = targetVersion
+      ? `正在从 v${fromVersion} 更新到 v${targetVersion}`
+      : `正在处理 v${fromVersion} 的更新`;
+  } else if (restartRequired) {
     updateCheckDetail.textContent = `v${installation.targetVersion || currentVersion} 已完成安全安装；重启 Codex 后完整生效。`;
   } else if (!update) {
     updateCheckDetail.textContent = "正在读取当前版本…";
@@ -428,11 +453,11 @@ function renderUpdateStatus() {
 
   const downloading = installState === "downloading";
   const installing = installState === "installing";
-  updateInstallDetail.hidden = !installation?.message && !installation?.error;
-  updateInstallDetail.textContent = installation?.error
-    ? `${installation.message || "更新失败"} ${installation.error}`
-    : installation?.message || "";
-  updateInstallDetail.classList.toggle("error", Boolean(installation?.error));
+  const installationMessage = localizedUpdateMessage(installation?.message);
+  const installationError = localizedUpdateError(installation?.error);
+  updateInstallDetail.hidden = !installationMessage && !installationError;
+  updateInstallDetail.textContent = installationError || installationMessage;
+  updateInstallDetail.classList.toggle("error", Boolean(installationError));
   renderUpdateOperation(installation);
   if (!updateOperation.hidden && !installation?.error) updateInstallDetail.hidden = true;
 
@@ -507,7 +532,9 @@ async function runUpdateAction(path, { method = "POST", body = {}, successMessag
     const blockers = Array.isArray(error.details?.blockers)
       ? error.details.blockers.map((blocker) => blocker.message || blocker.kind).filter(Boolean).join("；")
       : "";
-    showToast(`${error.message}${blockers ? `：${blockers}` : ""}`, 8000);
+    const reason = String(error.details?.reason || "").trim();
+    const detail = blockers || reason;
+    showToast(`${error.message}${detail ? `：${detail}` : ""}`, 8000);
     return null;
   } finally {
     state.updateActionPending = false;
@@ -520,7 +547,7 @@ async function restartToCompleteUpdate() {
   const version = String(state.updateInstallation?.targetVersion || state.updateStatus?.latestVersion || "");
   if (!version || !state.updateInstallation?.canRestart) return;
   const confirmed = window.confirm(
-    `v${version} 已经安装并通过完整性验证。\n\n重启会正常关闭所有 Codex 窗口，并中断尚未完成的任务。请先保存当前工作。\n\n现在重启 Codex，让更新完整生效吗？`
+    `v${version} 已经安装并通过完整性验证。\n\n重启助手会先正常关闭所有 Codex 窗口；若窗口关闭后仍残留后台进程，会只结束 Codex 的残留进程。尚未完成的任务会中断，请先保存当前工作。\n\n现在重启 Codex，让更新完整生效吗？`
   );
   if (!confirmed) return;
   await runUpdateAction("/api/update/restart", {

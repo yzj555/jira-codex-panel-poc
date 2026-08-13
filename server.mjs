@@ -48,7 +48,7 @@ import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "./m
 import { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
 import { attachmentCanOpenLocally } from "./public/issue-views.js";
 
-const VERSION = "0.31.5";
+const VERSION = "0.31.6";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
