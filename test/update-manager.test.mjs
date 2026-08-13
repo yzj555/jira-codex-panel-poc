@@ -31,6 +31,7 @@ async function fixture({ corruptHash = false, blockers = [], acknowledgeUpdater 
   const userDataRoot = join(root, "data");
   const updaterSource = join(installRoot, "installer", "update-bootstrap.ps1");
   const updaterLauncherSource = join(installRoot, "scripts", "update-launcher.mjs");
+  const restartSource = join(installRoot, "scripts", "restart-codex-after-update.ps1");
   await mkdir(join(installRoot, "installer"), { recursive: true });
   await mkdir(join(installRoot, "scripts"), { recursive: true });
   await mkdir(userDataRoot, { recursive: true });
@@ -41,6 +42,7 @@ async function fixture({ corruptHash = false, blockers = [], acknowledgeUpdater 
   })}`, "utf8");
   await writeFile(updaterSource, "# updater", "utf8");
   await writeFile(updaterLauncherSource, "// launcher", "utf8");
+  await writeFile(restartSource, "# restart helper", "utf8");
   const archive = Buffer.from("safe-release-archive");
   const version = "0.32.0";
   const update = releaseUpdate(version, archive);
@@ -63,14 +65,17 @@ async function fixture({ corruptHash = false, blockers = [], acknowledgeUpdater 
       : new Response(archive, { status: 200, headers: { "content-length": String(archive.length) } });
   };
   const spawned = [];
+  const installHandoffs = [];
   const manager = createUpdateManager({
     currentVersion: "0.31.2",
     installRoot,
     userDataRoot,
     updaterSource,
     updaterLauncherSource,
+    restartSource,
     fetchImpl,
     blockerProvider: async () => blockers,
+    onInstallHandoff: (value) => installHandoffs.push(value),
     updaterHandshakeTimeoutMs: 250,
     spawnImpl: (command, args, options) => {
       spawned.push({ command, args, options });
@@ -81,13 +86,21 @@ async function fixture({ corruptHash = false, blockers = [], acknowledgeUpdater 
           const current = JSON.parse(await readFile(stateFile, "utf8"));
           const launchConfig = JSON.parse(await readFile(args[1], "utf8"));
           const operationIndex = launchConfig.args.indexOf("-OperationId");
-          await writeFile(stateFile, JSON.stringify({
+          const restartHelper = launchConfig.args.some((value) => /restart-codex-after-update\.ps1$/i.test(String(value)));
+          await writeFile(stateFile, JSON.stringify(restartHelper ? {
+            ...current,
+            state: "restart_required",
+            restartProcessId: process.pid,
+            phase: "restarting",
+            operationProgress: 99,
+            updatedAt: new Date().toISOString()
+          } : {
             ...current,
             state: "installing",
-            updaterProcessId: 4242,
+            updaterProcessId: process.pid,
             operationId: launchConfig.args[operationIndex + 1],
             phase: "waiting_for_service",
-            operationProgress: 8,
+            operationProgress: 30,
             updatedAt: new Date().toISOString()
           }), "utf8");
         });
@@ -95,7 +108,7 @@ async function fixture({ corruptHash = false, blockers = [], acknowledgeUpdater 
       return { pid: 4242, once() {}, unref() {}, kill() {} };
     }
   });
-  return { root, installRoot, userDataRoot, updaterSource, archive, update, manager, spawned, fetchCalls };
+  return { root, installRoot, userDataRoot, updaterSource, restartSource, archive, update, manager, spawned, fetchCalls, installHandoffs };
 }
 
 test("更新包下载后必须通过大小和 SHA-256 校验才能进入 ready", async (t) => {
@@ -107,7 +120,7 @@ test("更新包下载后必须通过大小和 SHA-256 校验才能进入 ready",
   const status = await value.manager.status(value.update);
   assert.equal(status.state, "ready");
   assert.equal(status.progress, 100);
-  assert.equal(status.canInstall, true);
+  assert.equal("canReset" in status, false);
   const state = JSON.parse(await readFile(value.manager.stateFile, "utf8"));
   assert.equal(await readFile(state.archivePath, "utf8"), value.archive.toString());
 });
@@ -120,7 +133,7 @@ test("SHA-256 不匹配时拒绝安装并保存可见失败状态", async (t) =>
   const status = await value.manager.status(value.update);
   assert.equal(status.state, "failed");
   assert.match(status.error, /SHA-256/);
-  assert.equal(status.canInstall, false);
+  assert.equal("canReset" in status, false);
 });
 
 test("安装必须精确确认版本，活动操作会阻止更新器启动", async (t) => {
@@ -130,7 +143,7 @@ test("安装必须精确确认版本，活动操作会阻止更新器启动", as
   await value.manager.waitForIdle();
   await assert.rejects(
     value.manager.install({ confirmVersion: "0.33.0" }),
-    (error) => error.code === "UPDATE_CONFIRMATION_REQUIRED"
+    (error) => error.code === "UPDATE_TARGET_MISMATCH"
   );
   await assert.rejects(
     value.manager.install({ confirmVersion: "0.32.0" }),
@@ -139,32 +152,50 @@ test("安装必须精确确认版本，活动操作会阻止更新器启动", as
   assert.equal(value.spawned.length, 0);
 });
 
-test("人工确认后只启动用户数据目录中的独立更新器", async (t) => {
+test("安装始终先交给独立更新器，且不会在安装阶段重启 Codex", async (t) => {
   const value = await fixture();
   t.after(() => rm(value.root, { recursive: true, force: true }));
   await value.manager.startDownload(value.update);
   await value.manager.waitForIdle();
-  const status = await value.manager.install({ confirmVersion: "0.32.0", restartCodex: true });
+  const status = await value.manager.install({ confirmVersion: "0.32.0" });
   assert.equal(status.state, "installing");
   assert.equal(value.spawned.length, 1);
   assert.equal(value.spawned[0].options.detached, true);
   assert.match(value.spawned[0].args[0], /data[\\/]updater[\\/]update-launcher\.mjs$/i);
   const launchConfig = JSON.parse(await readFile(value.spawned[0].args[1], "utf8"));
-  assert.ok(launchConfig.args.includes("-RestartCodex"));
+  assert.equal(launchConfig.args.includes("-RestartCodex"), false);
   const updaterIndex = launchConfig.args.indexOf("-File") + 1;
   assert.match(launchConfig.args[updaterIndex], /data[\\/]updater[\\/]update-bootstrap\.ps1$/i);
 });
 
-test("选择稍后手动重启时会持续保留重启要求", async (t) => {
+test("点击下载后会自动校验并进入安装，无需第二次人工操作", async (t) => {
+  const value = await fixture();
+  t.after(() => rm(value.root, { recursive: true, force: true }));
+  await value.manager.startDownload(value.update, { autoInstall: true });
+  await value.manager.waitForIdle();
+  const status = await value.manager.status(value.update);
+  assert.equal(status.state, "installing");
+  assert.equal(status.restartRequired, true);
+  assert.equal(value.spawned.length, 1);
+  assert.equal(value.installHandoffs.length, 1);
+  const launchConfig = JSON.parse(await readFile(value.spawned[0].args[1], "utf8"));
+  assert.equal(launchConfig.args.includes("-RestartCodex"), false);
+});
+
+test("服务恰好在校验后重启时会继续自动安装，不会停在 ready", async (t) => {
   const value = await fixture();
   t.after(() => rm(value.root, { recursive: true, force: true }));
   await value.manager.startDownload(value.update);
   await value.manager.waitForIdle();
-  const status = await value.manager.install({ confirmVersion: "0.32.0", restartCodex: false });
-  assert.equal(status.state, "installing");
-  assert.equal(status.restartRequired, true);
-  const launchConfig = JSON.parse(await readFile(value.spawned[0].args[1], "utf8"));
-  assert.equal(launchConfig.args.includes("-RestartCodex"), false);
+  const ready = JSON.parse(await readFile(value.manager.stateFile, "utf8"));
+  await writeFile(value.manager.stateFile, JSON.stringify({ ...ready, autoInstallRequested: true }), "utf8");
+
+  const observed = await value.manager.status(value.update);
+  assert.equal(observed.state, "ready");
+  await value.manager.waitForIdle();
+  const resumed = await value.manager.status(value.update);
+  assert.equal(resumed.state, "installing");
+  assert.equal(value.spawned.length, 1);
 });
 
 test("并发下载和并发安装都只能启动一个实际操作", async (t) => {
@@ -203,7 +234,7 @@ test("服务重启后会把孤立下载恢复为可人工重试的失败状态",
 
   const status = await value.manager.status(value.update);
   assert.equal(status.state, "failed");
-  assert.equal(status.canReset, true);
+  assert.equal("canReset" in status, false);
   assert.match(status.message, /重新下载/);
 });
 
@@ -222,7 +253,7 @@ test("服务重启后会核对孤立安装器，不会无限卡在安装中", as
   const status = await value.manager.status(value.update);
   assert.equal(status.state, "restart_required");
   assert.equal(status.restartRequired, true);
-  assert.equal(status.canReset, true);
+  assert.equal("canReset" in status, false);
 });
 
 test("独立更新器未确认接管时不会永久卡在 installing", async (t) => {
@@ -231,11 +262,59 @@ test("独立更新器未确认接管时不会永久卡在 installing", async (t)
   await value.manager.startDownload(value.update);
   await value.manager.waitForIdle();
   await assert.rejects(
-    value.manager.install({ confirmVersion: "0.32.0", restartCodex: true }),
+    value.manager.install({ confirmVersion: "0.32.0" }),
     (error) => error.code === "UPDATE_UPDATER_HANDSHAKE_FAILED"
   );
   const status = await value.manager.status(value.update);
   assert.equal(status.state, "failed");
   assert.equal(status.phase, "failed");
-  assert.equal(status.canReset, true);
+  assert.equal("canReset" in status, false);
+});
+
+test("安装完成后只允许显式重启，重启助手接管后返回可观察状态", async (t) => {
+  const value = await fixture();
+  t.after(() => rm(value.root, { recursive: true, force: true }));
+  await writeFile(value.manager.stateFile, JSON.stringify({
+    schemaVersion: 1,
+    state: "restart_required",
+    currentVersion: "0.31.2",
+    targetVersion: "0.31.2",
+    previousVersion: "0.31.1",
+    phase: "restart_required",
+    operationProgress: 97,
+    restartRequired: true,
+    updatedAt: new Date().toISOString()
+  }), "utf8");
+
+  const before = await value.manager.status(value.update);
+  assert.equal(before.canRestart, true);
+  const restarting = await value.manager.restart();
+  assert.equal(restarting.phase, "restarting");
+  assert.equal(restarting.restartProcessId, undefined);
+  assert.equal(value.spawned.length, 1);
+  const launchConfig = JSON.parse(await readFile(value.spawned[0].args[1], "utf8"));
+  assert.ok(launchConfig.args.some((entry) => /restart-codex-after-update\.ps1$/i.test(String(entry))));
+});
+
+test("重启成功留下的 completed 状态会在新服务首次读取时自动清理", async (t) => {
+  const value = await fixture();
+  t.after(() => rm(value.root, { recursive: true, force: true }));
+  await writeFile(value.manager.stateFile, JSON.stringify({
+    schemaVersion: 1,
+    state: "completed",
+    currentVersion: "0.31.2",
+    targetVersion: "0.31.2",
+    previousVersion: "0.31.1",
+    phase: "completed",
+    operationProgress: 100,
+    restartRequired: false,
+    updatedAt: new Date().toISOString()
+  }), "utf8");
+
+  const status = await value.manager.status(value.update);
+  assert.equal(status.state, "idle");
+  assert.equal(status.targetVersion, value.update.latestVersion);
+  const persisted = JSON.parse(await readFile(value.manager.stateFile, "utf8"));
+  assert.equal(persisted.state, "idle");
+  assert.equal(persisted.targetVersion, "");
 });

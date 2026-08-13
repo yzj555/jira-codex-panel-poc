@@ -30,7 +30,7 @@ import {
   SVN_RECONCILE_COMMIT_TOOL,
   UPDATE_CANCEL_DOWNLOAD_TOOL,
   UPDATE_DOWNLOAD_TOOL,
-  UPDATE_INSTALL_TOOL,
+  UPDATE_RESTART_TOOL,
   UPDATE_STATUS_TOOL
 } from "../mcp/jira-task-board-mcp.mjs";
 
@@ -65,7 +65,7 @@ const expectedTools = [
   SVN_RECONCILE_COMMIT_TOOL,
   UPDATE_CANCEL_DOWNLOAD_TOOL,
   UPDATE_DOWNLOAD_TOOL,
-  UPDATE_INSTALL_TOOL,
+  UPDATE_RESTART_TOOL,
   UPDATE_STATUS_TOOL
 ].sort();
 
@@ -93,9 +93,9 @@ try {
   if (byName[UPDATE_DOWNLOAD_TOOL].annotations?.openWorldHint !== true) {
     throw new Error(`${UPDATE_DOWNLOAD_TOOL} 必须标记为下载 GitHub Release 的开放世界操作。`);
   }
-  if (byName[UPDATE_INSTALL_TOOL].annotations?.destructiveHint !== true
-    || byName[UPDATE_INSTALL_TOOL].annotations?.openWorldHint !== false) {
-    throw new Error(`${UPDATE_INSTALL_TOOL} 必须标记为需人工确认的本地高风险操作。`);
+  if (byName[UPDATE_RESTART_TOOL].annotations?.destructiveHint !== true
+    || byName[UPDATE_RESTART_TOOL].annotations?.openWorldHint !== false) {
+    throw new Error(`${UPDATE_RESTART_TOOL} 必须标记为需人工确认的本地高风险操作。`);
   }
   for (const toolName of [AUTOMATION_SET_MONITOR_TOOL, CODEX_CREATE_ISSUE_ANALYSIS_TOOL]) {
     if (byName[toolName].annotations?.openWorldHint !== true) {

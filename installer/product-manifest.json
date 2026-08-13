@@ -85,6 +85,11 @@
       "path": "scripts/update-launcher.mjs"
     },
     {
+      "id": "release-restart-helper",
+      "required": true,
+      "path": "scripts/restart-codex-after-update.ps1"
+    },
+    {
       "id": "update-manager",
       "required": true,
       "path": "lib/update-manager.mjs"

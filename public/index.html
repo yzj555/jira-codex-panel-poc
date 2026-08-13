@@ -363,32 +363,31 @@
             <div class="update-check-row">
               <div class="update-check-summary">
                 <span id="update-check-detail">正在读取当前版本…</span>
-                <progress id="update-download-progress" max="100" value="0" hidden></progress>
                 <small id="update-install-detail" hidden></small>
                 <div id="update-operation" class="update-operation" role="status" aria-live="polite" hidden>
                   <div class="update-operation-head">
                     <span id="update-operation-indicator" class="update-operation-indicator" aria-hidden="true"></span>
-                    <strong id="update-operation-title">正在准备更新</strong>
+                    <div class="update-operation-copy">
+                      <strong id="update-operation-title">正在准备更新</strong>
+                      <small id="update-operation-hint"></small>
+                    </div>
                     <span id="update-operation-percent">0%</span>
                   </div>
-                  <progress id="update-operation-progress" max="100" value="0"></progress>
+                  <div class="update-operation-progress" aria-hidden="true">
+                    <i id="update-operation-progress"></i>
+                  </div>
                   <ol id="update-operation-steps" class="update-operation-steps" aria-label="更新进度">
-                    <li data-update-step="download">下载校验</li>
-                    <li data-update-step="backup">安全备份</li>
-                    <li data-update-step="install">安装组件</li>
-                    <li data-update-step="verify">完整性验证</li>
-                    <li data-update-step="restart">重启完成</li>
+                    <li data-update-step="prepare"><i></i><span>准备更新</span></li>
+                    <li data-update-step="install"><i></i><span>安全安装</span></li>
+                    <li data-update-step="restart"><i></i><span>重启生效</span></li>
                   </ol>
-                  <small id="update-operation-hint"></small>
                 </div>
               </div>
               <div class="update-check-actions">
                 <a id="update-check-link" class="plain-button update-check-link" target="_blank" rel="noreferrer noopener" hidden>查看发布说明</a>
                 <button id="cancel-update-download" class="plain-button" type="button" hidden>取消下载</button>
-                <button id="download-update" class="plain-button primary-soft" type="button" hidden>下载更新</button>
-                <button id="install-update-later" class="plain-button" type="button" hidden>安装后手动重启</button>
-                <button id="install-update-restart" class="primary-button" type="button" hidden>安装并重启</button>
-                <button id="reset-update-state" class="plain-button" type="button" hidden>清除状态</button>
+                <button id="download-update" class="plain-button primary-soft" type="button" hidden>下载并安装</button>
+                <button id="restart-update" class="primary-button" type="button" hidden>重启以完成更新</button>
                 <button id="check-updates-now" class="plain-button" type="button">立即检查</button>
               </div>
             </div>

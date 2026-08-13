@@ -1,6 +1,6 @@
 # Jira Codex 任务面板
 
-> 当前版本：`0.31.4`<br>
+> 当前版本：`0.31.5`<br>
 > 运行环境：Windows Codex Desktop + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 
@@ -290,7 +290,7 @@ CT-13349 【系统】优化3.0-护具-护具优化
 | 模板绑定技能 | 每种模板可单独选择 Codex 当前已加载的 Skill；需求和 Bug 默认均不绑定 |
 | 每个分区最大任务数 | 1～200，默认 100 |
 
-设置面板按 Jira 连接、Codex 集成、数据同步、版本更新、自动化通知、消息模板和高级配置分组。版本更新拥有独立的左侧导航入口；顶部和底部操作区固定，中间配置内容独立滚动，保存按钮始终可见。
+设置面板按 Jira 连接、Codex 集成、数据同步、自动化通知、消息模板、高级配置和版本更新分组，版本更新固定排列在最后并拥有独立的左侧导航入口；顶部和底部操作区固定，中间配置内容独立滚动，保存按钮始终可见。
 
 ### 数据同步
 
@@ -304,7 +304,7 @@ CT-13349 【系统】优化3.0-护具-护具优化
 
 面板标题旁始终显示当前安装版本。版本检查优先比较最新 GitHub Release；仓库尚未发布 Release 时回退到远端 `main` 的 `package.json`。只有正式 Release 同时包含 Windows ZIP 和 `update-manifest.json` 时，面板才提供一键下载；只有远端 `main` 版本或 Release 缺少安装资产时，只显示发布说明入口，不会拿源码分支直接覆盖安装。
 
-一键更新分成两次人工确认：先下载，再安装。下载保存在 `%LOCALAPPDATA%\jira-codex-panel-poc\updates\<版本>`，必须同时匹配 Release 资产大小和清单中的 SHA-256 才进入“可安装”。安装前会再次显示准确版本并要求确认；正在执行的 SVN commit、Codex SVN 审查、自动 Bug 分析或桌面会话操作会阻止安装。独立更新器先备份现有程序，再复用统一安装器升级并检查服务版本、必要组件和 Plugin 注册；验证失败会自动回滚。更新器只会请求 Codex 正常退出，不会强制结束进程；若 Codex 没有在限定时间内关闭，新版本仍可安装，但会明确显示“需要手动重启”。GitHub 暂时不可用只会显示非阻塞状态，不影响 Jira、会话或 SVN 功能。
+点击“下载并安装”后不再需要第二次安装确认：安装包保存在 `%LOCALAPPDATA%\jira-codex-panel-poc\updates\<版本>`，同时匹配 Release 资产大小和清单中的 SHA-256 后会自动进入安全安装。正在执行的 SVN commit、Codex SVN 审查、自动 Bug 分析或桌面会话操作会阻止安装。独立更新器先备份现有程序，再复用统一安装器升级并检查服务版本、必要组件和 Plugin 注册；验证失败会自动回滚。验证通过后保留当前 Codex 窗口并明确提示“需要重启”，这是更新流程唯一需要再次人工操作的步骤。用户确认后只请求 Codex 正常退出，不会强制结束进程；重新打开成功后，启动器会确认目标版本并自动清理临时更新状态。GitHub 暂时不可用只会显示非阻塞状态，不影响 Jira、会话或 SVN 功能。
 
 两个消息模板都支持以下变量：
 
@@ -357,7 +357,7 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 ### 升级
 
-普通用户优先在“设置 → 版本更新”中下载并人工确认安装正式 GitHub Release。也可以在新版本项目目录中重新运行 `install.cmd` 或安装命令；两种方式最终都调用同一个统一生命周期入口，保留 Jira PAT、企业微信 Webhook、会话绑定和个人设置。
+普通用户优先在“设置 → 版本更新”中下载正式 GitHub Release；下载校验通过后自动安装，安装验证完成后再由用户确认重启。也可以在新版本项目目录中重新运行 `install.cmd` 或安装命令；两种方式最终都调用同一个统一生命周期入口，保留 Jira PAT、企业微信 Webhook、会话绑定和个人设置。
 
 修复当前安装：
 
@@ -541,7 +541,7 @@ App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.
 | `lib/svn-review-manager.mjs` | SVN 只读检查、审核状态持久化、可选 Codex 审核、人工确认令牌、提交前复检和显式路径 commit |
 | `lib/github-update-checker.mjs`、`lib/update-manager.mjs` | GitHub Release 版本发现、受管下载、SHA-256 校验和持久更新状态机 |
 | `installer/lifecycle.ps1` | 产品唯一生命周期入口：安装、覆盖升级、修复、状态检查、卸载和完全清除 |
-| `installer/update-bootstrap.ps1` | 安装目录外运行的独立更新器：备份、统一升级、正常重启、健康检查与失败回滚 |
+| `installer/update-bootstrap.ps1`、`scripts/restart-codex-after-update.ps1` | 安装目录外运行的独立更新器与重启助手：备份、统一升级、健康检查、显式重启确认、自动收尾和失败回滚 |
 | `installer/product-manifest.json` | 官方 Plugin、MCP、本地服务与最小桌面适配层共用的产品组件清单 |
 | `installer/install.ps1`、`installer/uninstall.ps1` | 由统一入口调用的底层安装与清理执行器 |
 | `.github/workflows/release.yml`、`scripts/build-release.ps1` | tag 版本校验、可重复 Windows 发布包、哈希、provenance 与 Draft Release |

@@ -71,7 +71,6 @@ const versionBadge = document.querySelector("#version-badge");
 const updateCheckDetail = document.querySelector("#update-check-detail");
 const updateCheckLink = document.querySelector("#update-check-link");
 const checkUpdatesNow = document.querySelector("#check-updates-now");
-const updateDownloadProgress = document.querySelector("#update-download-progress");
 const updateInstallDetail = document.querySelector("#update-install-detail");
 const updateOperation = document.querySelector("#update-operation");
 const updateOperationIndicator = document.querySelector("#update-operation-indicator");
@@ -82,9 +81,7 @@ const updateOperationSteps = Array.from(document.querySelectorAll("[data-update-
 const updateOperationHint = document.querySelector("#update-operation-hint");
 const downloadUpdate = document.querySelector("#download-update");
 const cancelUpdateDownload = document.querySelector("#cancel-update-download");
-const installUpdateLater = document.querySelector("#install-update-later");
-const installUpdateRestart = document.querySelector("#install-update-restart");
-const resetUpdateState = document.querySelector("#reset-update-state");
+const restartUpdate = document.querySelector("#restart-update");
 const templateEditorDialog = document.querySelector("#template-editor-dialog");
 const templateEditorBackdrop = document.querySelector("#template-editor-backdrop");
 const templateEditorForm = document.querySelector("#template-editor-form");
@@ -336,18 +333,19 @@ function safeGitHubUpdateUrl(value) {
 }
 
 const UPDATE_PHASE_VIEW = {
-  downloading: { title: "正在下载安装包", hint: "安装包下载完成后会自动进行大小与 SHA-256 校验。", activeStep: 0 },
-  verified: { title: "安装包已校验", hint: "更新包已准备就绪，确认后才会开始修改本机安装。", activeStep: -1, completedThrough: 0 },
-  launching: { title: "正在启动独立更新器", hint: "更新器确认接管后，本地服务才会安全退出。", activeStep: 1, completedThrough: 0 },
-  waiting_for_service: { title: "正在安全移交安装", hint: "本地服务正在退出，面板可能短暂断开；安装会在后台继续。", activeStep: 1, completedThrough: 0 },
-  extracting: { title: "正在校验并解压更新包", hint: "尚未替换现有安装文件。", activeStep: 1, completedThrough: 0 },
-  backing_up: { title: "正在备份当前版本", hint: "如果新版本验证失败，将自动恢复此备份。", activeStep: 1, completedThrough: 0 },
-  installing: { title: "正在安装新版本", hint: "正在替换程序文件并重新注册 Plugin，请不要重复启动安装。", activeStep: 2, completedThrough: 1 },
-  restarting: { title: "正在安全重启 Codex", hint: "Codex 会正常关闭并重新打开，不会强制终止进程。", activeStep: 4, completedThrough: 2 },
-  verifying: { title: "正在验证安装结果", hint: "正在检查本地服务、核心组件与 Plugin 注册状态。", activeStep: 3, completedThrough: 2 },
-  restart_required: { title: "安装完成，等待重启", hint: "使用安装器创建的 Codex 快捷方式重启后，会自动确认更新成功。", activeStep: 4, completedThrough: 3 },
-  completed: { title: "更新安装成功", hint: "新版本已经生效。", activeStep: -1, completedThrough: 4 },
-  rolling_back: { title: "验证失败，正在自动回滚", hint: "正在恢复更新前的安全备份，请勿关闭维护进程。", activeStep: 2, completedThrough: 1 },
+  downloading: { title: "正在准备更新", hint: "下载安装包，并校验文件大小与 SHA-256。", activeStep: 0, completedThrough: -1 },
+  verified: { title: "更新包校验完成", hint: "即将自动进入安全安装，无需再次确认。", activeStep: 0, completedThrough: 0 },
+  launching: { title: "正在开始安全安装", hint: "独立更新器接管后，本地服务会短暂重新启动。", activeStep: 1, completedThrough: 0 },
+  waiting_for_service: { title: "正在移交安装", hint: "面板可能短暂断开，更新会在后台继续。", activeStep: 1, completedThrough: 0 },
+  extracting: { title: "正在展开更新包", hint: "安装器正在复核更新内容。", activeStep: 1, completedThrough: 0 },
+  backing_up: { title: "正在备份当前版本", hint: "若验证失败，将自动恢复到更新前状态。", activeStep: 1, completedThrough: 0 },
+  installing: { title: "正在安装新版本", hint: "正在更新组件与 Plugin，请勿重复操作。", activeStep: 1, completedThrough: 0 },
+  verifying: { title: "正在确认安装结果", hint: "检查本地服务、必要组件与 Plugin 注册。", activeStep: 1, completedThrough: 0 },
+  restart_launching: { title: "正在准备重启 Codex", hint: "请保持当前窗口打开，Codex 即将正常关闭。", activeStep: 2, completedThrough: 1 },
+  restarting: { title: "正在重启 Codex", hint: "重新打开后会自动确认更新并清理临时状态。", activeStep: 2, completedThrough: 1 },
+  restart_required: { title: "需要重启以完成更新", hint: "新版本已经安装并验证；保存工作后重启即可完整生效。", activeStep: 2, completedThrough: 1 },
+  completed: { title: "更新已完整生效", hint: "临时更新状态将自动清理。", activeStep: -1, completedThrough: 2 },
+  rolling_back: { title: "正在恢复原版本", hint: "新版本验证未通过，正在自动恢复安全备份。", activeStep: 1, completedThrough: 0 },
   failed: { title: "更新未完成", hint: "请查看错误信息；现有安装未修改或已自动回滚。", activeStep: -1, completedThrough: -1 }
 };
 
@@ -371,12 +369,14 @@ function renderUpdateOperation(installation) {
         : failed ? 100 : 0;
   const reportedProgress = Number(installation?.operationProgress || 0);
   const progress = Math.max(0, Math.min(100, reportedProgress > 0 ? reportedProgress : fallbackProgress));
+  const waitingForRestart = installState === "restart_required" && phase === "restart_required";
   updateOperation.classList.toggle("is-failed", failed);
   updateOperation.classList.toggle("is-completed", completed);
-  updateOperationIndicator.classList.toggle("is-spinning", !failed && !completed && installState !== "ready" && installState !== "restart_required");
+  updateOperation.classList.toggle("needs-restart", waitingForRestart);
+  updateOperationIndicator.classList.toggle("is-spinning", !failed && !completed && installState !== "ready" && !waitingForRestart);
   updateOperationTitle.textContent = view.title;
-  updateOperationPercent.textContent = `${Math.round(progress)}%`;
-  updateOperationProgress.value = progress;
+  updateOperationPercent.textContent = waitingForRestart ? "等待重启" : `${Math.round(progress)}%`;
+  updateOperationProgress.style.width = `${progress}%`;
   updateOperationHint.textContent = view.hint;
   updateOperationSteps.forEach((step, index) => {
     step.classList.toggle("is-complete", index <= Number(view.completedThrough ?? -1));
@@ -387,6 +387,8 @@ function renderUpdateOperation(installation) {
 function renderUpdateStatus() {
   const update = state.updateStatus;
   const installation = state.updateInstallation;
+  const installState = String(installation?.state || "idle");
+  const restartRequired = installState === "restart_required";
   const currentVersion = String(update?.currentVersion || "—");
   const updateUrl = safeGitHubUpdateUrl(update?.url);
   versionBadge.textContent = update?.updateAvailable
@@ -406,7 +408,9 @@ function renderUpdateStatus() {
   updateCheckDetail.closest(".update-check-row")?.classList.toggle("update-available", Boolean(update?.updateAvailable));
   updateCheckDetail.closest(".update-check-row")?.classList.toggle("update-error", Boolean(installation?.error));
 
-  if (!update) {
+  if (restartRequired) {
+    updateCheckDetail.textContent = `v${installation.targetVersion || currentVersion} 已完成安全安装；重启 Codex 后完整生效。`;
+  } else if (!update) {
     updateCheckDetail.textContent = "正在读取当前版本…";
   } else if (update.updateAvailable) {
     updateCheckDetail.textContent = update.installable
@@ -422,11 +426,8 @@ function renderUpdateStatus() {
     updateCheckDetail.textContent = `当前版本 v${currentVersion}。`;
   }
 
-  const installState = String(installation?.state || "idle");
   const downloading = installState === "downloading";
   const installing = installState === "installing";
-  updateDownloadProgress.hidden = !downloading;
-  updateDownloadProgress.value = Number(installation?.progress || 0);
   updateInstallDetail.hidden = !installation?.message && !installation?.error;
   updateInstallDetail.textContent = installation?.error
     ? `${installation.message || "更新失败"} ${installation.error}`
@@ -437,14 +438,12 @@ function renderUpdateStatus() {
 
   downloadUpdate.hidden = !installation?.canDownload;
   cancelUpdateDownload.hidden = !installation?.canCancelDownload;
-  installUpdateLater.hidden = !installation?.canInstall;
-  installUpdateRestart.hidden = !installation?.canInstall;
-  resetUpdateState.hidden = !installation?.canReset;
-  for (const button of [downloadUpdate, cancelUpdateDownload, installUpdateLater, installUpdateRestart, resetUpdateState]) {
+  restartUpdate.hidden = !installation?.canRestart;
+  for (const button of [downloadUpdate, cancelUpdateDownload, restartUpdate]) {
     button.disabled = state.updateActionPending;
   }
   checkUpdatesNow.disabled = state.updateActionPending || downloading || installing;
-  checkUpdatesNow.hidden = installing;
+  checkUpdatesNow.hidden = installing || restartRequired;
 
   if (downloading) {
     cancelUpdateDownload.textContent = `取消下载 ${Number(installation.progress || 0)}%`;
@@ -456,11 +455,14 @@ function renderUpdateStatus() {
 function scheduleUpdateStatusPoll() {
   if (updateStatusTimer) window.clearTimeout(updateStatusTimer);
   updateStatusTimer = 0;
-  if (!["downloading", "installing", "restart_required"].includes(state.updateInstallation?.state)) return;
+  const installState = state.updateInstallation?.state;
+  const phase = state.updateInstallation?.phase;
+  if (!["downloading", "ready", "installing"].includes(installState)
+    && !(installState === "restart_required" && ["restart_launching", "restarting"].includes(phase))) return;
   updateStatusTimer = window.setTimeout(() => {
     updateStatusTimer = 0;
     void loadUpdateStatus({ quiet: true });
-  }, state.updateInstallation?.state === "downloading" ? 1_000 : 2_000);
+  }, installState === "downloading" || installState === "ready" ? 1_000 : 2_000);
 }
 
 async function loadUpdateStatus({ force = false, quiet = false } = {}) {
@@ -514,16 +516,16 @@ async function runUpdateAction(path, { method = "POST", body = {}, successMessag
   }
 }
 
-async function installDownloadedUpdate(restartCodex) {
-  const version = String(state.updateInstallation?.targetVersion || "");
-  if (!version) return;
-  const confirmed = window.confirm(restartCodex
-    ? `确认安装 Jira Codex 助手 v${version}？\n\n安装前会备份当前版本。正在运行的 SVN 提交、Codex 审查或自动 Bug 分析会阻止安装。更新器只会正常关闭 Codex，不会强制结束进程。`
-    : `确认安装 Jira Codex 助手 v${version}？\n\n安装完成后 Codex 不会自动重启；请保存工作并稍后手动重启。`);
+async function restartToCompleteUpdate() {
+  const version = String(state.updateInstallation?.targetVersion || state.updateStatus?.latestVersion || "");
+  if (!version || !state.updateInstallation?.canRestart) return;
+  const confirmed = window.confirm(
+    `v${version} 已经安装并通过完整性验证。\n\n重启会正常关闭所有 Codex 窗口，并中断尚未完成的任务。请先保存当前工作。\n\n现在重启 Codex，让更新完整生效吗？`
+  );
   if (!confirmed) return;
-  await runUpdateAction("/api/update/install", {
-    body: { confirmVersion: version, restartCodex },
-    successMessage: restartCodex ? "更新器已启动，Codex 将在安装完成后正常重启" : "更新器已启动，完成后请手动重启 Codex"
+  await runUpdateAction("/api/update/restart", {
+    body: {},
+    successMessage: "正在正常关闭并重新打开 Codex…"
   });
 }
 
@@ -3256,15 +3258,13 @@ document.querySelector("#update-check-enabled").addEventListener("change", (even
 checkUpdatesNow.addEventListener("click", () => void loadUpdateStatus({ force: true }));
 downloadUpdate.addEventListener("click", () => void runUpdateAction("/api/update/download", {
   body: {},
-  successMessage: "更新包开始下载；校验通过后仍需人工确认安装"
+  successMessage: "更新已开始；下载校验后会自动安装"
 }));
 cancelUpdateDownload.addEventListener("click", () => void runUpdateAction("/api/update/download", {
   method: "DELETE",
   successMessage: "更新下载已取消，当前安装没有变化"
 }));
-installUpdateLater.addEventListener("click", () => void installDownloadedUpdate(false));
-installUpdateRestart.addEventListener("click", () => void installDownloadedUpdate(true));
-resetUpdateState.addEventListener("click", () => void runUpdateAction("/api/update/reset", { body: {} }));
+restartUpdate.addEventListener("click", () => void restartToCompleteUpdate());
 for (const kind of ["requirement", "bug"]) {
   document.querySelector(`#${kind}-source-mode`).addEventListener("change", () => {
     updateBoardSourceVisibility();

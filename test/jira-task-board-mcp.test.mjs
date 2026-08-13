@@ -40,7 +40,7 @@ import {
   SVN_RECONCILE_COMMIT_TOOL,
   UPDATE_CANCEL_DOWNLOAD_TOOL,
   UPDATE_DOWNLOAD_TOOL,
-  UPDATE_INSTALL_TOOL,
+  UPDATE_RESTART_TOOL,
   UPDATE_STATUS_TOOL
 } from "../mcp/jira-task-board-mcp.mjs";
 
@@ -160,7 +160,7 @@ function updates() {
     getStatus: async () => ({ update, installation: { state: "idle", canDownload: true } }),
     startDownload: async () => ({ update, installation: { state: "downloading", progress: 0 } }),
     cancelDownload: async () => ({ update, installation: { state: "cancelled", progress: 0 } }),
-    install: async ({ confirmVersion, restartCodex }) => ({ update, installation: { state: "installing", targetVersion: confirmVersion, restartRequired: restartCodex } })
+    restart: async () => ({ update, installation: { state: "restart_required", phase: "restarting", targetVersion: "0.32.0", restartRequired: true } })
   };
 }
 
@@ -237,7 +237,7 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   await client.connect(clientTransport);
 
   const listed = await client.listTools();
-  assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [AUTOMATION_SET_MONITOR_TOOL, AUTOMATION_STATUS_TOOL, CODEX_BIND_ISSUE_TOOL, CODEX_CLEAR_BINDING_TOOL, CODEX_CREATE_ISSUE_ANALYSIS_TOOL, CODEX_LIST_THREADS_TOOL, CODEX_OPEN_BOUND_THREAD_TOOL, JIRA_ATTACHMENT_PREVIEW_TOOL, JIRA_EXECUTE_TRANSITION_TOOL, JIRA_ISSUE_DETAIL_TOOL, JIRA_LIST_SHEETS_TOOL, JIRA_LIST_TRANSITIONS_TOOL, JIRA_PREPARE_TRANSITION_TOOL, JIRA_SHEET_ISSUES_TOOL, JIRA_TASK_BOARD_TOOL, SVN_ABANDON_REVIEW_TOOL, SVN_CANCEL_REVIEW_TOOL, SVN_COMMIT_REVIEW_TOOL, SVN_CONFIRM_COMMITTED_TOOL, SVN_CONFIRM_REVIEW_TOOL, SVN_CREATE_REVIEW_TOOL, SVN_GET_REVIEW_TOOL, SVN_INSPECT_CHANGES_TOOL, SVN_OPEN_EXTERNAL_DIFF_TOOL, SVN_PREVIEW_DIFF_TOOL, SVN_RECONCILE_COMMIT_TOOL, UPDATE_CANCEL_DOWNLOAD_TOOL, UPDATE_DOWNLOAD_TOOL, UPDATE_INSTALL_TOOL, UPDATE_STATUS_TOOL].sort());
+  assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [AUTOMATION_SET_MONITOR_TOOL, AUTOMATION_STATUS_TOOL, CODEX_BIND_ISSUE_TOOL, CODEX_CLEAR_BINDING_TOOL, CODEX_CREATE_ISSUE_ANALYSIS_TOOL, CODEX_LIST_THREADS_TOOL, CODEX_OPEN_BOUND_THREAD_TOOL, JIRA_ATTACHMENT_PREVIEW_TOOL, JIRA_EXECUTE_TRANSITION_TOOL, JIRA_ISSUE_DETAIL_TOOL, JIRA_LIST_SHEETS_TOOL, JIRA_LIST_TRANSITIONS_TOOL, JIRA_PREPARE_TRANSITION_TOOL, JIRA_SHEET_ISSUES_TOOL, JIRA_TASK_BOARD_TOOL, SVN_ABANDON_REVIEW_TOOL, SVN_CANCEL_REVIEW_TOOL, SVN_COMMIT_REVIEW_TOOL, SVN_CONFIRM_COMMITTED_TOOL, SVN_CONFIRM_REVIEW_TOOL, SVN_CREATE_REVIEW_TOOL, SVN_GET_REVIEW_TOOL, SVN_INSPECT_CHANGES_TOOL, SVN_OPEN_EXTERNAL_DIFF_TOOL, SVN_PREVIEW_DIFF_TOOL, SVN_RECONCILE_COMMIT_TOOL, UPDATE_CANCEL_DOWNLOAD_TOOL, UPDATE_DOWNLOAD_TOOL, UPDATE_RESTART_TOOL, UPDATE_STATUS_TOOL].sort());
   for (const tool of listed.tools) {
     assert.equal(tool._meta.ui.resourceUri, JIRA_TASK_BOARD_RESOURCE_URI);
   }
@@ -249,8 +249,8 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   assert.equal(byName[UPDATE_STATUS_TOOL].annotations.readOnlyHint, true);
   assert.equal(byName[UPDATE_STATUS_TOOL].annotations.openWorldHint, true);
   assert.equal(byName[UPDATE_DOWNLOAD_TOOL].annotations.openWorldHint, true);
-  assert.equal(byName[UPDATE_INSTALL_TOOL].annotations.destructiveHint, true);
-  assert.equal(byName[UPDATE_INSTALL_TOOL].annotations.openWorldHint, false);
+  assert.equal(byName[UPDATE_RESTART_TOOL].annotations.destructiveHint, true);
+  assert.equal(byName[UPDATE_RESTART_TOOL].annotations.openWorldHint, false);
   assert.equal(byName[JIRA_PREPARE_TRANSITION_TOOL].annotations.openWorldHint, false);
   assert.equal(byName[CODEX_BIND_ISSUE_TOOL].annotations.destructiveHint, false);
   assert.equal(byName[CODEX_CLEAR_BINDING_TOOL].annotations.destructiveHint, true);
@@ -277,7 +277,7 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   assert.equal(update.structuredContent.update.latestVersion, "0.32.0");
   assert.equal((await client.callTool({ name: UPDATE_DOWNLOAD_TOOL, arguments: {} })).structuredContent.installation.state, "downloading");
   assert.equal((await client.callTool({ name: UPDATE_CANCEL_DOWNLOAD_TOOL, arguments: {} })).structuredContent.installation.state, "cancelled");
-  assert.equal((await client.callTool({ name: UPDATE_INSTALL_TOOL, arguments: { confirmVersion: "0.32.0", restartCodex: true } })).structuredContent.installation.state, "installing");
+  assert.equal((await client.callTool({ name: UPDATE_RESTART_TOOL, arguments: {} })).structuredContent.installation.phase, "restarting");
   const openedThread = await client.callTool({ name: CODEX_OPEN_BOUND_THREAD_TOOL, arguments: { issueKey: "CT-1" } });
   assert.equal(openedThread.structuredContent.threadId, "thread-for-CT-1");
   const createdThread = await client.callTool({ name: CODEX_CREATE_ISSUE_ANALYSIS_TOOL, arguments: { issueKey: "CT-1", supplementalDescription: "弱网复现" } });

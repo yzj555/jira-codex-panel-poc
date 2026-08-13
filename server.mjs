@@ -48,7 +48,7 @@ import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "./m
 import { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
 import { attachmentCanOpenLocally } from "./public/issue-views.js";
 
-const VERSION = "0.31.4";
+const VERSION = "0.31.5";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -417,6 +417,7 @@ const updateManager = createUpdateManager({
   currentVersion: VERSION,
   installRoot: root,
   userDataRoot: dirname(configStore.configFile),
+  onInstallHandoff: () => scheduleUpdateShutdown(),
   blockerProvider: async () => {
     const [monitorStatus, svnOperations] = await Promise.all([
       bugMonitor.getStatus(),
@@ -602,16 +603,14 @@ const mcpOptions = {
     getStatus: ({ force = false } = {}) => getFullUpdateStatus({ force }),
     startDownload: async () => {
       const update = await getUpdateStatus({ force: true });
-      return { update, installation: await updateManager.startDownload(update) };
+      return { update, installation: await updateManager.startDownload(update, { autoInstall: true }) };
     },
     cancelDownload: async () => {
       const update = await getUpdateStatus();
       return { update, installation: await updateManager.cancelDownload(update) };
     },
-    install: async (input) => {
-      const installation = await updateManager.install(input);
-      scheduleUpdateShutdown();
-      return { update: await getUpdateStatus(), installation };
+    restart: async () => {
+      return { update: await getUpdateStatus(), installation: await updateManager.restart() };
     }
   },
   version: VERSION
@@ -784,7 +783,10 @@ async function handleApi(request, response, url) {
   if (request.method === "POST" && url.pathname === "/api/update/download") {
     await readJson(request);
     const update = await getUpdateStatus({ force: true });
-    return json(response, 202, { update, installation: await updateManager.startDownload(update) });
+    return json(response, 202, {
+      update,
+      installation: await updateManager.startDownload(update, { autoInstall: true })
+    });
   }
 
   if (request.method === "DELETE" && url.pathname === "/api/update/download") {
@@ -792,19 +794,12 @@ async function handleApi(request, response, url) {
     return json(response, 200, { update, installation: await updateManager.cancelDownload(update) });
   }
 
-  if (request.method === "POST" && url.pathname === "/api/update/install") {
-    const input = await readJson(request);
-    const installation = await updateManager.install(input);
-    const result = { update: await getUpdateStatus(), installation };
-    scheduleUpdateShutdown();
-    json(response, 202, result);
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/update/reset") {
+  if (request.method === "POST" && url.pathname === "/api/update/restart") {
     await readJson(request);
-    const update = await getUpdateStatus();
-    return json(response, 200, { update, installation: await updateManager.reset(update) });
+    return json(response, 202, {
+      update: await getUpdateStatus(),
+      installation: await updateManager.restart()
+    });
   }
 
   if (request.method === "GET" && url.pathname === "/api/desktop/commands/next") {

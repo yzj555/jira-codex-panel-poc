@@ -41,6 +41,7 @@ try {
   foreach ($required in @(
     'install.cmd',
     'installer\update-bootstrap.ps1',
+    'scripts\restart-codex-after-update.ps1',
     'lib\update-manager.mjs',
     'mcp\ui\task-board.html',
     'plugins\jira-codex-assistant\.codex-plugin\plugin.json',

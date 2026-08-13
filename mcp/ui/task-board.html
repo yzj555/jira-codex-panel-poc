@@ -45,6 +45,7 @@
     #version-status { min-height: 22px; padding: 1px 7px; border-color: var(--line); border-radius: 999px; background: var(--soft); color: var(--muted); font-size: 10px; font-weight: 680; }
     #version-status:not(.update-available) { cursor: default; }
     #version-status.update-available { border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); background: color-mix(in srgb, var(--warn) 12%, var(--panel)); color: var(--warn); cursor: pointer; }
+    #version-status.action-required { border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); cursor: pointer; }
     h2 { font-size: 15px; }
     #meta { margin-top: 2px; color: var(--muted); font-size: 11px; }
     .toolbar { display: flex; align-items: center; gap: 8px; }
@@ -286,7 +287,7 @@
   <div id="loading"><div class="loader"><span class="spinner"></span><span id="loading-text">正在读取…</span></div></div>
   <script>
     const APP_VERSION = "__JIRA_CODEX_VERSION__";
-    const TOOLS = { board: "jira_list_my_tasks", issue: "jira_get_issue", attachmentPreview: "jira_preview_issue_attachment", sheets: "jira_list_sheets", sheet: "jira_get_sheet_issues", transitions: "jira_list_transitions", prepareTransition: "jira_prepare_transition", executeTransition: "jira_execute_transition", threads: "codex_list_bindable_threads", bindIssue: "codex_bind_issue_to_thread", clearBinding: "codex_clear_issue_binding", openBoundThread: "codex_open_bound_issue_thread", createAnalysis: "codex_create_and_bind_issue_analysis", automationStatus: "jira_get_bug_monitor_status", automationToggle: "jira_set_bug_monitor_enabled", updateStatus: "jira_get_update_status", updateDownload: "jira_download_update", updateCancel: "jira_cancel_update_download", updateInstall: "jira_install_downloaded_update", svnInspect: "svn_inspect_issue_changes", svnDiff: "svn_preview_issue_diff", svnExternalDiff: "svn_open_issue_external_diff", svnCreateReview: "svn_create_issue_review", svnGetReview: "svn_get_issue_review", svnCancelReview: "svn_cancel_issue_review", svnConfirmReview: "svn_confirm_issue_review", svnCommit: "svn_commit_issue_review", svnReconcile: "svn_reconcile_issue_commit", svnConfirmCommitted: "svn_confirm_issue_committed", svnAbandon: "svn_abandon_issue_review" };
+    const TOOLS = { board: "jira_list_my_tasks", issue: "jira_get_issue", attachmentPreview: "jira_preview_issue_attachment", sheets: "jira_list_sheets", sheet: "jira_get_sheet_issues", transitions: "jira_list_transitions", prepareTransition: "jira_prepare_transition", executeTransition: "jira_execute_transition", threads: "codex_list_bindable_threads", bindIssue: "codex_bind_issue_to_thread", clearBinding: "codex_clear_issue_binding", openBoundThread: "codex_open_bound_issue_thread", createAnalysis: "codex_create_and_bind_issue_analysis", automationStatus: "jira_get_bug_monitor_status", automationToggle: "jira_set_bug_monitor_enabled", updateStatus: "jira_get_update_status", updateDownload: "jira_download_update", updateCancel: "jira_cancel_update_download", updateRestart: "jira_restart_to_complete_update", svnInspect: "svn_inspect_issue_changes", svnDiff: "svn_preview_issue_diff", svnExternalDiff: "svn_open_issue_external_diff", svnCreateReview: "svn_create_issue_review", svnGetReview: "svn_get_issue_review", svnCancelReview: "svn_cancel_issue_review", svnConfirmReview: "svn_confirm_issue_review", svnCommit: "svn_commit_issue_review", svnReconcile: "svn_reconcile_issue_commit", svnConfirmCommitted: "svn_confirm_issue_committed", svnAbandon: "svn_abandon_issue_review" };
     const DESKTOP_BRIDGE_TRANSPORT = document.documentElement.dataset.transport === "desktop-bridge";
     const LOCAL_TRANSPORT = DESKTOP_BRIDGE_TRANSPORT
       || new URLSearchParams(window.location.search).get("transport") === "http";
@@ -478,9 +479,9 @@
         : name === TOOLS.automationStatus ? "正在读取自动监控状态…"
         : name === TOOLS.automationToggle ? "正在更新自动监控…"
         : name === TOOLS.updateStatus ? "正在检查 GitHub 更新…"
-        : name === TOOLS.updateDownload ? "正在启动更新下载…"
+        : name === TOOLS.updateDownload ? "正在启动下载与自动安装…"
         : name === TOOLS.updateCancel ? "正在取消更新下载…"
-        : name === TOOLS.updateInstall ? "正在交给独立更新器…"
+        : name === TOOLS.updateRestart ? "正在准备重启 Codex…"
         : name === TOOLS.svnInspect ? "正在检查 SVN 工作副本…"
         : name === TOOLS.svnDiff ? "正在读取 SVN 差异…"
         : name === TOOLS.svnExternalDiff ? "正在打开 TortoiseSVN 差异比较…"
@@ -504,6 +505,10 @@
         return output;
       } catch (error) {
         if (!background) showError(error);
+        if (background && name === TOOLS.updateStatus) {
+          if (updatePollTimer) clearTimeout(updatePollTimer);
+          updatePollTimer = setTimeout(() => void callTool(TOOLS.updateStatus, {}, { background: true }), 1_500);
+        }
         return null;
       } finally {
         if (!localBusy) setBusy(false);
@@ -582,30 +587,36 @@
       button.textContent = installState === "downloading"
         ? `v${currentVersion} · 下载 ${Number(installation.progress || 0)}%`
         : installState === "ready"
-          ? `v${currentVersion} · 安装 v${installation.targetVersion}`
+          ? `v${currentVersion} · 正在准备安装`
           : installState === "installing"
             ? `v${currentVersion} · 正在安装`
             : installState === "restart_required"
-              ? `v${currentVersion} · 需要重启`
+              ? installation?.phase === "restarting" || installation?.phase === "restart_launching"
+                ? `v${currentVersion} · 正在重启`
+                : `v${currentVersion} · 重启完成更新`
               : update?.updateAvailable
                 ? `v${currentVersion} · 更新 v${update.latestVersion}`
                 : `v${currentVersion}`;
       button.classList.toggle("update-available", Boolean(update?.updateAvailable));
+      button.classList.toggle("action-required", installState === "restart_required");
       button.title = installation?.error
         ? `${installation.message || "更新失败"}：${installation.error}`
         : installState === "downloading"
           ? "正在下载并校验 GitHub Release 安装包；点击可取消"
           : installState === "ready"
-            ? `安装包已校验；点击人工确认安装 v${installation.targetVersion}`
+            ? `v${installation.targetVersion} 已校验，正在自动进入安装`
+            : installState === "restart_required"
+              ? "新版本已经安装并验证；保存工作后点击重启，让更新完整生效"
             : update?.updateAvailable && update?.installable
-              ? `发现新版本 v${update.latestVersion}，点击下载`
+              ? `发现新版本 v${update.latestVersion}，点击下载并自动安装`
               : update?.updateAvailable
                 ? `发现新版本 v${update.latestVersion}，尚未发布一键安装包`
         : update?.checked ? "当前已是最新版本" : update?.enabled === false ? "自动更新检查已关闭" : "当前安装版本";
       button.setAttribute("aria-disabled", String(!update?.updateAvailable && !["downloading", "ready", "restart_required", "failed", "rolled_back"].includes(installState)));
       if (updatePollTimer) clearTimeout(updatePollTimer);
       updatePollTimer = null;
-      if (["downloading", "installing", "restart_required"].includes(installState)) {
+      if (["downloading", "ready", "installing"].includes(installState)
+        || (installState === "restart_required" && ["restart_launching", "restarting"].includes(installation?.phase))) {
         updatePollTimer = setTimeout(() => void callTool(TOOLS.updateStatus, {}, { background: true }), installState === "downloading" ? 1_000 : 2_000);
       }
     }
@@ -915,17 +926,13 @@
         const installState = String(installation?.state || "idle");
         if (installState === "downloading") {
           if (window.confirm("确认取消当前更新下载吗？现有安装不会变化。")) void callTool(TOOLS.updateCancel);
-        } else if (installState === "ready" && installation?.targetVersion) {
-          const version = installation.targetVersion;
-          if (window.confirm(`确认安装 Jira Codex 助手 v${version}？\n\n安装前会备份当前版本；正在运行的 SVN 提交、Codex 审查或自动 Bug 分析会阻止安装。更新器不会强制结束 Codex。`)) {
-            void callTool(TOOLS.updateInstall, { confirmVersion: version, restartCodex: true });
-          }
         } else if (installState === "restart_required") {
-          showError(new Error("更新已安装，请保存当前工作并手动完全退出、重新打开 Codex。"));
-        } else if (update?.updateAvailable && update?.installable) {
-          if (window.confirm(`下载 Jira Codex 助手 v${update.latestVersion}？下载完成并通过 SHA-256 校验后，不会自动安装，仍需再次人工确认。`)) {
-            void callTool(TOOLS.updateDownload);
+          if (!["restart_launching", "restarting"].includes(installation?.phase)
+            && window.confirm("新版本已经安装并验证。\n\n重启会正常关闭所有 Codex 窗口，并中断尚未完成的任务。请先保存当前工作。\n\n现在重启 Codex，让更新完整生效吗？")) {
+            void callTool(TOOLS.updateRestart);
           }
+        } else if (update?.updateAvailable && update?.installable) {
+          void callTool(TOOLS.updateDownload);
         } else if (update?.updateAvailable && update?.url) {
           void openLink(update.url).catch((error) => showError(error));
         }

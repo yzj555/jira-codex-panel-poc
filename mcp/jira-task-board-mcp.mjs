@@ -22,7 +22,7 @@ export const AUTOMATION_SET_MONITOR_TOOL = "jira_set_bug_monitor_enabled";
 export const UPDATE_STATUS_TOOL = "jira_get_update_status";
 export const UPDATE_DOWNLOAD_TOOL = "jira_download_update";
 export const UPDATE_CANCEL_DOWNLOAD_TOOL = "jira_cancel_update_download";
-export const UPDATE_INSTALL_TOOL = "jira_install_downloaded_update";
+export const UPDATE_RESTART_TOOL = "jira_restart_to_complete_update";
 export const SVN_INSPECT_CHANGES_TOOL = "svn_inspect_issue_changes";
 export const SVN_PREVIEW_DIFF_TOOL = "svn_preview_issue_diff";
 export const SVN_OPEN_EXTERNAL_DIFF_TOOL = "svn_open_issue_external_diff";
@@ -393,8 +393,8 @@ export function createJiraTaskBoardMcpServer({
     server.registerTool(
       UPDATE_DOWNLOAD_TOOL,
       {
-        title: "下载 Jira Codex 助手更新",
-        description: "仅在 GitHub Release 已发布受支持的 Windows 安装包时，将其下载到当前用户更新缓存并校验 SHA-256。不会安装或重启 Codex。",
+        title: "下载并安装 Jira Codex 助手更新",
+        description: "从正式 GitHub Release 下载 Windows 更新包，校验大小与 SHA-256 后自动备份并安装。安装完成后不会立即关闭 Codex，而是等待用户确认重启。",
         inputSchema: {},
         annotations: externalMutationAnnotations(),
         _meta: uiMeta("正在启动更新下载…", "更新下载已启动")
@@ -403,7 +403,7 @@ export function createJiraTaskBoardMcpServer({
         const result = await updates.startDownload();
         return {
           structuredContent: { view: "updateStatus", ...result },
-          content: [{ type: "text", text: "更新下载已经开始；下载完成并校验通过后仍需人工确认安装。" }]
+          content: [{ type: "text", text: "更新下载已经开始；校验通过后会自动安装，安装完成后需要用户确认重启 Codex。" }]
         };
       }
     );
@@ -429,26 +429,21 @@ export function createJiraTaskBoardMcpServer({
     );
   }
 
-  if (typeof updates?.install === "function") {
+  if (typeof updates?.restart === "function") {
     server.registerTool(
-      UPDATE_INSTALL_TOOL,
+      UPDATE_RESTART_TOOL,
       {
-        title: "安装已校验的 Jira Codex 助手更新",
-        description: "高风险本地写操作。只有用户明确确认准确的目标版本后，才启动独立更新器。安装器会备份旧版本、复用统一安装流程、验证新版本并在失败时自动回滚；不会强制结束 Codex。",
-        inputSchema: {
-          confirmVersion: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
-          restartCodex: z.boolean().optional().default(true)
-        },
+        title: "重启 Codex 完成更新",
+        description: "仅在新版本已经安装并验证后使用。正常关闭所有 Codex 窗口，再通过统一启动入口重新打开；重启成功后自动确认并清理更新状态。",
+        inputSchema: {},
         annotations: localDestructiveAnnotations(),
-        _meta: uiMeta("正在交给独立更新器…", "更新安装已开始")
+        _meta: uiMeta("正在准备重启 Codex…", "Codex 重启已开始")
       },
-      async ({ confirmVersion, restartCodex }) => {
-        const result = await updates.install({ confirmVersion, restartCodex });
+      async () => {
+        const result = await updates.restart();
         return {
           structuredContent: { view: "updateStatus", ...result },
-          content: [{ type: "text", text: restartCodex
-            ? `已确认安装 v${confirmVersion}；本地服务将退出，更新器会正常关闭并重新打开 Codex。`
-            : `已确认安装 v${confirmVersion}；更新器完成后需要手动重启 Codex。` }]
+          content: [{ type: "text", text: "Codex 正在正常关闭并重新打开；重启后更新状态会自动完成并清理。" }]
         };
       }
     );
