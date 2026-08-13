@@ -1,6 +1,6 @@
 # Jira Codex 任务面板
 
-> 当前版本：`0.31.2`<br>
+> 当前版本：`0.31.3`<br>
 > 运行环境：Windows Codex Desktop + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 
@@ -302,7 +302,9 @@ CT-13349 【系统】优化3.0-护具-护具优化
 
 自动同步只读取 Jira 数据，不会修改 Issue。请求重叠时会跳过后续请求；后台同步失败会保留上一次成功数据，并在连接状态中提示，不会阻塞面板使用。上次选择的 Sheet 仍会在本地记忆，重新打开面板后优先恢复。
 
-面板标题旁始终显示当前安装版本。版本检查优先比较最新 GitHub Release；仓库尚未发布 Release 时回退到远端 `main` 的 `package.json`。只有远端 SemVer 高于当前版本时才显示醒目的更新提示和 GitHub 入口。GitHub 暂时不可用只会显示非阻塞状态，不影响 Jira、会话或 SVN 功能。
+面板标题旁始终显示当前安装版本。版本检查优先比较最新 GitHub Release；仓库尚未发布 Release 时回退到远端 `main` 的 `package.json`。只有正式 Release 同时包含 Windows ZIP 和 `update-manifest.json` 时，面板才提供一键下载；只有远端 `main` 版本或 Release 缺少安装资产时，只显示发布说明入口，不会拿源码分支直接覆盖安装。
+
+一键更新分成两次人工确认：先下载，再安装。下载保存在 `%LOCALAPPDATA%\jira-codex-panel-poc\updates\<版本>`，必须同时匹配 Release 资产大小和清单中的 SHA-256 才进入“可安装”。安装前会再次显示准确版本并要求确认；正在执行的 SVN commit、Codex SVN 审查、自动 Bug 分析或桌面会话操作会阻止安装。独立更新器先备份现有程序，再复用统一安装器升级并检查服务版本、必要组件和 Plugin 注册；验证失败会自动回滚。更新器只会请求 Codex 正常退出，不会强制结束进程；若 Codex 没有在限定时间内关闭，新版本仍可安装，但会明确显示“需要手动重启”。GitHub 暂时不可用只会显示非阻塞状态，不影响 Jira、会话或 SVN 功能。
 
 两个消息模板都支持以下变量：
 
@@ -355,13 +357,25 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 ### 升级
 
-在新版本项目目录中重新运行 `install.cmd` 或安装命令即可。安装器会停止旧的本地服务、覆盖程序文件并保留当前用户数据。
+普通用户优先在“设置 → 版本更新”中下载并人工确认安装正式 GitHub Release。也可以在新版本项目目录中重新运行 `install.cmd` 或安装命令；两种方式最终都调用同一个统一生命周期入口，保留 Jira PAT、企业微信 Webhook、会话绑定和个人设置。
 
 修复当前安装：
 
 ~~~powershell
 & "$env:LOCALAPPDATA\Programs\JiraCodexPanel\installer\lifecycle.ps1" -Action Repair
 ~~~
+
+### 发布 GitHub Release
+
+维护者先把版本改动合入 `main`，然后执行 `npm run version:set -- <版本>`，确认 `package.json`、锁文件、服务端、注入客户端和 README 已同步。`npm test` 与 `npm run release:verify -- v<版本>` 通过后，提交并推送 `main`，再创建并推送同名 tag：
+
+~~~powershell
+git tag -a v0.31.3 -m "发布 v0.31.3"
+git push origin main
+git push origin v0.31.3
+~~~
+
+tag 会触发 `.github/workflows/release.yml`：在 Windows runner 重跑全量测试、为 Release 包刷新 Plugin cachebuster、生成 ZIP / `update-manifest.json` / `SHA256SUMS.txt`，并为 ZIP 生成 GitHub artifact attestation。流水线只创建 **Draft Release**；维护者必须在 GitHub 检查版本、变更说明、三个资产和 attestation 后人工点击 Publish。只有发布后的 Release 才会被用户更新检查识别，失败或未审核的 draft 不会进入更新渠道。
 
 ### 可选：登录自启
 
@@ -525,9 +539,12 @@ App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.
 | `lib/bug-monitor-service.mjs` | 服务端 Bug 发现、去重队列、App Server 分析调度和重启恢复 |
 | `lib/automation-manager.mjs` | 自动分析任务状态、结果跟踪和企业微信推送 |
 | `lib/svn-review-manager.mjs` | SVN 只读检查、审核状态持久化、可选 Codex 审核、人工确认令牌、提交前复检和显式路径 commit |
+| `lib/github-update-checker.mjs`、`lib/update-manager.mjs` | GitHub Release 版本发现、受管下载、SHA-256 校验和持久更新状态机 |
 | `installer/lifecycle.ps1` | 产品唯一生命周期入口：安装、覆盖升级、修复、状态检查、卸载和完全清除 |
+| `installer/update-bootstrap.ps1` | 安装目录外运行的独立更新器：备份、统一升级、正常重启、健康检查与失败回滚 |
 | `installer/product-manifest.json` | 官方 Plugin、MCP、本地服务与最小桌面适配层共用的产品组件清单 |
 | `installer/install.ps1`、`installer/uninstall.ps1` | 由统一入口调用的底层安装与清理执行器 |
+| `.github/workflows/release.yml`、`scripts/build-release.ps1` | tag 版本校验、可重复 Windows 发布包、哈希、provenance 与 Draft Release |
 
 ## 常见问题
 

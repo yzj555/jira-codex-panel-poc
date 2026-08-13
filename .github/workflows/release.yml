@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run release:verify -- "${{ github.ref_name }}"
+      - run: npm test
+      - name: Refresh Plugin cachebuster for this Release package
+        run: node scripts/set-plugin-cachebuster.mjs "release-${{ github.run_id }}-${{ github.run_attempt }}"
+      - name: Build signed-input Release assets
+        shell: pwsh
+        run: ./scripts/build-release.ps1
+      - name: Attest Windows archive provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/jira-codex-assistant-*-win-x64.zip
+      - name: Create or update draft GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assets = @(Get-ChildItem dist -File | ForEach-Object { $_.FullName })
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @assets --clobber
+            gh release edit $tag --draft=true --title $tag
+          } else {
+            gh release create $tag @assets --draft --verify-tag --generate-notes --title $tag
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -24,7 +24,11 @@ test("优先使用 GitHub Release 判断新版本", async () => {
         tag_name: "v0.32.0",
         name: "0.32.0",
         html_url: "https://github.com/yzj555/jira-codex-panel-poc/releases/tag/v0.32.0",
-        published_at: "2026-08-13T00:00:00Z"
+        published_at: "2026-08-13T00:00:00Z",
+        assets: [
+          { id: 1, name: "update-manifest.json", size: 300, browser_download_url: "https://github.com/yzj555/jira-codex-panel-poc/releases/download/v0.32.0/update-manifest.json" },
+          { id: 2, name: "jira-codex-assistant-0.32.0-win-x64.zip", size: 1000, browser_download_url: "https://github.com/yzj555/jira-codex-panel-poc/releases/download/v0.32.0/jira-codex-assistant-0.32.0-win-x64.zip" }
+        ]
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
   });
@@ -35,6 +39,8 @@ test("优先使用 GitHub Release 判断新版本", async () => {
   assert.equal(status.currentVersion, "0.31.1");
   assert.equal(status.latestVersion, "0.32.0");
   assert.equal(status.updateAvailable, true);
+  assert.equal(status.installable, true);
+  assert.equal(status.assets.length, 2);
   assert.equal(calls.length, 1);
 });
 
@@ -57,6 +63,8 @@ test("没有 Release 时回退到远端 main 的 package.json", async () => {
   assert.equal(status.source, "repository");
   assert.equal(status.latestVersion, "0.31.1");
   assert.equal(status.updateAvailable, false);
+  assert.equal(status.installable, false);
+  assert.equal(status.installabilityReason, "RELEASE_NOT_PUBLISHED");
   assert.equal(calls.length, 2);
 });
 

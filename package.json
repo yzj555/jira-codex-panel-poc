@@ -1,6 +1,6 @@
 {
   "name": "jira-codex-panel-poc",
-  "version": "0.31.2",
+  "version": "0.31.3",
   "private": true,
   "type": "module",
   "description": "Local Jira and SVN service with an official Codex Plugin, MCP Apps workbench, App Server integration, and a minimal Windows desktop UI host.",
@@ -12,6 +12,9 @@
     "codex:probe:http": "node scripts/probe-panel-app-server.mjs",
     "mcp:probe": "node scripts/probe-jira-plugin-mcp.mjs",
     "capture": "node scripts/capture-screenshot.mjs",
+    "version:set": "node scripts/set-version.mjs",
+    "release:verify": "node scripts/verify-release-version.mjs",
+    "release:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1",
     "test": "node --test"
   },
   "engines": {

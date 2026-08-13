@@ -75,6 +75,21 @@
       "path": "lib/codex-application-commands.mjs"
     },
     {
+      "id": "release-updater",
+      "required": true,
+      "path": "installer/update-bootstrap.ps1"
+    },
+    {
+      "id": "update-manager",
+      "required": true,
+      "path": "lib/update-manager.mjs"
+    },
+    {
+      "id": "github-update-checker",
+      "required": true,
+      "path": "lib/github-update-checker.mjs"
+    },
+    {
       "id": "jira-workbench-service",
       "required": true,
       "path": "lib/jira-workbench-service.mjs"

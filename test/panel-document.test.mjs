@@ -334,12 +334,20 @@ test("完整面板提供默认开启的 GitHub 更新检查与顶部版本提示
   assert.match(html, /id="version-badge"/);
   assert.match(html, /id="update-check-enabled"/);
   assert.match(html, /id="check-updates-now"/);
+  assert.match(html, /id="download-update"/);
+  assert.match(html, /id="install-update-restart"/);
+  assert.match(html, /id="update-download-progress"/);
   assert.match(appSource, /updateCheckEnabled: true/);
   assert.match(appSource, /\/api\/update-status/);
+  assert.match(appSource, /\/api\/update\/download/);
+  assert.match(appSource, /\/api\/update\/install/);
+  assert.match(appSource, /confirmVersion: version/);
   assert.match(appSource, /可更新 v/);
   assert.match(styles, /\.version-badge\.update-available/);
   assert.match(styles, /\.update-settings-card/);
   assert.match(server, /createGitHubUpdateChecker/);
+  assert.match(server, /createUpdateManager/);
+  assert.match(server, /UPDATE_BLOCKED_BY_ACTIVE_OPERATION|blockerProvider/);
   assert.match(server, /url\.pathname === "\/api\/update-status"/);
 });
 

@@ -71,6 +71,13 @@ const versionBadge = document.querySelector("#version-badge");
 const updateCheckDetail = document.querySelector("#update-check-detail");
 const updateCheckLink = document.querySelector("#update-check-link");
 const checkUpdatesNow = document.querySelector("#check-updates-now");
+const updateDownloadProgress = document.querySelector("#update-download-progress");
+const updateInstallDetail = document.querySelector("#update-install-detail");
+const downloadUpdate = document.querySelector("#download-update");
+const cancelUpdateDownload = document.querySelector("#cancel-update-download");
+const installUpdateLater = document.querySelector("#install-update-later");
+const installUpdateRestart = document.querySelector("#install-update-restart");
+const resetUpdateState = document.querySelector("#reset-update-state");
 const templateEditorDialog = document.querySelector("#template-editor-dialog");
 const templateEditorBackdrop = document.querySelector("#template-editor-backdrop");
 const templateEditorForm = document.querySelector("#template-editor-form");
@@ -157,6 +164,8 @@ const state = {
   skillsError: "",
   config: null,
   updateStatus: null,
+  updateInstallation: null,
+  updateActionPending: false,
   automation: null,
   automationUpdating: false,
   activeView: "inbox",
@@ -213,6 +222,7 @@ let clearingBindingIssueKey = "";
 let activeSettingsSection = "jira";
 let taskSyncTimer = 0;
 let sheetsSyncTimer = 0;
+let updateStatusTimer = 0;
 let lastPanelActivationAt = 0;
 let initialLoadComplete = false;
 let searchRenderTimer = 0;
@@ -320,6 +330,7 @@ function safeGitHubUpdateUrl(value) {
 
 function renderUpdateStatus() {
   const update = state.updateStatus;
+  const installation = state.updateInstallation;
   const currentVersion = String(update?.currentVersion || "—");
   const updateUrl = safeGitHubUpdateUrl(update?.url);
   versionBadge.textContent = update?.updateAvailable
@@ -337,11 +348,14 @@ function renderUpdateStatus() {
   if (!updateCheckLink.hidden) updateCheckLink.href = updateUrl;
   else updateCheckLink.removeAttribute("href");
   updateCheckDetail.closest(".update-check-row")?.classList.toggle("update-available", Boolean(update?.updateAvailable));
+  updateCheckDetail.closest(".update-check-row")?.classList.toggle("update-error", Boolean(installation?.error));
 
   if (!update) {
     updateCheckDetail.textContent = "正在读取当前版本…";
   } else if (update.updateAvailable) {
-    updateCheckDetail.textContent = `当前 v${currentVersion}，GitHub 已有 v${update.latestVersion}。`;
+    updateCheckDetail.textContent = update.installable
+      ? `当前 v${currentVersion}，可安装 v${update.latestVersion}。`
+      : `当前 v${currentVersion}，GitHub 已有 v${update.latestVersion}，但尚未发布一键安装包。`;
   } else if (update.checked) {
     updateCheckDetail.textContent = `当前 v${currentVersion}，已是最新版本（${update.sourceLabel || "GitHub"}）。`;
   } else if (!update.enabled && !update.error) {
@@ -351,6 +365,44 @@ function renderUpdateStatus() {
   } else {
     updateCheckDetail.textContent = `当前版本 v${currentVersion}。`;
   }
+
+  const installState = String(installation?.state || "idle");
+  const downloading = installState === "downloading";
+  const installing = installState === "installing";
+  updateDownloadProgress.hidden = !downloading;
+  updateDownloadProgress.value = Number(installation?.progress || 0);
+  updateInstallDetail.hidden = !installation?.message && !installation?.error;
+  updateInstallDetail.textContent = installation?.error
+    ? `${installation.message || "更新失败"} ${installation.error}`
+    : installation?.message || "";
+  updateInstallDetail.classList.toggle("error", Boolean(installation?.error));
+
+  downloadUpdate.hidden = !installation?.canDownload;
+  cancelUpdateDownload.hidden = !installation?.canCancelDownload;
+  installUpdateLater.hidden = !installation?.canInstall;
+  installUpdateRestart.hidden = !installation?.canInstall;
+  resetUpdateState.hidden = !installation?.canReset;
+  for (const button of [downloadUpdate, cancelUpdateDownload, installUpdateLater, installUpdateRestart, resetUpdateState]) {
+    button.disabled = state.updateActionPending;
+  }
+  checkUpdatesNow.disabled = state.updateActionPending || downloading || installing;
+  checkUpdatesNow.hidden = installing;
+
+  if (downloading) {
+    cancelUpdateDownload.textContent = `取消下载 ${Number(installation.progress || 0)}%`;
+  } else {
+    cancelUpdateDownload.textContent = "取消下载";
+  }
+}
+
+function scheduleUpdateStatusPoll() {
+  if (updateStatusTimer) window.clearTimeout(updateStatusTimer);
+  updateStatusTimer = 0;
+  if (!["downloading", "installing", "restart_required"].includes(state.updateInstallation?.state)) return;
+  updateStatusTimer = window.setTimeout(() => {
+    updateStatusTimer = 0;
+    void loadUpdateStatus({ quiet: true });
+  }, state.updateInstallation?.state === "downloading" ? 1_000 : 2_000);
 }
 
 async function loadUpdateStatus({ force = false, quiet = false } = {}) {
@@ -361,6 +413,7 @@ async function loadUpdateStatus({ force = false, quiet = false } = {}) {
   try {
     const payload = await api(`/api/update-status${force ? "?force=true" : ""}`);
     state.updateStatus = payload.update || null;
+    state.updateInstallation = payload.installation || null;
     renderUpdateStatus();
     if (!quiet && force) {
       if (state.updateStatus?.updateAvailable) showToast(`发现新版本 v${state.updateStatus.latestVersion}`);
@@ -374,7 +427,46 @@ async function loadUpdateStatus({ force = false, quiet = false } = {}) {
       checkUpdatesNow.disabled = false;
       checkUpdatesNow.textContent = "立即检查";
     }
+    renderUpdateStatus();
+    scheduleUpdateStatusPoll();
   }
+}
+
+async function runUpdateAction(path, { method = "POST", body = {}, successMessage = "" } = {}) {
+  if (state.updateActionPending) return null;
+  state.updateActionPending = true;
+  renderUpdateStatus();
+  try {
+    const payload = await api(path, { method, ...(method === "DELETE" ? {} : { body }) });
+    state.updateStatus = payload.update || state.updateStatus;
+    state.updateInstallation = payload.installation || state.updateInstallation;
+    renderUpdateStatus();
+    if (successMessage) showToast(successMessage, 5000);
+    return payload;
+  } catch (error) {
+    const blockers = Array.isArray(error.details?.blockers)
+      ? error.details.blockers.map((blocker) => blocker.message || blocker.kind).filter(Boolean).join("；")
+      : "";
+    showToast(`${error.message}${blockers ? `：${blockers}` : ""}`, 8000);
+    return null;
+  } finally {
+    state.updateActionPending = false;
+    renderUpdateStatus();
+    scheduleUpdateStatusPoll();
+  }
+}
+
+async function installDownloadedUpdate(restartCodex) {
+  const version = String(state.updateInstallation?.targetVersion || "");
+  if (!version) return;
+  const confirmed = window.confirm(restartCodex
+    ? `确认安装 Jira Codex 助手 v${version}？\n\n安装前会备份当前版本。正在运行的 SVN 提交、Codex 审查或自动 Bug 分析会阻止安装。更新器只会正常关闭 Codex，不会强制结束进程。`
+    : `确认安装 Jira Codex 助手 v${version}？\n\n安装完成后 Codex 不会自动重启；请保存工作并稍后手动重启。`);
+  if (!confirmed) return;
+  await runUpdateAction("/api/update/install", {
+    body: { confirmVersion: version, restartCodex },
+    successMessage: restartCodex ? "更新器已启动，Codex 将在安装完成后正常重启" : "更新器已启动，完成后请手动重启 Codex"
+  });
 }
 
 function postHostMessage(type, payload = {}) {
@@ -3104,6 +3196,17 @@ document.querySelector("#update-check-enabled").addEventListener("change", (even
     : "保存后将停止自动检查；仍可手动点击“立即检查”。";
 });
 checkUpdatesNow.addEventListener("click", () => void loadUpdateStatus({ force: true }));
+downloadUpdate.addEventListener("click", () => void runUpdateAction("/api/update/download", {
+  body: {},
+  successMessage: "更新包开始下载；校验通过后仍需人工确认安装"
+}));
+cancelUpdateDownload.addEventListener("click", () => void runUpdateAction("/api/update/download", {
+  method: "DELETE",
+  successMessage: "更新下载已取消，当前安装没有变化"
+}));
+installUpdateLater.addEventListener("click", () => void installDownloadedUpdate(false));
+installUpdateRestart.addEventListener("click", () => void installDownloadedUpdate(true));
+resetUpdateState.addEventListener("click", () => void runUpdateAction("/api/update/reset", { body: {} }));
 for (const kind of ["requirement", "bug"]) {
   document.querySelector(`#${kind}-source-mode`).addEventListener("change", () => {
     updateBoardSourceVisibility();

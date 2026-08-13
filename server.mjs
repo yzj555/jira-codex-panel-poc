@@ -22,6 +22,7 @@ import { createAutomationManager } from "./lib/automation-manager.mjs";
 import { createBugMonitorService } from "./lib/bug-monitor-service.mjs";
 import { createDesktopCommandBroker, DesktopCommandError } from "./lib/desktop-command-broker.mjs";
 import { createGitHubUpdateChecker } from "./lib/github-update-checker.mjs";
+import { createUpdateManager, UpdateManagerError } from "./lib/update-manager.mjs";
 import {
   CodexAppServerError,
   createCodexAppServerClient
@@ -47,7 +48,7 @@ import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "./m
 import { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
 import { attachmentCanOpenLocally } from "./public/issue-views.js";
 
-const VERSION = "0.31.2";
+const VERSION = "0.31.3";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -412,6 +413,37 @@ const bugMonitor = createBugMonitorService({
   }
 });
 
+const updateManager = createUpdateManager({
+  currentVersion: VERSION,
+  installRoot: root,
+  userDataRoot: dirname(configStore.configFile),
+  blockerProvider: async () => {
+    const [monitorStatus, svnOperations] = await Promise.all([
+      bugMonitor.getStatus(),
+      Promise.resolve(svnReviews.getActiveOperations?.() || [])
+    ]);
+    const blockers = [...svnOperations];
+    if (monitorStatus.busy || monitorStatus.activeJob) {
+      blockers.push({
+        kind: "bug_analysis",
+        issueKey: monitorStatus.activeJob?.issueKey || "",
+        message: monitorStatus.activeJob?.issueKey
+          ? `${monitorStatus.activeJob.issueKey} 正在自动分析`
+          : "自动 Bug 分析正在运行"
+      });
+    }
+    const desktopSnapshot = desktopCommands.snapshot();
+    if (desktopSnapshot.pending > 0) {
+      blockers.push({
+        kind: "desktop_operation",
+        count: desktopSnapshot.pending,
+        message: `${desktopSnapshot.pending} 个 Codex Desktop 操作尚未完成`
+      });
+    }
+    return blockers;
+  }
+});
+
 const jiraWorkbench = createJiraWorkbenchService({
   loadIssues: loadTaskBoardIssues,
   loadConfig: () => configStore.load(),
@@ -567,7 +599,20 @@ const mcpOptions = {
     }
   },
   updates: {
-    getStatus: ({ force = false } = {}) => getUpdateStatus({ force })
+    getStatus: ({ force = false } = {}) => getFullUpdateStatus({ force }),
+    startDownload: async () => {
+      const update = await getUpdateStatus({ force: true });
+      return { update, installation: await updateManager.startDownload(update) };
+    },
+    cancelDownload: async () => {
+      const update = await getUpdateStatus();
+      return { update, installation: await updateManager.cancelDownload(update) };
+    },
+    install: async (input) => {
+      const installation = await updateManager.install(input);
+      scheduleUpdateShutdown();
+      return { update: await getUpdateStatus(), installation };
+    }
   },
   version: VERSION
 };
@@ -706,6 +751,21 @@ async function getUpdateStatus({ force = false } = {}) {
   });
 }
 
+async function getFullUpdateStatus({ force = false } = {}) {
+  const update = await getUpdateStatus({ force });
+  return {
+    update,
+    installation: await updateManager.status(update)
+  };
+}
+
+let updateShutdownScheduled = false;
+function scheduleUpdateShutdown() {
+  updateShutdownScheduled = true;
+  const timer = setTimeout(() => void shutdown(), 800);
+  timer.unref?.();
+}
+
 async function handleApi(request, response, url) {
   if (request.method === "GET" && url.pathname === "/api/health") {
     const config = await configStore.getPublic();
@@ -718,9 +778,33 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/update-status") {
-    return json(response, 200, {
-      update: await getUpdateStatus({ force: url.searchParams.get("force") === "true" })
-    });
+    return json(response, 200, await getFullUpdateStatus({ force: url.searchParams.get("force") === "true" }));
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/update/download") {
+    await readJson(request);
+    const update = await getUpdateStatus({ force: true });
+    return json(response, 202, { update, installation: await updateManager.startDownload(update) });
+  }
+
+  if (request.method === "DELETE" && url.pathname === "/api/update/download") {
+    const update = await getUpdateStatus();
+    return json(response, 200, { update, installation: await updateManager.cancelDownload(update) });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/update/install") {
+    const input = await readJson(request);
+    const installation = await updateManager.install(input);
+    const result = { update: await getUpdateStatus(), installation };
+    scheduleUpdateShutdown();
+    json(response, 202, result);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/update/reset") {
+    await readJson(request);
+    const update = await getUpdateStatus();
+    return json(response, 200, { update, installation: await updateManager.reset(update) });
   }
 
   if (request.method === "GET" && url.pathname === "/api/desktop/commands/next") {
@@ -1351,6 +1435,13 @@ async function serveStatic(request, response, url) {
 
 async function handleRequest(request, response) {
   const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
+  if (updateShutdownScheduled && !["GET", "HEAD"].includes(request.method || "GET")
+    && (url.pathname === "/mcp" || url.pathname.startsWith("/api/"))) {
+    return json(response, 503, {
+      error: "本地服务已进入更新交接阶段，请等待新版本启动。",
+      code: "UPDATE_SHUTDOWN_IN_PROGRESS"
+    });
+  }
   if (url.pathname === "/mcp" || url.pathname.startsWith("/api/")) {
     assertAllowedWriteOrigin(request, url);
   }
@@ -1373,6 +1464,7 @@ const server = createServer((request, response) => {
       || error instanceof IssueBindingStoreError
       || error instanceof CodexConversationServiceError
       || error instanceof DesktopCommandError
+      || error instanceof UpdateManagerError
       || error instanceof CodexAppServerError;
     const statusCode = known ? error.statusCode || (error instanceof CodexAppServerError ? 503 : 500) : 500;
     console.error(`[jira-poc] ${request.method} ${request.url}: ${error.code || error.name}: ${error.message}`);
@@ -1396,7 +1488,10 @@ server.listen(port, host, () => {
   console.log(`[jira-poc] credential store: ${configStore.configFile}`);
 });
 
+let shutdownStarted = false;
 async function shutdown() {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
   desktopCommands.close();
   await bugMonitor.stop();
   automation.stop();

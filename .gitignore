@@ -13,3 +13,4 @@ install-metadata.json
 .DS_Store
 Thumbs.db
 /111.txt
+/dist/
