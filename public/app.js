@@ -4,6 +4,7 @@ import {
   isBugIssue
 } from "/prompt-builder.js";
 import {
+  attachmentCanOpenLocally,
   attachmentPreviewKind,
   filterAndSortSheetIssues,
   filterIssuesForView,
@@ -66,6 +67,10 @@ const settingsBackdrop = document.querySelector("#settings-backdrop");
 const settingsForm = document.querySelector("#settings-form");
 const settingsStatus = document.querySelector("#settings-status");
 const settingsSectionTabs = Array.from(document.querySelectorAll(".settings-section-tab"));
+const versionBadge = document.querySelector("#version-badge");
+const updateCheckDetail = document.querySelector("#update-check-detail");
+const updateCheckLink = document.querySelector("#update-check-link");
+const checkUpdatesNow = document.querySelector("#check-updates-now");
 const templateEditorDialog = document.querySelector("#template-editor-dialog");
 const templateEditorBackdrop = document.querySelector("#template-editor-backdrop");
 const templateEditorForm = document.querySelector("#template-editor-form");
@@ -91,6 +96,8 @@ const attachmentPreviewBackdrop = document.querySelector("#attachment-preview-ba
 const attachmentPreviewBody = document.querySelector("#attachment-preview-body");
 const attachmentPreviewHint = document.querySelector("#attachment-preview-hint");
 const attachmentPreviewDownload = document.querySelector("#download-preview-attachment");
+const attachmentPreviewPrevious = document.querySelector("#previous-preview-image");
+const attachmentPreviewNext = document.querySelector("#next-preview-image");
 const transitionSelect = document.querySelector("#transition-select");
 const transitionAction = document.querySelector("#transition-action");
 const transitionHint = document.querySelector("#transition-hint");
@@ -99,7 +106,8 @@ const DEFAULT_SYNC_SETTINGS = Object.freeze({
   tasksEnabled: true,
   taskIntervalSeconds: 60,
   syncOnPanelReturn: true,
-  sheetsIntervalSeconds: 300
+  sheetsIntervalSeconds: 300,
+  updateCheckEnabled: true
 });
 const DEFAULT_TEMPLATE_SKILLS = Object.freeze({
   requirement: null,
@@ -148,6 +156,7 @@ const state = {
   skills: [],
   skillsError: "",
   config: null,
+  updateStatus: null,
   automation: null,
   automationUpdating: false,
   activeView: "inbox",
@@ -188,6 +197,10 @@ let attachmentPreviewObjectUrl = "";
 let attachmentPreviewAttachment = null;
 let attachmentPreviewBlob = null;
 let attachmentPreviewReturnFocus = null;
+let attachmentPreviewGallery = [];
+let attachmentPreviewGalleryIndex = -1;
+const attachmentPreviewBlobCache = new Map();
+const attachmentLocalStates = new Map();
 let transitionRequestId = 0;
 let editingTemplateKind = "";
 let templateDrafts = defaultTemplateDrafts();
@@ -294,6 +307,74 @@ async function api(path, options = {}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new ApiError(payload.error || `HTTP ${response.status}`, payload);
   return payload;
+}
+
+function safeGitHubUpdateUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && url.hostname.toLowerCase() === "github.com" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function renderUpdateStatus() {
+  const update = state.updateStatus;
+  const currentVersion = String(update?.currentVersion || "—");
+  const updateUrl = safeGitHubUpdateUrl(update?.url);
+  versionBadge.textContent = update?.updateAvailable
+    ? `v${currentVersion} · 可更新 v${update.latestVersion}`
+    : `v${currentVersion}`;
+  versionBadge.classList.toggle("update-available", Boolean(update?.updateAvailable));
+  versionBadge.title = update?.updateAvailable
+    ? `发现 v${update.latestVersion}，点击查看 GitHub`
+    : update?.checked ? "当前已是最新版本" : "当前安装版本";
+  versionBadge.setAttribute("aria-disabled", String(!update?.updateAvailable || !updateUrl));
+  if (update?.updateAvailable && updateUrl) versionBadge.href = updateUrl;
+  else versionBadge.removeAttribute("href");
+
+  updateCheckLink.hidden = !update?.updateAvailable || !updateUrl;
+  if (!updateCheckLink.hidden) updateCheckLink.href = updateUrl;
+  else updateCheckLink.removeAttribute("href");
+  updateCheckDetail.closest(".update-check-row")?.classList.toggle("update-available", Boolean(update?.updateAvailable));
+
+  if (!update) {
+    updateCheckDetail.textContent = "正在读取当前版本…";
+  } else if (update.updateAvailable) {
+    updateCheckDetail.textContent = `当前 v${currentVersion}，GitHub 已有 v${update.latestVersion}。`;
+  } else if (update.checked) {
+    updateCheckDetail.textContent = `当前 v${currentVersion}，已是最新版本（${update.sourceLabel || "GitHub"}）。`;
+  } else if (!update.enabled && !update.error) {
+    updateCheckDetail.textContent = `当前 v${currentVersion}；自动检查更新已关闭。`;
+  } else if (update.error) {
+    updateCheckDetail.textContent = `当前 v${currentVersion}；暂时无法检查 GitHub：${update.error}`;
+  } else {
+    updateCheckDetail.textContent = `当前版本 v${currentVersion}。`;
+  }
+}
+
+async function loadUpdateStatus({ force = false, quiet = false } = {}) {
+  if (checkUpdatesNow) {
+    checkUpdatesNow.disabled = true;
+    checkUpdatesNow.textContent = "检查中…";
+  }
+  try {
+    const payload = await api(`/api/update-status${force ? "?force=true" : ""}`);
+    state.updateStatus = payload.update || null;
+    renderUpdateStatus();
+    if (!quiet && force) {
+      if (state.updateStatus?.updateAvailable) showToast(`发现新版本 v${state.updateStatus.latestVersion}`);
+      else if (state.updateStatus?.checked) showToast("当前已是最新版本");
+      else showToast("暂时无法从 GitHub 检查更新", 5000);
+    }
+  } catch (error) {
+    if (!quiet) showToast(`版本检查失败：${error.message}`, 5000);
+  } finally {
+    if (checkUpdatesNow) {
+      checkUpdatesNow.disabled = false;
+      checkUpdatesNow.textContent = "立即检查";
+    }
+  }
 }
 
 function postHostMessage(type, payload = {}) {
@@ -695,10 +776,20 @@ function renderRichText(target, value) {
   if (offset < normalized.length) target.append(document.createTextNode(normalized.slice(offset)));
 }
 
-async function fetchAttachmentBlob(attachment) {
+function attachmentIdentity(attachment) {
+  return String(attachment?.id || attachment?.downloadUrl || attachment?.filename || "");
+}
+
+async function fetchAttachmentBlob(attachment, { cachePreview = false } = {}) {
+  const identity = attachmentIdentity(attachment);
+  if (cachePreview && identity && attachmentPreviewBlobCache.has(identity)) {
+    return attachmentPreviewBlobCache.get(identity);
+  }
   const response = await fetch(attachment.downloadUrl, { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.blob();
+  const blob = await response.blob();
+  if (cachePreview && identity) attachmentPreviewBlobCache.set(identity, blob);
+  return blob;
 }
 
 function releaseAttachmentPreviewUrl() {
@@ -728,13 +819,34 @@ function closeAttachmentPreview() {
   releaseAttachmentPreviewUrl();
   attachmentPreviewAttachment = null;
   attachmentPreviewBlob = null;
+  attachmentPreviewGallery = [];
+  attachmentPreviewGalleryIndex = -1;
+  attachmentPreviewBlobCache.clear();
   attachmentPreviewBody.replaceChildren();
   attachmentPreviewDialog.hidden = true;
   attachmentPreviewBackdrop.hidden = true;
   attachmentPreviewDownload.disabled = true;
+  attachmentPreviewPrevious.hidden = true;
+  attachmentPreviewNext.hidden = true;
   const returnFocus = attachmentPreviewReturnFocus;
   attachmentPreviewReturnFocus = null;
   if (returnFocus?.isConnected) returnFocus.focus();
+}
+
+function syncAttachmentPreviewNavigation(kind, { loading = false } = {}) {
+  const galleryVisible = kind === "image" && attachmentPreviewGallery.length > 1;
+  attachmentPreviewPrevious.hidden = !galleryVisible;
+  attachmentPreviewNext.hidden = !galleryVisible;
+  attachmentPreviewPrevious.disabled = loading || attachmentPreviewGalleryIndex <= 0;
+  attachmentPreviewNext.disabled = loading || attachmentPreviewGalleryIndex >= attachmentPreviewGallery.length - 1;
+}
+
+function updateAttachmentPreviewHeading(attachment, kind) {
+  document.querySelector("#attachment-preview-title").textContent = attachment.filename;
+  const galleryPosition = kind === "image" && attachmentPreviewGallery.length > 1
+    ? `图片 ${attachmentPreviewGalleryIndex + 1}/${attachmentPreviewGallery.length} · `
+    : "";
+  document.querySelector("#attachment-preview-meta").textContent = `${galleryPosition}${formatBytes(attachment.size)} · ${attachment.mimeType || "未知格式"} · ${attachment.author}`;
 }
 
 function showAttachmentPreviewError(message) {
@@ -768,7 +880,9 @@ async function renderAttachmentPreview(attachment, blob, kind, requestId) {
       if (requestId === attachmentPreviewRequestId) showAttachmentPreviewError("浏览器无法解码这张图片，请下载原文件查看。");
     }, { once: true });
     attachmentPreviewBody.append(image);
-    attachmentPreviewHint.textContent = "图片按原始比例缩放显示。";
+    attachmentPreviewHint.textContent = attachmentPreviewGallery.length > 1
+      ? "可使用左右按钮或方向键切换图片。"
+      : "图片按原始比例缩放显示。";
     return;
   }
   if (kind === "pdf") {
@@ -798,39 +912,94 @@ async function renderAttachmentPreview(attachment, blob, kind, requestId) {
   }
 }
 
-async function openAttachmentPreview(attachment) {
+async function loadAttachmentPreview(attachment) {
   const kind = attachmentPreviewKind(attachment);
   if (!kind) return;
   const requestId = ++attachmentPreviewRequestId;
   releaseAttachmentPreviewUrl();
   attachmentPreviewAttachment = attachment;
   attachmentPreviewBlob = null;
-  attachmentPreviewReturnFocus = document.activeElement;
-  document.querySelector("#attachment-preview-title").textContent = attachment.filename;
-  document.querySelector("#attachment-preview-meta").textContent = `${formatBytes(attachment.size)} · ${attachment.mimeType || "未知格式"} · ${attachment.author}`;
+  updateAttachmentPreviewHeading(attachment, kind);
   attachmentPreviewBody.className = "attachment-preview-body loading";
   attachmentPreviewBody.textContent = "正在从 Jira 加载原文件…";
   attachmentPreviewHint.textContent = "预览内容来自 Jira，只读显示。";
   attachmentPreviewDownload.disabled = true;
-  attachmentPreviewBackdrop.hidden = false;
-  attachmentPreviewDialog.hidden = false;
-  attachmentPreviewDialog.focus();
+  syncAttachmentPreviewNavigation(kind, { loading: true });
   try {
-    const blob = await fetchAttachmentBlob(attachment);
+    const blob = await fetchAttachmentBlob(attachment, { cachePreview: true });
     if (requestId !== attachmentPreviewRequestId) return;
     attachmentPreviewBlob = blob;
     attachmentPreviewDownload.disabled = false;
     await renderAttachmentPreview(attachment, blob, kind, requestId);
+    syncAttachmentPreviewNavigation(kind);
   } catch (error) {
     if (requestId !== attachmentPreviewRequestId) return;
     showAttachmentPreviewError(`附件加载失败：${error.message}`);
+    syncAttachmentPreviewNavigation(kind);
+  }
+}
+
+function openAttachmentPreview(attachment) {
+  const kind = attachmentPreviewKind(attachment);
+  if (!kind) return;
+  attachmentPreviewReturnFocus = document.activeElement;
+  attachmentPreviewGallery = kind === "image"
+    ? (state.selectedIssue?.attachments || []).filter((candidate) => attachmentPreviewKind(candidate) === "image")
+    : [attachment];
+  attachmentPreviewGalleryIndex = Math.max(0, attachmentPreviewGallery.findIndex((candidate) => attachmentIdentity(candidate) === attachmentIdentity(attachment)));
+  attachmentPreviewBackdrop.hidden = false;
+  attachmentPreviewDialog.hidden = false;
+  attachmentPreviewDialog.focus();
+  void loadAttachmentPreview(attachment);
+}
+
+function navigateAttachmentPreview(offset) {
+  if (attachmentPreviewGallery.length < 2) return;
+  const nextIndex = attachmentPreviewGalleryIndex + offset;
+  if (nextIndex < 0 || nextIndex >= attachmentPreviewGallery.length) return;
+  attachmentPreviewGalleryIndex = nextIndex;
+  void loadAttachmentPreview(attachmentPreviewGallery[nextIndex]);
+}
+
+function updateLocalAttachmentCard(card, attachment, action) {
+  const downloaded = attachmentLocalStates.has(attachmentIdentity(attachment));
+  action.textContent = downloaded ? "打开" : "下载";
+  card.classList.toggle("locally-cached", downloaded);
+  card.title = downloaded
+    ? `使用系统默认程序打开 ${attachment.filename}`
+    : `下载 ${attachment.filename} 到本地缓存`;
+  card.setAttribute("aria-label", card.title);
+}
+
+async function handleLocalAttachment(card, attachment, action) {
+  if (card.getAttribute("aria-busy") === "true") return;
+  const identity = attachmentIdentity(attachment);
+  const downloaded = attachmentLocalStates.has(identity);
+  card.setAttribute("aria-busy", "true");
+  action.textContent = downloaded ? "打开中…" : "下载中…";
+  try {
+    if (!downloaded) {
+      const result = await api(`/api/attachments/${encodeURIComponent(attachment.id)}/materialize`);
+      attachmentLocalStates.set(identity, result.attachment || { id: attachment.id });
+      showToast(`${attachment.filename} 已下载，再次点击即可打开`, 4200);
+    } else {
+      await api(`/api/attachments/${encodeURIComponent(attachment.id)}/open`, { method: "POST", body: {} });
+      showToast(`已使用系统默认程序打开 ${attachment.filename}`, 3200);
+    }
+  } catch (error) {
+    if (error.code === "ATTACHMENT_NOT_MATERIALIZED") attachmentLocalStates.delete(identity);
+    showToast(`${downloaded ? "附件打开" : "附件下载"}失败：${error.message}`, 5000);
+  } finally {
+    card.removeAttribute("aria-busy");
+    updateLocalAttachmentCard(card, attachment, action);
   }
 }
 
 function createAttachmentCard(attachment) {
   const card = element("a", "attachment-card");
   const previewKind = attachmentPreviewKind(attachment);
-  card.href = window.__JIRA_CODEX_EMBEDDED__ ? "#" : attachment.downloadUrl;
+  const locallyOpenable = !previewKind && attachmentCanOpenLocally(attachment);
+  card.href = window.__JIRA_CODEX_EMBEDDED__ || locallyOpenable ? "#" : attachment.downloadUrl;
   card.title = previewKind ? `预览 ${attachment.filename}` : `下载 ${attachment.filename}`;
   card.setAttribute("aria-label", card.title);
   if (previewKind) card.classList.add("previewable");
@@ -838,6 +1007,11 @@ function createAttachmentCard(attachment) {
     if (previewKind) {
       event.preventDefault();
       void openAttachmentPreview(attachment);
+      return;
+    }
+    if (locallyOpenable) {
+      event.preventDefault();
+      await handleLocalAttachment(card, attachment, action);
       return;
     }
     if (!window.__JIRA_CODEX_EMBEDDED__) return;
@@ -852,7 +1026,7 @@ function createAttachmentCard(attachment) {
       card.removeAttribute("aria-busy");
     }
   });
-  if (!previewKind && !window.__JIRA_CODEX_EMBEDDED__) card.download = attachment.filename;
+  if (!previewKind && !locallyOpenable && !window.__JIRA_CODEX_EMBEDDED__) card.download = attachment.filename;
 
   const preview = element("span", "attachment-preview");
   if (attachment.thumbnailUrl) {
@@ -883,7 +1057,9 @@ function createAttachmentCard(attachment) {
   info.append(element("strong", "", attachment.filename));
   info.append(element("small", "", `${formatBytes(attachment.size)} · ${attachment.author}`));
   info.append(element("small", "", formatDate(attachment.created)));
-  card.append(preview, info, element("span", "attachment-download", previewKind ? "预览" : "↓"));
+  const action = element("span", "attachment-download", previewKind ? "预览" : "下载");
+  card.append(preview, info, action);
+  if (locallyOpenable) updateLocalAttachmentCard(card, attachment, action);
   return card;
 }
 
@@ -2338,7 +2514,9 @@ function populateSettings(config) {
   document.querySelector("#sync-task-interval").value = String(sync.taskIntervalSeconds);
   document.querySelector("#sync-on-panel-return").checked = Boolean(sync.syncOnPanelReturn);
   document.querySelector("#sync-sheets-interval").value = String(sync.sheetsIntervalSeconds);
+  document.querySelector("#update-check-enabled").checked = sync.updateCheckEnabled !== false;
   updateSyncControls();
+  renderUpdateStatus();
   const boardSources = settingsBoardSources(config);
   document.querySelector("#jql").value = config?.jql || "";
   document.querySelector("#board-project-key").value = boardSources.projectKey;
@@ -2681,13 +2859,15 @@ async function saveSettings(event) {
           tasksEnabled: document.querySelector("#sync-tasks-enabled").checked,
           taskIntervalSeconds: Number(document.querySelector("#sync-task-interval").value),
           syncOnPanelReturn: document.querySelector("#sync-on-panel-return").checked,
-          sheetsIntervalSeconds: Number(document.querySelector("#sync-sheets-interval").value)
+          sheetsIntervalSeconds: Number(document.querySelector("#sync-sheets-interval").value),
+          updateCheckEnabled: document.querySelector("#update-check-enabled").checked
         },
         maxResults: Number(document.querySelector("#max-results").value)
       }
     });
     state.config = payload.config;
     scheduleSyncTimers();
+    void loadUpdateStatus({ quiet: true });
     await loadAutomationStatus();
     resetJxlState();
     closeSettings();
@@ -2709,6 +2889,7 @@ async function clearSettings() {
     await api("/api/config", { method: "DELETE" });
     const payload = await api("/api/config");
     state.config = payload.config;
+    void loadUpdateStatus({ quiet: true });
     clearSyncTimers();
     state.automation = null;
     state.issues = [];
@@ -2804,6 +2985,8 @@ transitionAction.addEventListener("click", () => { void submitIssueTransition();
 backdrop.addEventListener("click", closeDetails);
 document.querySelector("#close-attachment-preview").addEventListener("click", closeAttachmentPreview);
 attachmentPreviewBackdrop.addEventListener("click", closeAttachmentPreview);
+attachmentPreviewPrevious.addEventListener("click", () => navigateAttachmentPreview(-1));
+attachmentPreviewNext.addEventListener("click", () => navigateAttachmentPreview(1));
 attachmentPreviewDownload.addEventListener("click", async () => {
   if (!attachmentPreviewAttachment || !attachmentPreviewBlob) return;
   attachmentPreviewDownload.disabled = true;
@@ -2915,6 +3098,12 @@ document.querySelector("#codex-project").addEventListener("change", (event) => {
   void loadCodexSkillsForConfiguredProject(event.currentTarget.value);
 });
 document.querySelector("#sync-tasks-enabled").addEventListener("change", updateSyncControls);
+document.querySelector("#update-check-enabled").addEventListener("change", (event) => {
+  updateCheckDetail.textContent = event.currentTarget.checked
+    ? "保存后将自动从 GitHub 检查更新。"
+    : "保存后将停止自动检查；仍可手动点击“立即检查”。";
+});
+checkUpdatesNow.addEventListener("click", () => void loadUpdateStatus({ force: true }));
 for (const kind of ["requirement", "bug"]) {
   document.querySelector(`#${kind}-source-mode`).addEventListener("change", () => {
     updateBoardSourceVisibility();
@@ -2973,6 +3162,16 @@ templateEditorForm.addEventListener("submit", (event) => {
   closeTemplateEditor();
 });
 document.addEventListener("keydown", (event) => {
+  if (!attachmentPreviewDialog.hidden && event.key === "ArrowLeft") {
+    event.preventDefault();
+    navigateAttachmentPreview(-1);
+    return;
+  }
+  if (!attachmentPreviewDialog.hidden && event.key === "ArrowRight") {
+    event.preventDefault();
+    navigateAttachmentPreview(1);
+    return;
+  }
   if (event.key !== "Escape") return;
   if (!templateEditorDialog.hidden) closeTemplateEditor();
   else if (!attachmentPreviewDialog.hidden) closeAttachmentPreview();
@@ -3032,6 +3231,7 @@ async function boot() {
   try {
     const payload = await api("/api/config");
     state.config = payload.config;
+    void loadUpdateStatus({ quiet: true });
     // Jira is the primary board payload. Bindings, App Server conversations,
     // Desktop project context and Skills hydrate progressively without delaying it.
     void loadCodexPanelContext({ quiet: true });

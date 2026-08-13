@@ -3,6 +3,12 @@ const IMAGE_EXTENSIONS = new Set(["apng", "avif", "bmp", "gif", "ico", "jpeg", "
 const TEXT_EXTENSIONS = new Set(["csv", "json", "log", "md", "text", "txt", "xml", "yaml", "yml"]);
 const VIDEO_EXTENSIONS = new Set(["m4v", "mov", "mp4", "ogv", "webm"]);
 const AUDIO_EXTENSIONS = new Set(["aac", "flac", "m4a", "mp3", "oga", "ogg", "wav", "webm"]);
+const LOCALLY_OPENABLE_EXTENSIONS = new Set([
+  "csv", "doc", "docm", "docx", "dot", "dotm", "dotx", "json", "log", "md",
+  "odp", "ods", "odt", "pdf", "pot", "potm", "potx", "pps", "ppsm", "ppsx",
+  "ppt", "pptm", "pptx", "rtf", "text", "tsv", "txt", "xls", "xlsb", "xlsm",
+  "xlsx", "xlt", "xltm", "xltx", "xml", "yaml", "yml"
+]);
 const SHEET_COLUMN_KEYS = new Set([
   "issue", "type", "title", "status", "priority", "assignee", "collaborators", "attachments", "updated"
 ]);
@@ -28,6 +34,10 @@ export function attachmentPreviewKind(attachment) {
   if (VIDEO_EXTENSIONS.has(extension)) return "video";
   if (AUDIO_EXTENSIONS.has(extension)) return "audio";
   return "";
+}
+
+export function attachmentCanOpenLocally(attachment) {
+  return LOCALLY_OPENABLE_EXTENSIONS.has(fileExtension(attachment?.filename));
 }
 
 function normalizedView(view) {

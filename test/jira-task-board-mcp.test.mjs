@@ -37,7 +37,8 @@ import {
   SVN_INSPECT_CHANGES_TOOL,
   SVN_OPEN_EXTERNAL_DIFF_TOOL,
   SVN_PREVIEW_DIFF_TOOL,
-  SVN_RECONCILE_COMMIT_TOOL
+  SVN_RECONCILE_COMMIT_TOOL,
+  UPDATE_STATUS_TOOL
 } from "../mcp/jira-task-board-mcp.mjs";
 
 const opened = [];
@@ -138,6 +139,23 @@ function automation() {
   };
 }
 
+function updates() {
+  return {
+    getStatus: async () => ({
+      enabled: true,
+      checked: true,
+      currentVersion: "0.31.1",
+      latestVersion: "0.32.0",
+      updateAvailable: true,
+      source: "release",
+      sourceLabel: "GitHub Release",
+      url: "https://github.com/yzj555/jira-codex-panel-poc/releases/tag/v0.32.0",
+      checkedAt: "2026-08-13T00:00:00.000Z",
+      error: ""
+    })
+  };
+}
+
 function desktop() {
   return {
     openIssueConversation: async (issueKey) => ({ opened: true, threadId: `thread-for-${issueKey}` }),
@@ -203,7 +221,7 @@ test("详情与 Sheets 快照只暴露面板需要的只读字段", () => {
 });
 
 test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resource", async () => {
-  const server = createJiraTaskBoardMcpServer({ workbench: workbench(), conversations: conversations(), svn: svn(), automation: automation(), desktop: desktop() });
+  const server = createJiraTaskBoardMcpServer({ workbench: workbench(), conversations: conversations(), svn: svn(), automation: automation(), updates: updates(), desktop: desktop(), version: "0.31.1" });
   const client = new Client({ name: "jira-workbench-test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   opened.push(server, client);
@@ -211,7 +229,7 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   await client.connect(clientTransport);
 
   const listed = await client.listTools();
-  assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [AUTOMATION_SET_MONITOR_TOOL, AUTOMATION_STATUS_TOOL, CODEX_BIND_ISSUE_TOOL, CODEX_CLEAR_BINDING_TOOL, CODEX_CREATE_ISSUE_ANALYSIS_TOOL, CODEX_LIST_THREADS_TOOL, CODEX_OPEN_BOUND_THREAD_TOOL, JIRA_ATTACHMENT_PREVIEW_TOOL, JIRA_EXECUTE_TRANSITION_TOOL, JIRA_ISSUE_DETAIL_TOOL, JIRA_LIST_SHEETS_TOOL, JIRA_LIST_TRANSITIONS_TOOL, JIRA_PREPARE_TRANSITION_TOOL, JIRA_SHEET_ISSUES_TOOL, JIRA_TASK_BOARD_TOOL, SVN_ABANDON_REVIEW_TOOL, SVN_CANCEL_REVIEW_TOOL, SVN_COMMIT_REVIEW_TOOL, SVN_CONFIRM_COMMITTED_TOOL, SVN_CONFIRM_REVIEW_TOOL, SVN_CREATE_REVIEW_TOOL, SVN_GET_REVIEW_TOOL, SVN_INSPECT_CHANGES_TOOL, SVN_OPEN_EXTERNAL_DIFF_TOOL, SVN_PREVIEW_DIFF_TOOL, SVN_RECONCILE_COMMIT_TOOL].sort());
+  assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [AUTOMATION_SET_MONITOR_TOOL, AUTOMATION_STATUS_TOOL, CODEX_BIND_ISSUE_TOOL, CODEX_CLEAR_BINDING_TOOL, CODEX_CREATE_ISSUE_ANALYSIS_TOOL, CODEX_LIST_THREADS_TOOL, CODEX_OPEN_BOUND_THREAD_TOOL, JIRA_ATTACHMENT_PREVIEW_TOOL, JIRA_EXECUTE_TRANSITION_TOOL, JIRA_ISSUE_DETAIL_TOOL, JIRA_LIST_SHEETS_TOOL, JIRA_LIST_TRANSITIONS_TOOL, JIRA_PREPARE_TRANSITION_TOOL, JIRA_SHEET_ISSUES_TOOL, JIRA_TASK_BOARD_TOOL, SVN_ABANDON_REVIEW_TOOL, SVN_CANCEL_REVIEW_TOOL, SVN_COMMIT_REVIEW_TOOL, SVN_CONFIRM_COMMITTED_TOOL, SVN_CONFIRM_REVIEW_TOOL, SVN_CREATE_REVIEW_TOOL, SVN_GET_REVIEW_TOOL, SVN_INSPECT_CHANGES_TOOL, SVN_OPEN_EXTERNAL_DIFF_TOOL, SVN_PREVIEW_DIFF_TOOL, SVN_RECONCILE_COMMIT_TOOL, UPDATE_STATUS_TOOL].sort());
   for (const tool of listed.tools) {
     assert.equal(tool._meta.ui.resourceUri, JIRA_TASK_BOARD_RESOURCE_URI);
   }
@@ -220,6 +238,8 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
     assert.equal(byName[name].annotations.readOnlyHint, true);
     assert.equal(byName[name].annotations.destructiveHint, false);
   }
+  assert.equal(byName[UPDATE_STATUS_TOOL].annotations.readOnlyHint, true);
+  assert.equal(byName[UPDATE_STATUS_TOOL].annotations.openWorldHint, true);
   assert.equal(byName[JIRA_PREPARE_TRANSITION_TOOL].annotations.openWorldHint, false);
   assert.equal(byName[CODEX_BIND_ISSUE_TOOL].annotations.destructiveHint, false);
   assert.equal(byName[CODEX_CLEAR_BINDING_TOOL].annotations.destructiveHint, true);
@@ -242,6 +262,8 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   assert.equal(monitor.structuredContent.automation.monitorEnabled, false);
   const enabledMonitor = await client.callTool({ name: AUTOMATION_SET_MONITOR_TOOL, arguments: { enabled: true } });
   assert.equal(enabledMonitor.structuredContent.automation.monitorEnabled, true);
+  const update = await client.callTool({ name: UPDATE_STATUS_TOOL, arguments: {} });
+  assert.equal(update.structuredContent.update.latestVersion, "0.32.0");
   const openedThread = await client.callTool({ name: CODEX_OPEN_BOUND_THREAD_TOOL, arguments: { issueKey: "CT-1" } });
   assert.equal(openedThread.structuredContent.threadId, "thread-for-CT-1");
   const createdThread = await client.callTool({ name: CODEX_CREATE_ISSUE_ANALYSIS_TOOL, arguments: { issueKey: "CT-1", supplementalDescription: "弱网复现" } });
@@ -284,10 +306,12 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   assert.match(resource.contents[0].text, /tools\/call/);
   assert.match(resource.contents[0].text, /setWidgetState/);
   assert.match(resource.contents[0].text, /SVN 审核与提交/);
+  assert.match(resource.contents[0].text, /v0\.31\.1/);
+  assert.doesNotMatch(resource.contents[0].text, /__JIRA_CODEX_VERSION__/);
 });
 
 test("本机 /mcp 可通过 Streamable HTTP 调用完整工作台", async () => {
-  const handler = createJiraTaskBoardMcpHttpHandler({ workbench: workbench(), conversations: conversations(), svn: svn(), automation: automation(), desktop: desktop() });
+  const handler = createJiraTaskBoardMcpHttpHandler({ workbench: workbench(), conversations: conversations(), svn: svn(), automation: automation(), updates: updates(), desktop: desktop() });
   const httpServer = createServer((request, response) => handler(request, response).catch((error) => response.writeHead(500).end(error.message)));
   opened.push({ close: () => new Promise((resolve) => httpServer.close(resolve)) });
   await new Promise((resolve, reject) => { httpServer.once("error", reject); httpServer.listen(0, "127.0.0.1", resolve); });
@@ -296,7 +320,7 @@ test("本机 /mcp 可通过 Streamable HTTP 调用完整工作台", async () => 
   opened.push(client);
   await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${address.port}/mcp`)));
   const listed = await client.listTools();
-  assert.equal(listed.tools.length, 26);
+  assert.equal(listed.tools.length, 27);
   const result = await client.callTool({ name: JIRA_TASK_BOARD_TOOL, arguments: {} });
   assert.equal(result.structuredContent.counts.active, 2);
 });

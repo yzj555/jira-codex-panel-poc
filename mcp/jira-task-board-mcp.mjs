@@ -19,6 +19,7 @@ export const CODEX_OPEN_BOUND_THREAD_TOOL = "codex_open_bound_issue_thread";
 export const CODEX_CREATE_ISSUE_ANALYSIS_TOOL = "codex_create_and_bind_issue_analysis";
 export const AUTOMATION_STATUS_TOOL = "jira_get_bug_monitor_status";
 export const AUTOMATION_SET_MONITOR_TOOL = "jira_set_bug_monitor_enabled";
+export const UPDATE_STATUS_TOOL = "jira_get_update_status";
 export const SVN_INSPECT_CHANGES_TOOL = "svn_inspect_issue_changes";
 export const SVN_PREVIEW_DIFF_TOOL = "svn_preview_issue_diff";
 export const SVN_OPEN_EXTERNAL_DIFF_TOOL = "svn_open_issue_external_diff";
@@ -262,6 +263,10 @@ function readOnlyAnnotations() {
   return { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 }
 
+function externalReadOnlyAnnotations() {
+  return { readOnlyHint: true, destructiveHint: false, openWorldHint: true };
+}
+
 function localMutationAnnotations() {
   return { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 }
@@ -279,6 +284,7 @@ export function createJiraTaskBoardMcpServer({
   conversations,
   svn,
   automation,
+  updates,
   desktop,
   loadIssues,
   confirmations = createActionConfirmationStore(),
@@ -304,7 +310,7 @@ export function createJiraTaskBoardMcpServer({
       contents: [{
         uri: JIRA_TASK_BOARD_RESOURCE_URI,
         mimeType: "text/html;profile=mcp-app",
-        text: await uiHtmlPromise,
+        text: (await uiHtmlPromise).replaceAll("__JIRA_CODEX_VERSION__", version),
         _meta: {
           ui: {
             prefersBorder: true,
@@ -348,6 +354,31 @@ export function createJiraTaskBoardMcpServer({
         return {
           structuredContent: { view: "automationStatus", automation: automationStatus },
           content: [{ type: "text", text: `Bug 自动监控${automationStatus.monitorEnabled ? "已开启" : "已关闭"}。` }]
+        };
+      }
+    );
+  }
+
+  if (typeof updates?.getStatus === "function") {
+    server.registerTool(
+      UPDATE_STATUS_TOOL,
+      {
+        title: "检查 Jira Codex 助手更新",
+        description: "从 GitHub Release（无 Release 时回退到远端 main）读取版本，并与当前安装版本比较。只读。",
+        inputSchema: { force: z.boolean().optional().default(false) },
+        annotations: externalReadOnlyAnnotations(),
+        _meta: uiMeta("正在检查 GitHub 更新…", "版本检查完成")
+      },
+      async ({ force }) => {
+        const update = await updates.getStatus({ force });
+        const text = update.updateAvailable
+          ? `发现 Jira Codex 助手 v${update.latestVersion}，当前版本为 v${update.currentVersion}。`
+          : update.checked
+            ? `Jira Codex 助手当前版本为 v${update.currentVersion}，已是最新版本。`
+            : `Jira Codex 助手当前版本为 v${update.currentVersion}。`;
+        return {
+          structuredContent: { view: "updateStatus", update },
+          content: [{ type: "text", text }]
         };
       }
     );

@@ -27,7 +27,8 @@ import {
   SVN_INSPECT_CHANGES_TOOL,
   SVN_OPEN_EXTERNAL_DIFF_TOOL,
   SVN_PREVIEW_DIFF_TOOL,
-  SVN_RECONCILE_COMMIT_TOOL
+  SVN_RECONCILE_COMMIT_TOOL,
+  UPDATE_STATUS_TOOL
 } from "../mcp/jira-task-board-mcp.mjs";
 
 const endpoint = new URL(process.env.JIRA_CODEX_MCP_URL || "http://127.0.0.1:47823/mcp");
@@ -58,7 +59,8 @@ const expectedTools = [
   SVN_INSPECT_CHANGES_TOOL,
   SVN_OPEN_EXTERNAL_DIFF_TOOL,
   SVN_PREVIEW_DIFF_TOOL,
-  SVN_RECONCILE_COMMIT_TOOL
+  SVN_RECONCILE_COMMIT_TOOL,
+  UPDATE_STATUS_TOOL
 ].sort();
 
 try {
@@ -77,6 +79,10 @@ try {
   const byName = Object.fromEntries(listed.tools.map((tool) => [tool.name, tool]));
   for (const toolName of [AUTOMATION_STATUS_TOOL, CODEX_LIST_THREADS_TOOL, JIRA_ATTACHMENT_PREVIEW_TOOL, JIRA_TASK_BOARD_TOOL, JIRA_ISSUE_DETAIL_TOOL, JIRA_LIST_SHEETS_TOOL, JIRA_SHEET_ISSUES_TOOL, JIRA_LIST_TRANSITIONS_TOOL, SVN_GET_REVIEW_TOOL, SVN_INSPECT_CHANGES_TOOL, SVN_OPEN_EXTERNAL_DIFF_TOOL, SVN_PREVIEW_DIFF_TOOL]) {
     if (byName[toolName].annotations?.readOnlyHint !== true) throw new Error(`${toolName} 缺少 readOnlyHint=true。`);
+  }
+  if (byName[UPDATE_STATUS_TOOL].annotations?.readOnlyHint !== true
+    || byName[UPDATE_STATUS_TOOL].annotations?.openWorldHint !== true) {
+    throw new Error(`${UPDATE_STATUS_TOOL} 必须标记为读取 GitHub 的只读开放世界工具。`);
   }
   for (const toolName of [AUTOMATION_SET_MONITOR_TOOL, CODEX_CREATE_ISSUE_ANALYSIS_TOOL]) {
     if (byName[toolName].annotations?.openWorldHint !== true) {

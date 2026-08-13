@@ -41,6 +41,10 @@
     header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
     h1, h2, p { margin: 0; }
     h1 { font-size: 17px; }
+    .app-title-row { display: flex; align-items: center; gap: 8px; }
+    #version-status { min-height: 22px; padding: 1px 7px; border-color: var(--line); border-radius: 999px; background: var(--soft); color: var(--muted); font-size: 10px; font-weight: 680; }
+    #version-status:not(.update-available) { cursor: default; }
+    #version-status.update-available { border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); background: color-mix(in srgb, var(--warn) 12%, var(--panel)); color: var(--warn); cursor: pointer; }
     h2 { font-size: 15px; }
     #meta { margin-top: 2px; color: var(--muted); font-size: 11px; }
     .toolbar { display: flex; align-items: center; gap: 8px; }
@@ -101,6 +105,11 @@
     .attachment small { display: block; color: var(--muted); }
     .attachment button { width: 100%; min-height: 0; padding: 0; border: 0; background: transparent; text-align: left; }
     .attachment-preview { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+    .attachment-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .attachment-preview-nav { display: inline-flex; align-items: center; gap: 5px; }
+    .attachment-preview-nav button { width: 30px; min-height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); text-align: center; }
+    .attachment-preview-nav button:disabled { opacity: .35; cursor: default; }
+    .attachment-preview-nav small { color: var(--muted); white-space: nowrap; }
     .attachment-preview img { display: block; max-width: 100%; max-height: 440px; margin: 6px auto 0; border-radius: 7px; object-fit: contain; }
     .transition-box { margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
     .transition-box select { width: 100%; min-height: 34px; margin: 7px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 8px; }
@@ -251,7 +260,7 @@
 </head>
 <body>
   <header>
-    <div><h1>Jira 任务工作台</h1><div id="meta">等待任务数据…</div></div>
+    <div><div class="app-title-row"><h1>Jira 任务工作台</h1><button id="version-status" type="button" title="当前安装版本">v__JIRA_CODEX_VERSION__</button></div><div id="meta">等待任务数据…</div></div>
     <div class="toolbar"><div class="monitor"><span id="monitor-meta">自动 Bug 监控：读取中</span><button id="monitor-toggle" type="button" aria-pressed="false">开启</button></div><button id="settings" type="button">设置</button><button id="refresh" type="button">刷新</button><button id="local-close" type="button" aria-label="返回 Codex" title="返回 Codex" hidden>×</button></div>
   </header>
   <nav aria-label="工作台页签">
@@ -276,13 +285,14 @@
   <div id="svn-view" hidden></div>
   <div id="loading"><div class="loader"><span class="spinner"></span><span id="loading-text">正在读取…</span></div></div>
   <script>
-    const TOOLS = { board: "jira_list_my_tasks", issue: "jira_get_issue", attachmentPreview: "jira_preview_issue_attachment", sheets: "jira_list_sheets", sheet: "jira_get_sheet_issues", transitions: "jira_list_transitions", prepareTransition: "jira_prepare_transition", executeTransition: "jira_execute_transition", threads: "codex_list_bindable_threads", bindIssue: "codex_bind_issue_to_thread", clearBinding: "codex_clear_issue_binding", openBoundThread: "codex_open_bound_issue_thread", createAnalysis: "codex_create_and_bind_issue_analysis", automationStatus: "jira_get_bug_monitor_status", automationToggle: "jira_set_bug_monitor_enabled", svnInspect: "svn_inspect_issue_changes", svnDiff: "svn_preview_issue_diff", svnExternalDiff: "svn_open_issue_external_diff", svnCreateReview: "svn_create_issue_review", svnGetReview: "svn_get_issue_review", svnCancelReview: "svn_cancel_issue_review", svnConfirmReview: "svn_confirm_issue_review", svnCommit: "svn_commit_issue_review", svnReconcile: "svn_reconcile_issue_commit", svnConfirmCommitted: "svn_confirm_issue_committed", svnAbandon: "svn_abandon_issue_review" };
+    const APP_VERSION = "__JIRA_CODEX_VERSION__";
+    const TOOLS = { board: "jira_list_my_tasks", issue: "jira_get_issue", attachmentPreview: "jira_preview_issue_attachment", sheets: "jira_list_sheets", sheet: "jira_get_sheet_issues", transitions: "jira_list_transitions", prepareTransition: "jira_prepare_transition", executeTransition: "jira_execute_transition", threads: "codex_list_bindable_threads", bindIssue: "codex_bind_issue_to_thread", clearBinding: "codex_clear_issue_binding", openBoundThread: "codex_open_bound_issue_thread", createAnalysis: "codex_create_and_bind_issue_analysis", automationStatus: "jira_get_bug_monitor_status", automationToggle: "jira_set_bug_monitor_enabled", updateStatus: "jira_get_update_status", svnInspect: "svn_inspect_issue_changes", svnDiff: "svn_preview_issue_diff", svnExternalDiff: "svn_open_issue_external_diff", svnCreateReview: "svn_create_issue_review", svnGetReview: "svn_get_issue_review", svnCancelReview: "svn_cancel_issue_review", svnConfirmReview: "svn_confirm_issue_review", svnCommit: "svn_commit_issue_review", svnReconcile: "svn_reconcile_issue_commit", svnConfirmCommitted: "svn_confirm_issue_committed", svnAbandon: "svn_abandon_issue_review" };
     const DESKTOP_BRIDGE_TRANSPORT = document.documentElement.dataset.transport === "desktop-bridge";
     const LOCAL_TRANSPORT = DESKTOP_BRIDGE_TRANSPORT
       || new URLSearchParams(window.location.search).get("transport") === "http";
     const LOCAL_STATE_KEY = "jira-codex-mcp-app:widget-state:v1";
     const pending = new Map();
-    const cache = { board: null, sheets: null, sheet: null, issue: null, attachmentPreview: null, transitions: null, pendingTransition: null, threads: null, automation: null, createAnalysisIssueKey: "", svnContext: null, svnPreview: null, svnReview: null, svnConfirmation: null };
+    const cache = { board: null, sheets: null, sheet: null, issue: null, attachmentPreview: null, transitions: null, pendingTransition: null, threads: null, automation: null, update: null, createAnalysisIssueKey: "", svnContext: null, svnPreview: null, svnReview: null, svnConfirmation: null };
     let requestId = 1;
     let activeTab = "active";
     let previousView = "board";
@@ -466,6 +476,7 @@
         : name === TOOLS.createAnalysis ? "正在当前 Codex 窗口创建分析会话…"
         : name === TOOLS.automationStatus ? "正在读取自动监控状态…"
         : name === TOOLS.automationToggle ? "正在更新自动监控…"
+        : name === TOOLS.updateStatus ? "正在检查 GitHub 更新…"
         : name === TOOLS.svnInspect ? "正在检查 SVN 工作副本…"
         : name === TOOLS.svnDiff ? "正在读取 SVN 差异…"
         : name === TOOLS.svnExternalDiff ? "正在打开 TortoiseSVN 差异比较…"
@@ -478,7 +489,8 @@
         : name === TOOLS.svnConfirmCommitted ? "正在登记人工核对结果…"
         : name === TOOLS.svnAbandon ? "正在放弃旧审核草稿…"
         : "正在同步任务…";
-      const localBusy = options.busyScope === "svn-preview";
+      const background = options.background === true;
+      const localBusy = options.busyScope === "svn-preview" || background;
       if (!localBusy) setBusy(true, busyText);
       try {
         const result = await request("tools/call", { name, arguments: args });
@@ -487,7 +499,7 @@
         if (options.accept !== false) acceptResult(output);
         return output;
       } catch (error) {
-        showError(error);
+        if (!background) showError(error);
         return null;
       } finally {
         if (!localBusy) setBusy(false);
@@ -556,6 +568,20 @@
         : "自动 Bug 监控：已关闭";
       $("monitor-meta").title = status.lastError || "监控由本地服务持有，关闭工作台不会停止。";
     }
+    function renderUpdateStatus() {
+      const update = cache.update?.update;
+      const button = $("version-status");
+      if (!button) return;
+      const currentVersion = String(update?.currentVersion || APP_VERSION);
+      button.textContent = update?.updateAvailable
+        ? `v${currentVersion} · 更新 v${update.latestVersion}`
+        : `v${currentVersion}`;
+      button.classList.toggle("update-available", Boolean(update?.updateAvailable));
+      button.title = update?.updateAvailable
+        ? `发现新版本 v${update.latestVersion}，点击查看 GitHub`
+        : update?.checked ? "当前已是最新版本" : update?.enabled === false ? "自动更新检查已关闭" : "当前安装版本";
+      button.setAttribute("aria-disabled", String(!update?.updateAvailable));
+    }
     function renderSheets() {
       const snapshot = cache.sheets;
       if (!snapshot) return;
@@ -578,8 +604,13 @@
       if (!task) return;
       const collaborators = task.collaborators?.length ? task.collaborators.map((person) => `<span class="chip">${esc(person.displayName)}</span>`).join("") : '<span class="empty">无协同处理人</span>';
       const attachments = task.attachments?.length ? task.attachments.map((item) => `<div class="attachment">${item.previewable ? `<button type="button" data-preview-attachment="${esc(item.id)}"><strong>${esc(item.filename)}</strong><small>${esc(item.mimeType)} · ${fmtSize(item.size)} · ${esc(item.author)} · 点击预览</small></button>` : `<strong>${esc(item.filename)}</strong><small>${esc(item.mimeType)} · ${fmtSize(item.size)} · ${esc(item.author)} · 请在 Jira 中查看</small>`}</div>`).join("") : '<div class="empty">无附件</div>';
+      const previewableAttachments = (task.attachments || []).filter((item) => item.previewable);
+      const currentAttachmentId = String(cache.attachmentPreview?.preview?.attachmentId || "");
+      const currentAttachmentIndex = previewableAttachments.findIndex((item) => String(item.id) === currentAttachmentId);
+      const previousAttachment = currentAttachmentIndex > 0 ? previewableAttachments[currentAttachmentIndex - 1] : null;
+      const nextAttachment = currentAttachmentIndex >= 0 && currentAttachmentIndex < previewableAttachments.length - 1 ? previewableAttachments[currentAttachmentIndex + 1] : null;
       const attachmentPreview = cache.attachmentPreview?.preview?.issueKey === task.key
-        ? `<div class="attachment-preview"><strong>${esc(cache.attachmentPreview.preview.filename)}</strong><img src="${esc(cache.attachmentPreview.preview.dataUrl)}" alt="${esc(cache.attachmentPreview.preview.filename)}"></div>`
+        ? `<div class="attachment-preview"><div class="attachment-preview-head"><strong>${esc(cache.attachmentPreview.preview.filename)}</strong>${previewableAttachments.length > 1 ? `<div class="attachment-preview-nav"><button type="button" aria-label="上一张图片" data-preview-attachment="${esc(previousAttachment?.id || "")}" ${previousAttachment ? "" : "disabled"}>‹</button><small>${currentAttachmentIndex + 1}/${previewableAttachments.length}</small><button type="button" aria-label="下一张图片" data-preview-attachment="${esc(nextAttachment?.id || "")}" ${nextAttachment ? "" : "disabled"}>›</button></div>` : ""}</div><img src="${esc(cache.attachmentPreview.preview.dataUrl)}" alt="${esc(cache.attachmentPreview.preview.filename)}"></div>`
         : "";
       const transitions = cache.transitions?.issueKey === task.key ? cache.transitions.transitions : null;
       const transitionOptions = transitions?.map((transition) => `<option value="${esc(transition.id)}" ${transition.requiresInput ? "disabled" : ""}>${esc(transition.to.name)}${transition.requiresInput ? "（需在 Jira 填写字段）" : ""}</option>`).join("") || "";
@@ -767,6 +798,7 @@
       if (result.view === "issue") { cache.issue = result; $("board-view").hidden = true; $("sheets-view").hidden = true; $("svn-view").hidden = true; $("detail-view").hidden = false; renderDetail(); }
       if (result.view === "attachmentPreview") { cache.attachmentPreview = result; renderDetail(); }
       if (result.view === "automationStatus") { cache.automation = result; renderAutomation(); }
+      if (result.view === "updateStatus") { cache.update = result; renderUpdateStatus(); }
       if (result.view === "desktopNavigation") {
         $("meta").textContent = `${result.issueKey} 已在 Codex Desktop 打开`;
         notifyDesktopHost("close");
@@ -850,6 +882,10 @@
       if (!cache.board) await callTool(TOOLS.board, { includeCompleted: true, limitPerType: 100 }); else renderBoard();
     }
     document.addEventListener("click", (event) => {
+      if (event.target.closest("#version-status") && cache.update?.update?.updateAvailable && cache.update.update.url) {
+        void openLink(cache.update.update.url).catch((error) => showError(error));
+        return;
+      }
       const tab = event.target.closest("nav button[data-tab]");
       if (tab && !busy) void selectTab(tab.dataset.tab);
       const statusFilter = event.target.closest("button[data-status-filter-kind]");
@@ -1094,10 +1130,12 @@
             await callTool(TOOLS.board, { includeCompleted: true, limitPerType: 100 });
           }
           if (!stored.openSvn) await callTool(TOOLS.automationStatus);
+          if (!stored.openSvn) void callTool(TOOLS.updateStatus, {}, { background: true });
         } else {
-          await request("ui/initialize", { protocolVersion: "2025-11-21", appInfo: { name: "jira-workbench", title: "Jira 任务工作台", version: "0.3.0" }, appCapabilities: {} });
+          await request("ui/initialize", { protocolVersion: "2025-11-21", appInfo: { name: "jira-workbench", title: "Jira 任务工作台", version: APP_VERSION }, appCapabilities: {} });
           notify("ui/notifications/initialized", {});
           void callTool(TOOLS.automationStatus);
+          void callTool(TOOLS.updateStatus, {}, { background: true });
         }
       } catch (error) {
         if (window.openai?.toolOutput) acceptResult(window.openai.toolOutput);

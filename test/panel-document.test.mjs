@@ -59,6 +59,9 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.match(ui, /selectedSheet/);
   assert.match(ui, /jira_preview_issue_attachment/);
   assert.match(ui, /data-preview-attachment/);
+  assert.match(ui, /previewableAttachments/);
+  assert.match(ui, /aria-label="上一张图片"/);
+  assert.match(ui, /aria-label="下一张图片"/);
   assert.match(ui, /svn-tree-dir/);
   assert.match(ui, /body\.svn-mode #svn-view/);
   assert.match(ui, /body\.svn-mode #loading \{ top: 57px; \}/);
@@ -95,6 +98,9 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.match(ui, /codex_open_bound_issue_thread/);
   assert.match(ui, /jira_get_bug_monitor_status/);
   assert.match(ui, /jira_set_bug_monitor_enabled/);
+  assert.match(ui, /jira_get_update_status/);
+  assert.match(ui, /id="version-status"/);
+  assert.match(ui, /__JIRA_CODEX_VERSION__/);
   assert.match(ui, /ui\/initialize/);
   assert.match(ui, /tools\/call/);
   assert.match(ui, /ui\/open-link/);
@@ -171,20 +177,25 @@ test("SVN 文件行区分单击预览与双击 TortoiseSVN，且交互控件不�
   assert.match(ui, /if \(!localBusy\) setBusy\(true, busyText\)/);
 });
 
-test("设置面板保留六个分组和数据同步配置", async () => {
+test("设置面板保留七个独立分组和数据同步配置", async () => {
   const [html, styles, configSource, appSource] = await Promise.all([
     readFile(new URL("../public/index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
     readFile(new URL("../config-store.mjs", import.meta.url), "utf8"),
     readFile(new URL("../public/app.js", import.meta.url), "utf8")
   ]);
-  for (const section of ["jira", "codex", "sync", "automation", "templates", "advanced"]) {
+  for (const section of ["jira", "codex", "sync", "update", "automation", "templates", "advanced"]) {
     assert.match(html, new RegExp(`data-settings-section-tab="${section}"`));
     assert.match(html, new RegExp(`data-settings-section="${section}"`));
   }
   for (const id of ["sync-tasks-enabled", "sync-task-interval", "sync-on-panel-return", "sync-sheets-interval"]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
+  assert.match(html, /data-settings-section-tab="update"[^>]*>[\s\S]*?<span>版本更新<\/span>/);
+  assert.match(html, /class="update-settings-card field-wide" data-settings-section="update"/);
+  assert.doesNotMatch(html, /class="update-settings-card field-wide" data-settings-section="sync"/);
+  const settingsTabOrder = Array.from(html.matchAll(/data-settings-section-tab="([^"]+)"/g), (match) => match[1]);
+  assert.equal(settingsTabOrder.at(-1), "update");
   assert.match(styles, /\.settings-dialog form/);
   assert.match(html, /dataset\.view = "settings-only"/);
   assert.match(styles, /:root\[data-view="settings-only"\] \.app-shell/);
@@ -287,6 +298,49 @@ test("完整本地设置 UI 本身仍支持深浅主题和首页状态筛选", a
   assert.match(appSource, /createLaneStatusFilter/);
   assert.match(styles, /:root\[data-theme="dark"\]/);
   assert.match(styles, /\.lane-status-button\.active/);
+});
+
+test("完整面板的图片附件支持画廊切换，文档附件下载后再本地打开", async () => {
+  const [html, appSource, styles, server] = await Promise.all([
+    readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
+    readFile(new URL("../server.mjs", import.meta.url), "utf8")
+  ]);
+  assert.match(html, /id="previous-preview-image"/);
+  assert.match(html, /id="next-preview-image"/);
+  assert.match(appSource, /attachmentPreviewGallery/);
+  assert.match(appSource, /navigateAttachmentPreview\(-1\)/);
+  assert.match(appSource, /navigateAttachmentPreview\(1\)/);
+  assert.match(appSource, /event\.key === "ArrowLeft"/);
+  assert.match(appSource, /event\.key === "ArrowRight"/);
+  assert.match(appSource, /attachmentCanOpenLocally/);
+  assert.match(appSource, /\/materialize/);
+  assert.match(appSource, /\/open/);
+  assert.match(appSource, /已下载，再次点击即可打开/);
+  assert.match(styles, /\.attachment-preview-nav\.previous/);
+  assert.match(styles, /\.attachment-card\.locally-cached/);
+  assert.match(server, /ATTACHMENT_NOT_MATERIALIZED/);
+  assert.match(server, /ATTACHMENT_LOCAL_OPEN_NOT_ALLOWED/);
+});
+
+test("完整面板提供默认开启的 GitHub 更新检查与顶部版本提示", async () => {
+  const [html, appSource, styles, server] = await Promise.all([
+    readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
+    readFile(new URL("../server.mjs", import.meta.url), "utf8")
+  ]);
+  assert.match(html, /id="version-badge"/);
+  assert.match(html, /id="update-check-enabled"/);
+  assert.match(html, /id="check-updates-now"/);
+  assert.match(appSource, /updateCheckEnabled: true/);
+  assert.match(appSource, /\/api\/update-status/);
+  assert.match(appSource, /可更新 v/);
+  assert.match(styles, /\.version-badge\.update-available/);
+  assert.match(styles, /\.update-settings-card/);
+  assert.match(server, /createGitHubUpdateChecker/);
+  assert.match(server, /url\.pathname === "\/api\/update-status"/);
 });
 
 test("完整面板优先加载 Jira，并渐进补齐 App Server 上下文", async () => {

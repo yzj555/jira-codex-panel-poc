@@ -13,10 +13,15 @@ import {
 } from "./config-store.mjs";
 import { JiraApiError, createJiraClient } from "./jira-client.mjs";
 import { createJxlClient } from "./jxl-client.mjs";
-import { materializeAttachment } from "./lib/attachment-cache.mjs";
+import {
+  findCachedAttachment,
+  materializeAttachment,
+  openLocalAttachment
+} from "./lib/attachment-cache.mjs";
 import { createAutomationManager } from "./lib/automation-manager.mjs";
 import { createBugMonitorService } from "./lib/bug-monitor-service.mjs";
 import { createDesktopCommandBroker, DesktopCommandError } from "./lib/desktop-command-broker.mjs";
+import { createGitHubUpdateChecker } from "./lib/github-update-checker.mjs";
 import {
   CodexAppServerError,
   createCodexAppServerClient
@@ -40,13 +45,21 @@ import {
 import { createSvnWorkbenchService } from "./lib/svn-workbench-service.mjs";
 import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "./mcp/jira-task-board-mcp.mjs";
 import { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
+import { attachmentCanOpenLocally } from "./public/issue-views.js";
 
-const VERSION = "0.31.1";
+const VERSION = "0.31.2";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(root, "public");
 const configStore = createConfigStore();
+const updateChecker = createGitHubUpdateChecker({
+  currentVersion: VERSION,
+  repository: process.env.JIRA_CODEX_UPDATE_REPOSITORY || "yzj555/jira-codex-panel-poc",
+  releaseUrl: process.env.JIRA_CODEX_UPDATE_RELEASE_URL || undefined,
+  packageUrl: process.env.JIRA_CODEX_UPDATE_PACKAGE_URL || undefined,
+  repositoryUrl: process.env.JIRA_CODEX_UPDATE_REPOSITORY_URL || undefined
+});
 const codexAppServer = createCodexAppServerClient({
   clientInfo: {
     name: "jira_codex_panel",
@@ -553,6 +566,9 @@ const mcpOptions = {
       return bugMonitor.getStatus();
     }
   },
+  updates: {
+    getStatus: ({ force = false } = {}) => getUpdateStatus({ force })
+  },
   version: VERSION
 };
 const handleMcp = createJiraTaskBoardMcpHttpHandler((request) => {
@@ -682,6 +698,14 @@ function assertAllowedWriteOrigin(request, requestUrl) {
   }
 }
 
+async function getUpdateStatus({ force = false } = {}) {
+  const config = await configStore.getPublic();
+  return updateChecker.check({
+    enabled: config.syncSettings?.updateCheckEnabled !== false,
+    force: Boolean(force)
+  });
+}
+
 async function handleApi(request, response, url) {
   if (request.method === "GET" && url.pathname === "/api/health") {
     const config = await configStore.getPublic();
@@ -690,6 +714,12 @@ async function handleApi(request, response, url) {
       name: "jira-codex-panel-poc",
       version: VERSION,
       jiraConfigured: config.configured
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/update-status") {
+    return json(response, 200, {
+      update: await getUpdateStatus({ force: url.searchParams.get("force") === "true" })
     });
   }
 
@@ -1231,6 +1261,43 @@ async function handleApi(request, response, url) {
       attachment
     });
     return json(response, 200, { attachment: materialized });
+  }
+
+  const attachmentOpenMatch = request.method === "POST"
+    ? url.pathname.match(/^\/api\/attachments\/(\d+)\/open$/)
+    : null;
+  if (attachmentOpenMatch) {
+    await readJson(request);
+    const attachmentId = attachmentOpenMatch[1];
+    const cached = await findCachedAttachment({ cacheRoot: attachmentCacheRoot, attachmentId });
+    if (!cached) {
+      throw new ConfigurationError("附件尚未下载，或本地缓存已经失效。请先重新下载。", {
+        code: "ATTACHMENT_NOT_MATERIALIZED",
+        statusCode: 409
+      });
+    }
+    if (!attachmentCanOpenLocally(cached)) {
+      throw new ConfigurationError("出于安全考虑，该附件只允许下载，不会自动调用本地程序打开。", {
+        code: "ATTACHMENT_LOCAL_OPEN_NOT_ALLOWED",
+        statusCode: 422
+      });
+    }
+    try {
+      await openLocalAttachment(cached.path);
+    } catch (error) {
+      throw new ConfigurationError(`无法使用系统默认程序打开附件：${error.message}`, {
+        code: "ATTACHMENT_LOCAL_OPEN_FAILED",
+        statusCode: 422
+      });
+    }
+    return json(response, 200, {
+      opened: true,
+      attachment: {
+        id: attachmentId,
+        filename: cached.filename,
+        size: cached.size
+      }
+    });
   }
 
   const attachmentMatch = request.method === "GET"

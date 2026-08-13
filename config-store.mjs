@@ -39,7 +39,8 @@ export const DEFAULT_SYNC_SETTINGS = Object.freeze({
   tasksEnabled: true,
   taskIntervalSeconds: 60,
   syncOnPanelReturn: true,
-  sheetsIntervalSeconds: 300
+  sheetsIntervalSeconds: 300,
+  updateCheckEnabled: true
 });
 
 export class ConfigurationError extends Error {
@@ -340,6 +341,10 @@ export function normalizeSyncSettings(input, previous = {}) {
         SHEETS_SYNC_INTERVALS,
         DEFAULT_SYNC_SETTINGS.sheetsIntervalSeconds
       )
+    ),
+    updateCheckEnabled: normalizeBoolean(
+      source.updateCheckEnabled,
+      prior.updateCheckEnabled ?? DEFAULT_SYNC_SETTINGS.updateCheckEnabled
     )
   };
 }
@@ -710,7 +715,7 @@ export function createConfigStore({
       });
     }
     const record = {
-      version: 4,
+      version: 5,
       deployment: normalized.deployment,
       baseUrl: normalized.baseUrl,
       email: normalized.email,
@@ -754,7 +759,7 @@ export function createConfigStore({
     const wasEnabled = Boolean(record.bugMonitorEnabled);
     const nextRecord = {
       ...record,
-      version: Math.max(4, Number(record.version || 1)),
+      version: Math.max(5, Number(record.version || 1)),
       bugMonitorEnabled: nextEnabled,
       monitorGeneration: !wasEnabled && nextEnabled
         ? Math.max(0, Number(record.monitorGeneration || 0)) + 1

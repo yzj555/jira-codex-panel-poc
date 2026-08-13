@@ -17,6 +17,7 @@
           <div class="title-row">
             <h1>Jira 任务</h1>
             <span class="poc-badge">LIVE</span>
+            <a id="version-badge" class="version-badge" aria-disabled="true" target="_blank" rel="noreferrer noopener">v—</a>
           </div>
         </div>
         <div class="top-actions">
@@ -158,7 +159,11 @@
         </div>
         <button id="close-attachment-preview" class="icon-button" type="button" aria-label="关闭附件预览">×</button>
       </header>
-      <div id="attachment-preview-body" class="attachment-preview-body" aria-live="polite"></div>
+      <div class="attachment-preview-stage">
+        <button id="previous-preview-image" class="attachment-preview-nav previous" type="button" aria-label="上一张图片" hidden>‹</button>
+        <div id="attachment-preview-body" class="attachment-preview-body" aria-live="polite"></div>
+        <button id="next-preview-image" class="attachment-preview-nav next" type="button" aria-label="下一张图片" hidden>›</button>
+      </div>
       <footer class="attachment-preview-footer">
         <span id="attachment-preview-hint">预览内容来自 Jira，只读显示。</span>
         <button id="download-preview-attachment" class="save-button" type="button" disabled>下载原文件</button>
@@ -254,6 +259,7 @@
           <button class="settings-section-tab" data-settings-section-tab="automation" type="button" role="tab" aria-selected="false"><span>自动化通知</span><small>Bug 监控与机器人</small></button>
           <button class="settings-section-tab" data-settings-section-tab="templates" type="button" role="tab" aria-selected="false"><span>消息模板</span><small>首条分析消息</small></button>
           <button class="settings-section-tab" data-settings-section-tab="advanced" type="button" role="tab" aria-selected="false"><span>高级配置</span><small>任务来源与容量</small></button>
+          <button class="settings-section-tab" data-settings-section-tab="update" type="button" role="tab" aria-selected="false"><span>版本更新</span><small>GitHub 检查与升级提示</small></button>
         </nav>
 
         <div class="form-grid">
@@ -341,6 +347,26 @@
               </label>
             </div>
             <div class="sync-default-hint">建议默认：任务自动同步开启、每 1 分钟同步、返回面板时同步开启、Sheets 每 5 分钟同步。</div>
+          </section>
+
+          <section class="update-settings-card field-wide" data-settings-section="update">
+            <div class="update-settings-heading">
+              <div>
+                <strong>版本更新</strong>
+                <small>通过 GitHub Release 检查；仓库尚未发布 Release 时使用远端 main 版本。</small>
+              </div>
+              <label class="switch-control" title="自动检查更新">
+                <input id="update-check-enabled" type="checkbox" role="switch" aria-label="自动检查更新" />
+                <i aria-hidden="true"></i>
+              </label>
+            </div>
+            <div class="update-check-row">
+              <span id="update-check-detail">正在读取当前版本…</span>
+              <div class="update-check-actions">
+                <a id="update-check-link" class="plain-button update-check-link" target="_blank" rel="noreferrer noopener" hidden>查看更新</a>
+                <button id="check-updates-now" class="plain-button" type="button">立即检查</button>
+              </div>
+            </div>
           </section>
 
           <div class="settings-info-card field-wide" data-settings-section="automation">

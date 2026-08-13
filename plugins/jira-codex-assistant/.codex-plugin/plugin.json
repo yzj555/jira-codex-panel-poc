@@ -1,6 +1,6 @@
 {
   "name": "jira-codex-assistant",
-  "version": "0.1.0+codex.20260813054909",
+  "version": "0.1.0+codex.20260813065054",
   "description": "\u5728 Codex \u4e2d\u5904\u7406\u4e2a\u4eba Jira\u3001\u5173\u8054 App Server \u4f1a\u8bdd\uff0c\u5e76\u901a\u8fc7\u4eba\u5de5\u786e\u8ba4\u5ba1\u6838\u548c\u63d0\u4ea4 SVN \u6539\u52a8\u3002",
   "author": {
     "name": "Jira Codex Assistant"

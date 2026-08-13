@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  attachmentCanOpenLocally,
   attachmentPreviewKind,
   filterAndSortSheetIssues,
   filterIssuesForView,
@@ -75,6 +76,10 @@ test("附件预览类型优先按 MIME，缺失时按扩展名识别", () => {
   assert.equal(attachmentPreviewKind({ mimeType: "application/octet-stream", filename: "server.log" }), "text");
   assert.equal(attachmentPreviewKind({ mimeType: "", filename: "recording.mp4" }), "video");
   assert.equal(attachmentPreviewKind({ mimeType: "application/zip", filename: "source.zip" }), "");
+  assert.equal(attachmentCanOpenLocally({ filename: "需求说明.docx" }), true);
+  assert.equal(attachmentCanOpenLocally({ filename: "数据配置.xlsx" }), true);
+  assert.equal(attachmentCanOpenLocally({ filename: "运行脚本.cmd" }), false);
+  assert.equal(attachmentCanOpenLocally({ filename: "客户端.exe" }), false);
 });
 
 test("Sheets 支持组合列筛选", () => {

@@ -66,7 +66,8 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
       tasksEnabled: true,
       taskIntervalSeconds: 60,
       syncOnPanelReturn: true,
-      sheetsIntervalSeconds: 300
+      sheetsIntervalSeconds: 300,
+      updateCheckEnabled: true
     });
     assert.equal("token" in publicConfig, false);
     assert.equal(publicConfig.baseUrl, "https://demo.atlassian.net");
@@ -119,14 +120,16 @@ test("数据同步配置使用安全默认值并只接受支持的频率", async
         tasksEnabled: false,
         taskIntervalSeconds: 31,
         syncOnPanelReturn: false,
-        sheetsIntervalSeconds: 0
+        sheetsIntervalSeconds: 0,
+        updateCheckEnabled: false
       }
     });
     assert.deepEqual(candidate.syncSettings, {
       tasksEnabled: false,
       taskIntervalSeconds: 60,
       syncOnPanelReturn: false,
-      sheetsIntervalSeconds: 0
+      sheetsIntervalSeconds: 0,
+      updateCheckEnabled: false
     });
     await store.save(candidate);
     const raw = JSON.parse(await readFile(configFile, "utf8"));
@@ -232,7 +235,7 @@ test("需求与 Bug 模板、技能独立保存，系统默认正文不固化到
     assert.equal(publicConfig.promptTemplates.bug.skill.name, "custom-bug-skill");
 
     const record = JSON.parse(await readFile(configFile, "utf8"));
-    assert.equal(record.version, 4);
+    assert.equal(record.version, 5);
     assert.equal("content" in record.promptTemplates.requirement, false);
     assert.equal(record.promptTemplates.bug.content, "诊断 {{key}}：{{description}}");
     assert.equal("messageTemplate" in record, false);
