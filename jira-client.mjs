@@ -9,6 +9,7 @@ const BASE_ISSUE_FIELDS = [
   "labels",
   "project",
   "fixVersions",
+  "parent",
   "created",
   "updated"
 ];
@@ -127,6 +128,7 @@ function issueTypeGroup(fields) {
 
 function normalizeIssue(issue, baseUrl, collaboratorFieldId = "") {
   const fields = issue.fields || {};
+  const issueKey = String(issue.key || "");
   const description = flattenAtlassianDocument(fields.description).replace(/\n{3,}/g, "\n\n").trim();
   const collaborators = Array.isArray(fields[collaboratorFieldId])
     ? fields[collaboratorFieldId].map((user) => ({
@@ -146,16 +148,30 @@ function normalizeIssue(issue, baseUrl, collaboratorFieldId = "") {
       downloadUrl: `/api/attachments/${encodeURIComponent(attachment.id || "")}`,
       thumbnailUrl: attachment.thumbnail
         ? `/api/attachments/${encodeURIComponent(attachment.id || "")}?thumbnail=1`
-        : null
+        : null,
+      sourceIssueKey: issueKey
     }))
     : [];
+  const parentFields = fields.parent?.fields || {};
+  const parentKey = String(fields.parent?.key || "").trim().toUpperCase();
+  const parent = parentKey ? {
+    id: String(fields.parent?.id || parentKey),
+    key: parentKey,
+    title: String(parentFields.summary || parentKey),
+    type: issueTypeGroup(parentFields),
+    typeName: String(parentFields.issuetype?.name || "父级任务"),
+    status: statusGroup(parentFields),
+    statusName: String(parentFields.status?.name || "未知状态"),
+    url: `${baseUrl}/browse/${encodeURIComponent(parentKey)}`
+  } : null;
   return {
     id: String(issue.id || issue.key),
-    key: String(issue.key || ""),
+    key: issueKey,
     type: issueTypeGroup(fields),
     typeName: fields.issuetype?.name || "任务",
     title: fields.summary || "未命名 Jira 任务",
     summary: description || "Jira 中未填写描述。",
+    hasDescription: Boolean(description),
     priority: fields.priority?.name || "未设置",
     status: statusGroup(fields),
     statusName: fields.status?.name || "未知状态",
@@ -167,6 +183,7 @@ function normalizeIssue(issue, baseUrl, collaboratorFieldId = "") {
     fixVersions: Array.isArray(fields.fixVersions)
       ? fields.fixVersions.map((version) => String(version?.name || "").trim()).filter(Boolean)
       : [],
+    parent,
     created: fields.created || null,
     updated: fields.updated || null,
     url: `${baseUrl}/browse/${encodeURIComponent(issue.key || "")}`

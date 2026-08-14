@@ -214,11 +214,26 @@ test("工作台快照同时保留待办、历史和服务端绑定状态", () =>
 });
 
 test("详情与 Sheets 快照只暴露面板需要的只读字段", () => {
-  const detail = buildIssueDetailSnapshot({ issue: jiraResult().issues[0], binding: jiraResult().bindingState.bindings["CT-1"] });
+  const child = {
+    ...jiraResult().issues[0],
+    parent: { key: "CT-ROOT", title: "父级需求", url: "http://jira.example.test/browse/CT-ROOT" },
+    parentIssue: {
+      ...issue("CT-ROOT", "requirement"),
+      title: "父级需求",
+      summary: "父级完整背景",
+      attachments: [{ id: "10", filename: "parent.png", mimeType: "image/png", size: 1024, sourceIssueKey: "CT-ROOT" }]
+    },
+    parentContext: { status: "available", key: "CT-ROOT", message: "" }
+  };
+  const detail = buildIssueDetailSnapshot({ issue: child, binding: jiraResult().bindingState.bindings["CT-1"] });
   assert.equal(detail.view, "issue");
   assert.equal(detail.issue.summary, "CT-1 的完整描述");
   assert.equal(detail.issue.attachments[0].previewable, true);
   assert.equal(detail.issue.attachments[0].downloadUrl, undefined);
+  assert.equal(detail.issue.parentIssue.key, "CT-ROOT");
+  assert.equal(detail.issue.parentIssue.summary, "父级完整背景");
+  assert.equal(detail.issue.parentIssue.attachments[0].sourceIssueKey, "CT-ROOT");
+  assert.equal(detail.issue.parentContext.status, "available");
 
   const sheets = buildSheetsSnapshot(sheetsResult());
   assert.equal(sheets.view, "sheets");

@@ -95,6 +95,13 @@
     .back { min-width: 36px; padding: 0 9px; }
     .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 30%); gap: 10px; }
     .description { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; border-radius: 8px; background: var(--bg); }
+    .parent-context { margin-top: 12px; padding: 11px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 9px; background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+    .parent-context-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .parent-context-head span { color: var(--muted); font-size: 11px; }
+    .parent-context-head a { color: var(--accent); text-decoration: none; }
+    .parent-context h3 { margin: 0 0 7px; font-size: 14px; }
+    .parent-context .description { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+    .scope-note { margin-top: 9px; color: var(--muted); font-size: 11px; line-height: 1.5; }
     .facts { display: grid; gap: 6px; }
     .fact { display: grid; grid-template-columns: 65px minmax(0,1fr); gap: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
     .fact span:first-child { color: var(--muted); }
@@ -181,6 +188,24 @@
     .svn-workbench-actions .icon { width: 34px; padding: 0; font-size: 17px; }
     .svn-context-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--bg) 82%, var(--panel)); color: var(--muted); font-size: 11px; }
     .svn-context-bar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .svn-project-scope-select { display: grid; min-width: 0; grid-template-columns: auto minmax(180px, 1fr); align-items: center; gap: 8px; }
+    .svn-project-scope-select > span { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+    .svn-project-scope-select select { min-width: 0; height: 30px; padding: 0 28px 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; }
+    .svn-project-scope-select select:disabled { opacity: .72; cursor: not-allowed; }
+    .svn-project-scope-picker { display: grid; width: min(760px, 100%); align-self: center; margin: auto; gap: 22px; padding: 26px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
+    .svn-project-scope-picker > div:first-child { display: grid; gap: 7px; }
+    .svn-project-scope-picker h3 { margin: 0; font-size: 18px; }
+    .svn-project-scope-picker p { max-width: 660px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .svn-scope-kicker { color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+    .svn-project-scope-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    .svn-project-scope-card { display: grid; min-width: 0; gap: 5px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); text-align: left; }
+    .svn-project-scope-card:hover { border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--card)); }
+    .svn-project-scope-card.primary-scope { border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); }
+    .svn-project-scope-card > span { display: flex; min-width: 0; align-items: center; gap: 7px; }
+    .svn-project-scope-card strong, .svn-project-scope-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .svn-project-scope-card strong { min-width: 0; font-size: 12px; }
+    .svn-project-scope-card small { color: var(--muted); font-size: 10px; }
+    .svn-project-scope-card em { flex: none; padding: 1px 5px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 9px; font-style: normal; font-weight: 700; }
     .svn-workbench-grid { display: grid; min-width: 0; grid-template-columns: minmax(250px, 29%) minmax(330px, 1fr) minmax(270px, 31%); align-items: stretch; gap: 10px; }
     .svn-pane, .svn-workbench-side { min-width: 0; }
     .svn-pane, .svn-workbench-side { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
@@ -252,6 +277,7 @@
       .svn-workbench-stage { display: none; }
       .svn-workbench-issue h2 { white-space: normal; }
       .svn-context-bar { grid-template-columns: 1fr; }
+      .svn-project-scope-list { grid-template-columns: 1fr; }
       body.svn-mode .svn-files, body.svn-mode .svn-diff { max-height: 360px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -366,6 +392,20 @@
         && cache.svnPreview?.preview?.path !== path
         && svnPreviewRequestPath !== path;
     }
+    function activeSvnProjectScopeId() {
+      return String(
+        cache.svnContext?.selectedProjectScopeId
+        || cache.svnContext?.context?.workingCopy?.projectScopeId
+        || ""
+      );
+    }
+    function svnScopedArguments(extra = {}) {
+      return {
+        issueKey: cache.svnContext?.issueKey || cache.issue?.issue?.key || "",
+        projectScopeId: activeSvnProjectScopeId(),
+        ...extra
+      };
+    }
     async function loadSvnPreview(path) {
       if (!cache.svnContext || !needsSvnPreview(path)) return;
       svnPreviewRequestPath = path;
@@ -373,7 +413,7 @@
       try {
         const result = await callTool(
           TOOLS.svnDiff,
-          { issueKey: cache.svnContext.issueKey, path },
+          svnScopedArguments({ path }),
           { busyScope: "svn-preview", accept: false }
         );
         if (result && svnPreviewRequestPath === path) acceptResult(result);
@@ -391,7 +431,7 @@
       select: selectSvnPreviewPath,
       needsPreview: needsSvnPreview,
       preview: (path) => void loadSvnPreview(path),
-      external: (path) => void callTool(TOOLS.svnExternalDiff, { issueKey: cache.svnContext.issueKey, path })
+      external: (path) => void callTool(TOOLS.svnExternalDiff, svnScopedArguments({ path }))
     });
 
     const RETRYABLE_LOCAL_TOOLS = new Set([
@@ -537,7 +577,7 @@
       window.openai?.setWidgetState?.({ privateContent: state });
     }
     function taskHtml(task) {
-      return `<article data-key="${esc(task.key)}" tabindex="0"><div class="task-head"><span class="key">${esc(task.key)}</span><span class="pill">${esc(task.statusName)}</span></div><div class="title">${esc(task.title)}</div><div class="task-foot"><span>${esc(task.priority)} · ${esc(task.assignee)}</span><span>${task.attachmentCount ? `📎 ${task.attachmentCount}` : ""}${task.binding ? ` <span class="bound">● 已关联</span>` : ""}</span></div></article>`;
+      return `<article data-key="${esc(task.key)}" tabindex="0"><div class="task-head"><span class="key">${esc(task.key)}</span><span class="pill">${esc(task.statusName)}</span></div><div class="title">${esc(task.title)}</div><div class="task-foot"><span>${esc(task.priority)} · ${esc(task.assignee)}${task.parentKey ? ` · 父级 ${esc(task.parentKey)}` : ""}</span><span>${task.attachmentCount ? `📎 ${task.attachmentCount}` : ""}${task.binding ? ` <span class="bound">● 已关联</span>` : ""}</span></div></article>`;
     }
     function renderList(id, tasks) { $(id).innerHTML = tasks.length ? tasks.map(taskHtml).join("") : '<div class="empty">暂无任务</div>'; }
     function renderStatusFilters(kind, tasks) {
@@ -641,8 +681,12 @@
       const task = cache.issue?.issue;
       if (!task) return;
       const collaborators = task.collaborators?.length ? task.collaborators.map((person) => `<span class="chip">${esc(person.displayName)}</span>`).join("") : '<span class="empty">无协同处理人</span>';
-      const attachments = task.attachments?.length ? task.attachments.map((item) => `<div class="attachment">${item.previewable ? `<button type="button" data-preview-attachment="${esc(item.id)}"><strong>${esc(item.filename)}</strong><small>${esc(item.mimeType)} · ${fmtSize(item.size)} · ${esc(item.author)} · 点击预览</small></button>` : `<strong>${esc(item.filename)}</strong><small>${esc(item.mimeType)} · ${fmtSize(item.size)} · ${esc(item.author)} · 请在 Jira 中查看</small>`}</div>`).join("") : '<div class="empty">无附件</div>';
-      const previewableAttachments = (task.attachments || []).filter((item) => item.previewable);
+      const attachmentHtml = (items) => items?.length ? items.map((item) => `<div class="attachment">${item.previewable ? `<button type="button" data-preview-attachment="${esc(item.id)}"><strong>${esc(item.filename)}</strong><small>${esc(item.mimeType)} · ${fmtSize(item.size)} · ${esc(item.author)} · 点击预览</small></button>` : `<strong>${esc(item.filename)}</strong><small>${esc(item.mimeType)} · ${fmtSize(item.size)} · ${esc(item.author)} · 请在 Jira 中查看</small>`}</div>`).join("") : '<div class="empty">无附件</div>';
+      const attachments = attachmentHtml(task.attachments || []);
+      const parent = task.parentIssue;
+      const parentUnavailable = task.parentContext?.status === "unavailable";
+      const parentAttachments = parent?.attachments || [];
+      const previewableAttachments = [...(task.attachments || []), ...parentAttachments].filter((item) => item.previewable);
       const currentAttachmentId = String(cache.attachmentPreview?.preview?.attachmentId || "");
       const currentAttachmentIndex = previewableAttachments.findIndex((item) => String(item.id) === currentAttachmentId);
       const previousAttachment = currentAttachmentIndex > 0 ? previewableAttachments[currentAttachmentIndex - 1] : null;
@@ -650,15 +694,18 @@
       const attachmentPreview = cache.attachmentPreview?.preview?.issueKey === task.key
         ? `<div class="attachment-preview"><div class="attachment-preview-head"><strong>${esc(cache.attachmentPreview.preview.filename)}</strong>${previewableAttachments.length > 1 ? `<div class="attachment-preview-nav"><button type="button" aria-label="上一张图片" data-preview-attachment="${esc(previousAttachment?.id || "")}" ${previousAttachment ? "" : "disabled"}>‹</button><small>${currentAttachmentIndex + 1}/${previewableAttachments.length}</small><button type="button" aria-label="下一张图片" data-preview-attachment="${esc(nextAttachment?.id || "")}" ${nextAttachment ? "" : "disabled"}>›</button></div>` : ""}</div><img src="${esc(cache.attachmentPreview.preview.dataUrl)}" alt="${esc(cache.attachmentPreview.preview.filename)}"></div>`
         : "";
+      const parentContext = parent ? `<section class="parent-context"><div class="parent-context-head"><span>父级关联单 · 需求上下文</span><a href="${esc(parent.url)}" target="_blank" rel="noreferrer">${esc(parent.key)} ↗</a></div><h3>${esc(parent.title)}</h3><div class="description">${esc(parentUnavailable ? task.parentContext.message || "父单详情暂时无法读取。" : parent.summary)}</div>${parentUnavailable ? "" : `<div class="subsection"><strong>父单附件（${parentAttachments.length}）</strong><div class="attachments">${attachmentHtml(parentAttachments)}</div></div>`}<div class="scope-note">父子单共同提供需求上下文；状态流转、会话关联和 SVN 提交仍只作用于当前执行单 ${esc(task.key)}。</div></section>` : "";
       const transitions = cache.transitions?.issueKey === task.key ? cache.transitions.transitions : null;
       const transitionOptions = transitions?.map((transition) => `<option value="${esc(transition.id)}" ${transition.requiresInput ? "disabled" : ""}>${esc(transition.to.name)}${transition.requiresInput ? "（需在 Jira 填写字段）" : ""}</option>`).join("") || "";
       const transitionBox = task.status === "done" ? "" : `<div class="transition-box"><strong>状态流转</strong>${transitions ? `<select id="transition-select"><option value="">选择目标状态</option>${transitionOptions}</select><button type="button" id="execute-transition" ${transitions.some((transition) => !transition.requiresInput) ? "" : "disabled"}>确认并流转</button><div class="transition-hint">提交前会再次读取 Jira 当前状态；需要额外字段的流转只能在 Jira 中完成。</div>` : `<button type="button" id="load-transitions">读取可用状态</button>`}</div>`;
       const availableThreads = cache.threads?.threads || null;
       const threadOptions = availableThreads?.map((thread) => `<option value="${esc(thread.id)}">${esc(thread.title)}${thread.boundIssueKeys?.length ? ` · 已关联 ${esc(thread.boundIssueKeys.join("、"))}` : ""}</option>`).join("") || "";
       const createMode = cache.createAnalysisIssueKey === task.key;
-      const bindingBox = availableThreads ? `<div class="binding-box"><strong>${task.binding ? "更改会话关联" : "关联现有会话"}</strong>${availableThreads.length ? `<select id="binding-thread-select"><option value="">选择 Codex 会话</option>${threadOptions}</select><div class="binding-actions"><button type="button" id="cancel-binding">取消</button><button type="button" id="confirm-binding">确认关联</button></div>` : `<div class="empty">App Server 未返回可关联会话</div><div class="binding-actions"><button type="button" id="cancel-binding">返回</button></div>`}<div class="binding-hint">这里只保存关联，不发送消息，也不修改 Codex 会话内容。</div></div>` : createMode ? `<div class="binding-box"><strong>${task.binding ? "新建会话并重新关联" : "新建会话并关联"}</strong><div class="svn-controls"><textarea id="analysis-supplement" rows="4" maxlength="4000" placeholder="补充 Jira 中缺失的背景、业务规则、环境或复现信息（可选）"></textarea><div class="binding-actions"><button type="button" id="cancel-create-analysis">取消</button><button type="button" id="confirm-create-analysis">新建并发送只读分析消息</button></div></div><div class="binding-hint">首轮消息只允许理解和分析，不会修改项目文件。会话创建成功并取得正式 ID 后才保存关联。</div></div>` : `<div class="binding-box"><strong>Codex 会话</strong><div class="binding-current ${task.binding ? "bound" : ""}">${esc(task.binding?.title || "未关联")}</div>${task.binding ? `<div class="binding-actions"><button type="button" id="open-bound-thread">打开会话</button><button type="button" id="create-analysis">新建并重绑</button><button type="button" id="open-binding">绑定已有</button><button type="button" id="clear-binding" class="danger">解除</button></div>` : `<div class="binding-actions"><button type="button" id="create-analysis">新建并绑定</button><button type="button" id="open-binding">绑定已有会话</button></div>`}<div class="binding-hint">会话列表来自 App Server；创建和桌面跳转由最小兼容层执行。</div></div>`;
+      const bindingProjectScopes = task.binding?.projectScopes || [];
+      const bindingScopeSummary = bindingProjectScopes.length ? `<div class="chips binding-project-scopes">${bindingProjectScopes.map((scope) => `<span class="chip ${scope.primary ? "bound" : ""}" title="${esc(scope.cwd || scope.projectId)}">${scope.primary ? "主 · " : ""}${esc(scope.projectLabel || scope.cwd || scope.projectId)}</span>`).join("")}</div>` : "";
+      const bindingBox = availableThreads ? `<div class="binding-box"><strong>${task.binding ? "更改会话关联" : "关联现有会话"}</strong>${availableThreads.length ? `<select id="binding-thread-select"><option value="">选择 Codex 会话</option>${threadOptions}</select><div class="binding-actions"><button type="button" id="cancel-binding">取消</button><button type="button" id="confirm-binding">确认关联</button></div>` : `<div class="empty">App Server 未返回可关联会话</div><div class="binding-actions"><button type="button" id="cancel-binding">返回</button></div>`}<div class="binding-hint">这里只保存关联，不发送消息，也不修改 Codex 会话内容。</div></div>` : createMode ? `<div class="binding-box"><strong>${task.binding ? "新建会话并重新关联" : "新建会话并关联"}</strong><div class="svn-controls"><textarea id="analysis-supplement" rows="4" maxlength="4000" placeholder="补充 Jira 中缺失的背景、业务规则、环境或复现信息（可选）"></textarea><div class="binding-actions"><button type="button" id="cancel-create-analysis">取消</button><button type="button" id="confirm-create-analysis">新建并发送只读分析消息</button></div></div><div class="binding-hint">首轮消息只允许理解和分析，不会修改项目文件。会话创建成功并取得正式 ID 后才保存关联。</div></div>` : `<div class="binding-box"><strong>Codex 会话</strong><div class="binding-current ${task.binding ? "bound" : ""}">${esc(task.binding?.title || "未关联")}</div>${bindingScopeSummary}${task.binding ? `<div class="binding-actions"><button type="button" id="open-bound-thread">打开会话</button><button type="button" id="create-analysis">新建并重绑</button><button type="button" id="open-binding">绑定已有</button><button type="button" id="clear-binding" class="danger">解除</button></div>` : `<div class="binding-actions"><button type="button" id="create-analysis">新建并绑定</button><button type="button" id="open-binding">绑定已有会话</button></div>`}<div class="binding-hint">会话列表来自 App Server；创建和桌面跳转由最小兼容层执行。</div></div>`;
       const svnBox = `<div class="binding-box"><strong>代码提交</strong><div class="binding-actions"><button type="button" id="open-svn" ${task.binding ? "" : "disabled"}>审核并提交 SVN</button></div><div class="binding-hint">${task.binding ? "先检查显式文件与风险，真正提交前必须再次人工确认。" : "请先关联 Codex 会话，以确定项目与 SVN 工作副本范围。"}</div></div>`;
-      $("detail-view").innerHTML = `<div class="detail"><div class="detail-head"><div><span class="key">${esc(task.key)}</span><h2>${esc(task.title)}</h2></div><button class="back" type="button" id="back">返回</button></div><div class="detail-grid"><div><div class="description">${esc(task.summary)}</div><div class="subsection"><strong>协同处理人（${task.collaborators?.length || 0}）</strong><div class="chips">${collaborators}</div></div><div class="subsection"><strong>附件（${task.attachments?.length || 0}）</strong><div class="attachments">${attachments}</div>${attachmentPreview}</div></div><aside class="facts"><div class="fact"><span>状态</span><strong>${esc(task.statusName)}</strong></div><div class="fact"><span>优先级</span><strong>${esc(task.priority)}</strong></div><div class="fact"><span>负责人</span><strong>${esc(task.assignee)}</strong></div><div class="fact"><span>类型</span><strong>${esc(task.typeName)}</strong></div><div class="fact"><span>项目</span><strong>${esc(task.projectName)}</strong></div><div class="fact"><span>修复版本</span><strong>${esc(task.fixVersions?.join("、") || "—")}</strong></div><div class="fact"><span>更新时间</span><strong>${esc(fmtTime(task.updated))}</strong></div>${bindingBox}${svnBox}${transitionBox}</aside></div></div>`;
+      $("detail-view").innerHTML = `<div class="detail"><div class="detail-head"><div><span class="key">${esc(task.key)}</span><h2>${esc(task.title)}</h2></div><button class="back" type="button" id="back">返回</button></div><div class="detail-grid"><div><div class="description">${esc(task.summary)}</div>${parentContext}<div class="subsection"><strong>协同处理人（${task.collaborators?.length || 0}）</strong><div class="chips">${collaborators}</div></div><div class="subsection"><strong>当前执行单附件（${task.attachments?.length || 0}）</strong><div class="attachments">${attachments}</div>${attachmentPreview}</div></div><aside class="facts"><div class="fact"><span>状态</span><strong>${esc(task.statusName)}</strong></div><div class="fact"><span>优先级</span><strong>${esc(task.priority)}</strong></div><div class="fact"><span>负责人</span><strong>${esc(task.assignee)}</strong></div><div class="fact"><span>类型</span><strong>${esc(task.typeName)}</strong></div><div class="fact"><span>项目</span><strong>${esc(task.projectName)}</strong></div><div class="fact"><span>修复版本</span><strong>${esc(task.fixVersions?.join("、") || "—")}</strong></div><div class="fact"><span>更新时间</span><strong>${esc(fmtTime(task.updated))}</strong></div>${bindingBox}${svnBox}${transitionBox}</aside></div></div>`;
       $("back").onclick = () => showMain(previousView);
     }
     function svnSelectable(change) { return change?.kind === "file" && !["unversioned", "ignored", "external"].includes(change.item); }
@@ -781,17 +828,29 @@
     function showSvn() { $("board-view").hidden = true; $("sheets-view").hidden = true; $("detail-view").hidden = true; $("svn-view").hidden = false; renderSvn(); }
     function renderSvn() {
       const snapshot = cache.svnContext;
-      if (!snapshot?.context) return;
-      const context = snapshot.context;
+      if (!snapshot) return;
       const issueKey = snapshot.issueKey;
       const review = cache.svnReview;
-      const changes = context.changes || [];
-      const selected = review?.selectedPaths || Array.from(svnSelectedPaths);
-      const existingScroll = new Map(Array.from($("svn-view").querySelectorAll("[data-svn-scroll]"), (element) => [element.dataset.svnScroll, { top: element.scrollTop, left: element.scrollLeft }]));
       const issueTitle = cache.issue?.issue?.title || "当前 Jira 任务";
       const closeLabel = svnDedicatedMode ? "关闭" : "返回任务";
       const header = `<div class="svn-workbench-header"><div class="svn-workbench-title"><div><div class="svn-workbench-kicker">SVN REVIEW &amp; COMMIT · SVN 审核与提交</div><div class="svn-workbench-issue"><span class="key">${esc(issueKey)}</span><h2>${esc(issueTitle)}</h2></div></div></div><div class="svn-workbench-stage" aria-label="审核阶段">${svnStageHtml(review)}</div><div class="svn-workbench-actions"><button type="button" id="refresh-svn-workbench">刷新</button><button type="button" id="close-svn-workbench" class="${svnDedicatedMode ? "icon" : ""}" aria-label="${closeLabel}" title="${closeLabel}">${svnDedicatedMode ? "×" : closeLabel}</button></div></div>`;
-      const contextBar = `<div class="svn-context-bar"><span title="${esc(context.workingCopy?.scopeRoot || context.session?.cwd || "未知")}"><strong>项目范围：</strong>${esc(context.workingCopy?.scopeName || "当前项目")} · ${esc(context.workingCopy?.scopeRoot || context.session?.cwd || "未知")}</span><span><strong>工作副本：</strong>${esc(context.workingCopy?.revisionRange || context.workingCopy?.revision || "未知版本")}</span></div>`;
+      if (snapshot.scopeSelectionRequired || !snapshot.context) {
+        const scopes = Array.isArray(snapshot.projectScopes) ? snapshot.projectScopes : [];
+        const cards = scopes.map((scope) => `<button type="button" class="svn-project-scope-card ${scope.id === snapshot.defaultProjectScopeId || scope.primary ? "primary-scope" : ""}" data-svn-project-scope="${esc(scope.id)}"><span><strong>${esc(scope.projectLabel || scope.cwd || "项目目录")}</strong>${scope.id === snapshot.defaultProjectScopeId || scope.primary ? '<em>主目录</em>' : ""}</span><small>${esc(scope.cwd || scope.workspaceRoots?.[0] || "未提供目录")}</small></button>`).join("");
+        const body = `<section class="svn-project-scope-picker"><div><span class="svn-scope-kicker">选择本次操作范围</span><h3>这个 Jira 关联了 ${scopes.length} 个项目目录</h3><p>SVN 差异、审核快照和真实提交只会在你明确选择的一个目录内执行；不会把多个工作副本混入同一次提交。</p></div><div class="svn-project-scope-list">${cards || '<div class="empty">绑定中没有可用的项目目录，请先修改 Jira 会话关联。</div>'}</div></section>`;
+        $("svn-view").innerHTML = `<div class="svn"><div class="svn-workbench">${header}<div class="svn-workbench-scroll" data-svn-scroll="workbench">${body}</div></div></div>`;
+        syncSvnPolling();
+        return;
+      }
+      const context = snapshot.context;
+      const changes = context.changes || [];
+      const selected = review?.selectedPaths || Array.from(svnSelectedPaths);
+      const existingScroll = new Map(Array.from($("svn-view").querySelectorAll("[data-svn-scroll]"), (element) => [element.dataset.svnScroll, { top: element.scrollTop, left: element.scrollLeft }]));
+      const scopeOptions = (snapshot.projectScopes || []).map((scope) => `<option value="${esc(scope.id)}" ${scope.id === snapshot.selectedProjectScopeId ? "selected" : ""}>${esc(scope.projectLabel || scope.cwd || scope.id)}${scope.id === snapshot.defaultProjectScopeId || scope.primary ? "（主目录）" : ""}</option>`).join("");
+      const scopeControl = (snapshot.projectScopes || []).length > 1
+        ? `<label class="svn-project-scope-select"><span>项目范围</span><select id="svn-project-scope" ${review ? "disabled" : ""}>${scopeOptions}</select></label>`
+        : `<span title="${esc(context.workingCopy?.scopeRoot || context.session?.cwd || "未知")}"><strong>项目范围：</strong>${esc(context.workingCopy?.projectLabel || context.workingCopy?.scopeName || "当前项目")} · ${esc(context.workingCopy?.scopeRoot || context.session?.cwd || "未知")}</span>`;
+      const contextBar = `<div class="svn-context-bar">${scopeControl}<span><strong>工作副本：</strong>${esc(context.workingCopy?.revisionRange || context.workingCopy?.revision || "未知版本")}</span></div>`;
       const preview = cache.svnPreview?.preview;
       let body = "";
       if (!review) {
@@ -1024,6 +1083,14 @@
         svnCategoryFilter = "all"; svnDraftSummary = ""; svnDraftCodexReview = false;
         void callTool(TOOLS.svnInspect, { issueKey: cache.issue.issue.key });
       }
+      const svnProjectScope = event.target.closest("button[data-svn-project-scope]");
+      if (svnProjectScope && cache.svnContext && !busy) {
+        void callTool(TOOLS.svnInspect, {
+          issueKey: cache.svnContext.issueKey,
+          projectScopeId: svnProjectScope.dataset.svnProjectScope
+        });
+        return;
+      }
       if (event.target.closest("#back-from-svn") || event.target.closest("#close-svn-workbench")) {
         svnFileInteraction.cancel();
         stopSvnPolling();
@@ -1033,7 +1100,7 @@
       }
       if (event.target.closest("#refresh-svn-workbench") && cache.svnContext && !busy) {
         if (cache.svnReview?.id) void callTool(TOOLS.svnGetReview, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id });
-        else void callTool(TOOLS.svnInspect, { issueKey: cache.svnContext.issueKey });
+        else void callTool(TOOLS.svnInspect, svnScopedArguments());
       }
       const svnCategory = event.target.closest("button[data-svn-category]");
       if (svnCategory && !busy) {
@@ -1049,7 +1116,7 @@
       svnFileInteraction.click(event);
       const svnExternalDiff = event.target.closest("button[data-svn-external-diff]");
       if (svnExternalDiff && cache.svnContext && !busy) {
-        void callTool(TOOLS.svnExternalDiff, { issueKey: cache.svnContext.issueKey, path: svnExternalDiff.dataset.svnExternalDiff });
+        void callTool(TOOLS.svnExternalDiff, svnScopedArguments({ path: svnExternalDiff.dataset.svnExternalDiff }));
       }
       if (event.target.closest("#select-recommended") && cache.svnContext && !busy) {
         svnSelectedPaths = new Set((cache.svnContext.context?.changes || []).filter((change) => change.recommended && svnSelectable(change)).map((change) => change.path));
@@ -1061,7 +1128,7 @@
         svnDraftSummary = $("svn-summary")?.value || svnDraftSummary;
         svnDraftCodexReview = $("svn-codex-review")?.checked === true;
         void callTool(TOOLS.svnCreateReview, {
-          issueKey: cache.svnContext.issueKey,
+          ...svnScopedArguments(),
           selectedPaths: Array.from(svnSelectedPaths),
           summary: svnDraftSummary,
           codexReviewEnabled: svnDraftCodexReview
@@ -1107,7 +1174,7 @@
         if (!window.confirm("确认放弃当前审核草稿并重新扫描最新 SVN 文件状态吗？不会还原任何文件。")) return;
         void (async () => {
           const abandoned = await callTool(TOOLS.svnAbandon, { issueKey: cache.svnContext.issueKey, reviewId: cache.svnReview.id, acknowledged: true, message: "用户已确认放弃旧审核草稿并重新扫描。" });
-          if (abandoned) await callTool(TOOLS.svnInspect, { issueKey: cache.svnContext.issueKey });
+          if (abandoned) await callTool(TOOLS.svnInspect, svnScopedArguments());
         })();
       }
       if (event.target.closest("#execute-transition") && cache.issue?.issue && cache.transitions && !busy) {
@@ -1132,6 +1199,19 @@
       }
     });
     document.addEventListener("change", (event) => {
+      if (event.target.id === "svn-project-scope" && cache.svnContext && !cache.svnReview && !busy) {
+        svnFileInteraction.cancel();
+        cache.svnPreview = null;
+        cache.svnConfirmation = null;
+        svnSelectedPaths = new Set();
+        svnActivePreviewPath = "";
+        svnPreviewRequestPath = "";
+        void callTool(TOOLS.svnInspect, {
+          issueKey: cache.svnContext.issueKey,
+          projectScopeId: event.target.value
+        });
+        return;
+      }
       if (event.target.name === "svn-review-mode") {
         svnDraftCodexReview = event.target.value === "codex";
         document.querySelectorAll(".svn-review-mode").forEach((label) => label.classList.toggle("active", label.contains(event.target)));

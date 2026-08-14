@@ -35,7 +35,8 @@ import {
 import { createCodexSessionReader } from "./lib/codex-session-reader.mjs";
 import {
   createIssueBindingStore,
-  IssueBindingStoreError
+  IssueBindingStoreError,
+  normalizeBindingWorkspace
 } from "./lib/issue-binding-store.mjs";
 import { createJiraWorkbenchService } from "./lib/jira-workbench-service.mjs";
 import {
@@ -48,7 +49,7 @@ import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "./m
 import { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
 import { attachmentCanOpenLocally } from "./public/issue-views.js";
 
-const VERSION = "0.31.6";
+const VERSION = "0.31.7";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -301,12 +302,24 @@ async function loadTaskBoardIssues() {
 }
 
 async function materializeBugMonitorAttachments(issue, config) {
-  const attachments = Array.isArray(issue?.attachments) ? issue.attachments : [];
+  const attachmentSources = [{ issue, label: "当前执行单" }];
+  if (issue?.parentIssue?.key) attachmentSources.push({ issue: issue.parentIssue, label: "父级关联单" });
+  const attachments = attachmentSources.flatMap((source) => (
+    Array.isArray(source.issue?.attachments)
+      ? source.issue.attachments.map((attachment) => ({
+        ...attachment,
+        sourceIssueKey: String(source.issue.key || attachment?.sourceIssueKey || ""),
+        sourceLabel: source.label
+      }))
+      : []
+  ));
   const materialized = [];
   const failures = [];
+  const seen = new Set();
   for (const descriptor of attachments) {
     const attachmentId = String(descriptor?.id || "").trim();
-    if (!/^\d+$/.test(attachmentId)) continue;
+    if (!/^\d+$/.test(attachmentId) || seen.has(attachmentId)) continue;
+    seen.add(attachmentId);
     try {
       const attachment = await jira.fetchAttachment(config, attachmentId);
       const cached = await materializeAttachment({
@@ -316,17 +329,23 @@ async function materializeBugMonitorAttachments(issue, config) {
       });
       materialized.push({
         path: cached.path,
-        label: cached.filename,
-        mimeType: cached.mimeType
+        label: `[${descriptor.sourceLabel} ${descriptor.sourceIssueKey}] ${cached.filename}`,
+        mimeType: cached.mimeType,
+        sourceIssueKey: descriptor.sourceIssueKey
       });
     } catch (error) {
-      failures.push({ attachmentId, message: String(error?.message || error) });
+      failures.push({
+        attachmentId,
+        sourceIssueKey: descriptor.sourceIssueKey,
+        message: String(error?.message || error)
+      });
     }
   }
-  if (failures.length) {
+  const blockingFailures = failures.filter((failure) => failure.sourceIssueKey === String(issue?.key || ""));
+  if (blockingFailures.length) {
     throw new JiraApiError(
-      `Jira 附件未能完整下载（${failures.map((failure) => failure.attachmentId).join("、")}），未创建缺少材料的分析会话。`,
-      { code: "JIRA_ATTACHMENTS_INCOMPLETE", details: { failures } }
+      `当前执行单的 Jira 附件未能完整下载（${blockingFailures.map((failure) => failure.attachmentId).join("、")}），未创建缺少材料的分析会话。`,
+      { code: "JIRA_ATTACHMENTS_INCOMPLETE", details: { failures: blockingFailures } }
     );
   }
   return materialized;
@@ -343,14 +362,9 @@ function availableSkillsFromResult(result) {
     });
 }
 
-async function prepareManualIssueAnalysis(issueKey, supplementalDescription = "") {
-  const [{ issue }, config] = await Promise.all([
-    jiraWorkbench.getIssue(issueKey),
-    configStore.load()
-  ]);
-  const kind = isBugIssue(issue) ? "bug" : "requirement";
-  const template = config.promptTemplates?.[kind] || {};
-  const workspace = config.codexProjectId && config.codexProjectPath ? {
+function configuredAnalysisWorkspace(config) {
+  if (!config.codexProjectId || !config.codexProjectPath) return null;
+  return normalizeBindingWorkspace({
     cwd: config.codexProjectPath,
     workspaceRoots: config.codexProjectRoots?.length
       ? config.codexProjectRoots
@@ -359,9 +373,25 @@ async function prepareManualIssueAnalysis(issueKey, supplementalDescription = ""
     projectLabel: config.codexProjectLabel || config.codexProjectId,
     kind: "project",
     source: "configured-codex-project"
-  } : null;
+  });
+}
+
+async function prepareManualIssueAnalysis(issueKey, supplementalDescription = "", requestedWorkspace = null, {
+  useConfiguredWorkspace = true
+} = {}) {
+  const [{ issue }, config] = await Promise.all([
+    jiraWorkbench.getIssue(issueKey),
+    configStore.load()
+  ]);
+  const kind = isBugIssue(issue) ? "bug" : "requirement";
+  const template = config.promptTemplates?.[kind] || {};
+  const workspace = normalizeBindingWorkspace(requestedWorkspace)
+    || (useConfiguredWorkspace ? configuredAnalysisWorkspace(config) : null);
+  const skillCwds = workspace?.projectScopes?.length
+    ? workspace.projectScopes.flatMap((scope) => scope.workspaceRoots?.length ? scope.workspaceRoots : [scope.cwd])
+    : workspace?.cwd ? [workspace.cwd] : undefined;
   const availableSkills = availableSkillsFromResult(await codexRuntime.listSkills({
-    cwds: workspace?.cwd ? [workspace.cwd] : undefined,
+    cwds: skillCwds,
     forceReload: false
   }).catch(() => ({})));
   const configuredSkill = template.skill && typeof template.skill === "object" ? template.skill : null;
@@ -399,6 +429,7 @@ const bugMonitor = createBugMonitorService({
     || join(dirname(configStore.configFile), "bug-monitor.json"),
   configStore,
   loadIssues: loadTaskBoardIssues,
+  loadIssueContext: async (issue) => (await jiraWorkbench.getIssue(issue.key)).issue,
   issueBindings,
   runtime: codexRuntime,
   automationManager: automation,
@@ -486,9 +517,30 @@ async function openIssueConversation(issueKey, { targetClientId = "" } = {}) {
   return { opened: true, threadId: result?.threadId || binding.threadId };
 }
 
+function scheduleIssueBaselines({ issueKey, threadId, boundAt } = {}) {
+  const record = typeof svnWorkbench.recordBaselines === "function"
+    ? svnWorkbench.recordBaselines.bind(svnWorkbench)
+    : svnWorkbench.recordBaseline.bind(svnWorkbench);
+  void record({ issueKey, threadId, boundAt }).catch((error) => {
+    console.warn(`[jira-poc] SVN baselines for ${issueKey} skipped: ${error.message || error}`);
+  });
+}
+
+async function bindIssueConversation(input) {
+  const result = await codexConversations.bindIssue(input);
+  scheduleIssueBaselines({
+    issueKey: result.issueKey,
+    threadId: result.binding?.threadId,
+    boundAt: result.binding?.boundAt || result.binding?.updatedAt
+  });
+  return result;
+}
+
 async function createIssueAnalysis(issueKey, supplementalDescription = "", {
   targetClientId = "",
-  expectedRevision
+  expectedRevision,
+  workspace,
+  workspaceSelection = "preserve"
 } = {}) {
   const key = String(issueKey || "").trim().toUpperCase();
   const initialBindingState = await issueBindings.snapshot();
@@ -513,12 +565,33 @@ async function createIssueAnalysis(issueKey, supplementalDescription = "", {
       }
     });
   }
-  const prepared = await prepareManualIssueAnalysis(key, supplementalDescription);
+  const selectionMode = String(workspaceSelection || "preserve").trim().toLowerCase();
+  if (!new Set(["preserve", "explicit", "none"]).has(selectionMode)) {
+    throw new CodexConversationServiceError("workspaceSelection 必须是 preserve、explicit 或 none。", {
+      code: "INVALID_WORKSPACE_SELECTION",
+      statusCode: 400
+    });
+  }
+  const explicitWorkspace = normalizeBindingWorkspace(workspace);
+  if (selectionMode === "explicit" && !explicitWorkspace) {
+    throw new CodexConversationServiceError("请选择至少一个有效的项目目录。", {
+      code: "INVALID_PROJECT_WORKSPACE",
+      statusCode: 400
+    });
+  }
+  const requestedWorkspace = selectionMode === "none"
+    ? null
+    : explicitWorkspace || normalizeBindingWorkspace(initialBindingState.bindings?.[key]?.workspace);
+  const prepared = await prepareManualIssueAnalysis(key, supplementalDescription, requestedWorkspace, {
+    useConfiguredWorkspace: selectionMode !== "none"
+  });
   const started = await desktopCommands.request("create-analysis", {
     issueKey: key,
     message: prepared.message,
     title: prepared.title,
     cwd: prepared.cwd,
+    workspaceRoots: prepared.workspace?.workspaceRoots || (prepared.cwd ? [prepared.cwd] : []),
+    projectId: prepared.workspace?.projectId || "",
     skills: prepared.skills,
     attachments: prepared.attachments
   }, { timeoutMs: 55_000, targetClientId });
@@ -570,9 +643,7 @@ async function createIssueAnalysis(issueKey, supplementalDescription = "", {
       }
     );
   }
-  void svnWorkbench.recordBaseline({ threadId, issueKey: key, boundAt }).catch((error) => {
-    console.warn(`[jira-poc] SVN baseline for ${key} skipped: ${error.message || error}`);
-  });
+  scheduleIssueBaselines({ threadId, issueKey: key, boundAt });
   return {
     issueKey: key,
     threadId,
@@ -589,7 +660,10 @@ async function createIssueAnalysis(issueKey, supplementalDescription = "", {
 
 const mcpOptions = {
   workbench: jiraWorkbench,
-  conversations: codexConversations,
+  conversations: {
+    ...codexConversations,
+    bindIssue: bindIssueConversation
+  },
   svn: svnWorkbench,
   automation: {
     getStatus: () => bugMonitor.getStatus(),
@@ -841,7 +915,7 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "PUT" && url.pathname === "/api/codex/bindings") {
-    return json(response, 200, await codexConversations.bindIssue(await readJson(request)));
+    return json(response, 200, await bindIssueConversation(await readJson(request)));
   }
 
   const clearCodexBindingMatch = url.pathname.match(/^\/api\/codex\/bindings\/([A-Za-z][A-Za-z0-9_]*-\d+)$/);
@@ -884,6 +958,19 @@ async function handleApi(request, response, url) {
         statusCode: 400
       });
     }
+    if (input.workspace != null && (!input.workspace || typeof input.workspace !== "object" || Array.isArray(input.workspace))) {
+      throw new ConfigurationError("workspace 必须是项目范围对象。", {
+        code: "INVALID_PROJECT_WORKSPACE",
+        statusCode: 400
+      });
+    }
+    if (input.workspaceSelection != null
+      && !["preserve", "explicit", "none"].includes(String(input.workspaceSelection).trim().toLowerCase())) {
+      throw new ConfigurationError("workspaceSelection 必须是 preserve、explicit 或 none。", {
+        code: "INVALID_WORKSPACE_SELECTION",
+        statusCode: 400
+      });
+    }
     const targetClientId = String(request.headers["x-jira-codex-desktop-client"] || "").trim();
     if (!targetClientId) {
       throw new ConfigurationError("缺少当前 Codex 窗口标识。", {
@@ -896,7 +983,9 @@ async function handleApi(request, response, url) {
       input.supplementalDescription || "",
       {
         targetClientId,
-        expectedRevision: input.expectedRevision
+        expectedRevision: input.expectedRevision,
+        workspace: input.workspace || null,
+        workspaceSelection: input.workspaceSelection || "preserve"
       }
     ));
   }
@@ -1106,6 +1195,7 @@ async function handleApi(request, response, url) {
     return json(response, 200, await svnWorkbench.context({
       issueKey: url.searchParams.get("issueKey"),
       threadId: url.searchParams.get("threadId"),
+      projectScopeId: url.searchParams.get("projectScopeId"),
       includeReview: url.searchParams.get("includeReview") !== "0"
     }));
   }
@@ -1114,7 +1204,8 @@ async function handleApi(request, response, url) {
     return json(response, 200, {
       review: await svnWorkbench.latestReview({
         threadId: url.searchParams.get("threadId"),
-        issueKey: url.searchParams.get("issueKey")
+        issueKey: url.searchParams.get("issueKey"),
+        projectScopeId: url.searchParams.get("projectScopeId")
       })
     });
   }
@@ -1124,6 +1215,7 @@ async function handleApi(request, response, url) {
       preview: await svnWorkbench.previewDiff({
         issueKey: url.searchParams.get("issueKey"),
         threadId: url.searchParams.get("threadId"),
+        projectScopeId: url.searchParams.get("projectScopeId"),
         path: url.searchParams.get("path")
       })
     });
@@ -1135,6 +1227,7 @@ async function handleApi(request, response, url) {
       result: await svnWorkbench.openExternalDiff({
         issueKey: input.issueKey,
         threadId: input.threadId,
+        projectScopeId: input.projectScopeId,
         path: input.path
       })
     });
@@ -1146,6 +1239,7 @@ async function handleApi(request, response, url) {
       baseline: await svnWorkbench.recordBaseline({
         threadId: input.threadId,
         issueKey: input.issueKey,
+        projectScopeId: input.projectScopeId,
         boundAt: input.boundAt
       })
     });
@@ -1156,6 +1250,7 @@ async function handleApi(request, response, url) {
     return json(response, 201, await svnWorkbench.createReview({
       threadId: input.threadId,
       issueKey: input.issueKey,
+      projectScopeId: input.projectScopeId,
       selectedPaths: input.selectedPaths,
       summary: input.summary,
       codexReviewEnabled: input.codexReviewEnabled === true

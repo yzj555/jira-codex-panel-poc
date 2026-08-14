@@ -203,6 +203,7 @@ const state = {
 
 let toastTimer = null;
 let sheetRequestId = 0;
+let issueDetailRequestId = 0;
 let attachmentPreviewRequestId = 0;
 let attachmentPreviewObjectUrl = "";
 let attachmentPreviewAttachment = null;
@@ -228,6 +229,7 @@ let updateStatusTimer = 0;
 let lastPanelActivationAt = 0;
 let initialLoadComplete = false;
 let searchRenderTimer = 0;
+let rebindProjectScopeCandidates = [];
 
 class ApiError extends Error {
   constructor(message, payload = {}) {
@@ -598,6 +600,171 @@ function normalizeWorkspaceList(payload) {
     .filter(Boolean);
 }
 
+function uniqueProjectRoots(values = []) {
+  return [...new Map(values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => [value.toLowerCase(), value])).values()];
+}
+
+function normalizeProjectScopeForUi(value, index = 0) {
+  if (!value || typeof value !== "object") return null;
+  const cwd = String(value.cwd || value.projectPath || value.path || "").trim();
+  const workspaceRoots = uniqueProjectRoots([
+    ...(Array.isArray(value.workspaceRoots) ? value.workspaceRoots : []),
+    ...(Array.isArray(value.rootPaths) ? value.rootPaths : []),
+    cwd
+  ]);
+  const rawId = String(value.scopeId || value.id || "").trim();
+  const inferredProjectId = /^project:/i.test(rawId)
+    ? rawId.slice(rawId.indexOf(":") + 1)
+    : /^(?:path|scope):/i.test(rawId) ? "" : rawId;
+  const projectId = String(value.projectId || inferredProjectId).trim();
+  if (!cwd && !workspaceRoots.length && !projectId) return null;
+  const id = String(rawId || (projectId
+    ? `project:${projectId}`
+    : cwd ? `path:${cwd.toLowerCase()}` : `scope:${index + 1}`)).trim();
+  return {
+    id,
+    cwd: cwd || workspaceRoots[0] || "",
+    workspaceRoots,
+    projectId,
+    projectLabel: String(value.projectLabel || value.label || value.displayLabel || projectId || cwd || `项目 ${index + 1}`).trim(),
+    kind: String(value.kind || value.workspaceKind || (projectId ? "project" : "workspace")).trim(),
+    source: String(value.source || "desktop-project-selection").trim(),
+    observedAt: String(value.observedAt || value.updatedAt || new Date().toISOString()).trim()
+  };
+}
+
+function bindingProjectScopes(binding) {
+  const workspace = binding?.workspace;
+  if (!workspace || typeof workspace !== "object") return [];
+  const explicit = (Array.isArray(workspace.projectScopes) ? workspace.projectScopes : [])
+    .map(normalizeProjectScopeForUi)
+    .filter(Boolean);
+  if (explicit.length) return explicit;
+  const legacy = normalizeProjectScopeForUi(workspace);
+  return legacy ? [legacy] : [];
+}
+
+function projectScopeKey(scope) {
+  return scope?.cwd
+    ? `cwd:${String(scope.cwd).toLowerCase()}`
+    : `id:${String(scope?.id || scope?.projectId || "").toLowerCase()}`;
+}
+
+function availableProjectScopes(binding = null) {
+  const configured = state.config?.codexProjectPath || state.config?.codexProjectId
+    ? normalizeProjectScopeForUi({
+      id: state.config.codexProjectId ? `project:${state.config.codexProjectId}` : "",
+      cwd: state.config.codexProjectPath,
+      workspaceRoots: state.config.codexProjectRoots || [],
+      projectId: state.config.codexProjectId,
+      projectLabel: state.config.codexProjectLabel,
+      source: "configured-codex-project"
+    })
+    : null;
+  const candidates = [
+    ...bindingProjectScopes(binding),
+    ...state.projects.map(normalizeProjectScopeForUi),
+    configured
+  ].filter(Boolean);
+  return [...new Map(candidates.map((scope) => [projectScopeKey(scope), scope])).values()];
+}
+
+function currentRebindProjectSelection() {
+  const checked = Array.from(document.querySelectorAll("input[data-rebind-project-scope]:checked"))
+    .map((input) => input.value);
+  const primary = document.querySelector('input[name="rebindPrimaryScope"]:checked')?.value || "";
+  return { checked: new Set(checked), primary };
+}
+
+function updateRebindProjectSelection() {
+  const container = document.querySelector("#rebind-project-options");
+  const checkboxes = Array.from(container.querySelectorAll("input[data-rebind-project-scope]"));
+  const selected = new Set(checkboxes.filter((input) => input.checked).map((input) => input.value));
+  const primaryInputs = Array.from(container.querySelectorAll('input[name="rebindPrimaryScope"]'));
+  for (const input of primaryInputs) {
+    input.disabled = !selected.has(input.value);
+    if (input.checked && input.disabled) input.checked = false;
+    input.closest(".rebind-project-option")?.classList.toggle("selected", selected.has(input.value));
+  }
+  let primary = primaryInputs.find((input) => input.checked && !input.disabled);
+  if (!primary && selected.size) {
+    primary = primaryInputs.find((input) => selected.has(input.value));
+    if (primary) primary.checked = true;
+  }
+  document.querySelector("#rebind-project-count").textContent = `${selected.size} 个`;
+  const selectedScopes = rebindProjectScopeCandidates.filter((scope) => selected.has(scope.id));
+  const defaultScope = selectedScopes.find((scope) => scope.id === primary?.value) || selectedScopes[0];
+  document.querySelector("#rebind-new-project").textContent = selectedScopes.length
+    ? `将关联 ${selectedScopes.length} 个项目目录；主目录：${defaultScope?.projectLabel || defaultScope?.cwd || "未设置"}`
+    : "未选择项目目录：新建时创建普通会话；绑定已有会话时使用该会话自身目录。";
+}
+
+function renderRebindProjectScopes(binding = null, { preserveSelection = false } = {}) {
+  const existingSelection = preserveSelection ? currentRebindProjectSelection() : null;
+  const bindingScopes = bindingProjectScopes(binding);
+  const selectedIds = existingSelection?.checked?.size
+    ? existingSelection.checked
+    : new Set(bindingScopes.map((scope) => scope.id));
+  rebindProjectScopeCandidates = availableProjectScopes(binding);
+  if (!selectedIds.size && state.config?.codexProjectId) {
+    const configured = rebindProjectScopeCandidates.find((scope) => (
+      scope.projectId === state.config.codexProjectId
+      || scope.id === state.config.codexProjectId
+      || scope.id === `project:${state.config.codexProjectId}`
+    ));
+    if (configured) selectedIds.add(configured.id);
+  }
+  const requestedPrimary = existingSelection?.primary
+    || binding?.workspace?.defaultProjectScopeId
+    || bindingScopes[0]?.id
+    || "";
+  const container = document.querySelector("#rebind-project-options");
+  container.replaceChildren(...rebindProjectScopeCandidates.map((scope, index) => {
+    const row = element("div", "rebind-project-option");
+    const selectLabel = element("label", "rebind-project-select");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = scope.id;
+    checkbox.dataset.rebindProjectScope = "true";
+    checkbox.checked = selectedIds.has(scope.id);
+    const copy = element("span", "rebind-project-copy");
+    copy.append(element("strong", "", scope.projectLabel), element("small", "", scope.cwd || scope.workspaceRoots[0] || scope.projectId));
+    selectLabel.append(checkbox, copy);
+    const primaryLabel = element("label", "rebind-project-primary");
+    const primary = document.createElement("input");
+    primary.type = "radio";
+    primary.name = "rebindPrimaryScope";
+    primary.value = scope.id;
+    primary.checked = scope.id === requestedPrimary || (!requestedPrimary && index === 0 && checkbox.checked);
+    primaryLabel.append(primary, document.createTextNode("主目录"));
+    row.append(selectLabel, primaryLabel);
+    return row;
+  }));
+  document.querySelector("#rebind-project-empty").hidden = rebindProjectScopeCandidates.length > 0;
+  updateRebindProjectSelection();
+}
+
+function selectedRebindWorkspace() {
+  const selection = currentRebindProjectSelection();
+  const projectScopes = rebindProjectScopeCandidates.filter((scope) => selection.checked.has(scope.id));
+  if (!projectScopes.length) return null;
+  const primary = projectScopes.find((scope) => scope.id === selection.primary) || projectScopes[0];
+  return {
+    cwd: primary.cwd,
+    workspaceRoots: uniqueProjectRoots(projectScopes.flatMap((scope) => scope.workspaceRoots?.length ? scope.workspaceRoots : [scope.cwd])),
+    projectId: primary.projectId,
+    projectLabel: primary.projectLabel,
+    kind: primary.kind,
+    source: "user-project-selection",
+    observedAt: new Date().toISOString(),
+    projectScopes,
+    defaultProjectScopeId: primary.id
+  };
+}
+
 function applyBindingState(payload) {
   const bindingState = payload?.bindingState && typeof payload.bindingState === "object"
     ? payload.bindingState
@@ -636,6 +803,9 @@ function applyCurrentDesktopContext(message = {}) {
     currentButton.textContent = currentThread
       ? `使用当前会话：${currentThread.threadTitle || currentThread.threadId}`
       : "当前没有可绑定的会话";
+    renderRebindProjectScopes(state.selectedIssue ? state.bindings[state.selectedIssue.key] : null, {
+      preserveSelection: true
+    });
     updateRebindThreadPreview();
   }
 }
@@ -1025,7 +1195,16 @@ function updateAttachmentPreviewHeading(attachment, kind) {
   const galleryPosition = kind === "image" && attachmentPreviewGallery.length > 1
     ? `图片 ${attachmentPreviewGalleryIndex + 1}/${attachmentPreviewGallery.length} · `
     : "";
-  document.querySelector("#attachment-preview-meta").textContent = `${galleryPosition}${formatBytes(attachment.size)} · ${attachment.mimeType || "未知格式"} · ${attachment.author}`;
+  const sourceIssueKey = String(attachment.sourceIssueKey || state.selectedIssue?.key || "");
+  const source = sourceIssueKey ? `${sourceIssueKey} · ` : "";
+  document.querySelector("#attachment-preview-meta").textContent = `${galleryPosition}${source}${formatBytes(attachment.size)} · ${attachment.mimeType || "未知格式"} · ${attachment.author}`;
+}
+
+function issueContextAttachments(issue) {
+  return [
+    ...(issue?.attachments || []),
+    ...(issue?.parentIssue?.attachments || [])
+  ];
 }
 
 function showAttachmentPreviewError(message) {
@@ -1123,7 +1302,7 @@ function openAttachmentPreview(attachment) {
   if (!kind) return;
   attachmentPreviewReturnFocus = document.activeElement;
   attachmentPreviewGallery = kind === "image"
-    ? (state.selectedIssue?.attachments || []).filter((candidate) => attachmentPreviewKind(candidate) === "image")
+    ? issueContextAttachments(state.selectedIssue).filter((candidate) => attachmentPreviewKind(candidate) === "image")
     : [attachment];
   attachmentPreviewGalleryIndex = Math.max(0, attachmentPreviewGallery.findIndex((candidate) => attachmentIdentity(candidate) === attachmentIdentity(attachment)));
   attachmentPreviewBackdrop.hidden = false;
@@ -1268,6 +1447,7 @@ function createCard(issue) {
     meta.append(conversation);
   }
   if (issue.collaborators?.length) meta.append(element("span", "card-signal", `协 ${issue.collaborators.length}`));
+  if (issue.parent?.key) meta.append(element("span", "card-signal", `父 ${issue.parent.key}`));
   if (issue.attachments?.length) {
     const attachment = element("span", "card-signal");
     attachment.append(icon("attachment"), document.createTextNode(String(issue.attachments.length)));
@@ -1901,7 +2081,38 @@ async function submitIssueTransition() {
   }
 }
 
-function openDetails(issue) {
+function renderParentContext(issue) {
+  const section = document.querySelector("#parent-context-section");
+  const parent = issue?.parentIssue || issue?.parent || null;
+  section.hidden = !parent?.key;
+  if (!parent?.key) return;
+  const unavailable = issue?.parentContext?.status === "unavailable" && !issue?.parentIssue;
+  document.querySelector("#detail-parent-title").textContent = parent.title || parent.key;
+  document.querySelector("#detail-parent-status").textContent = `状态：${parent.statusName || "未知"}`;
+  document.querySelector("#detail-parent-versions").textContent = parent.fixVersions?.length
+    ? `父单版本：${parent.fixVersions.join("、")}`
+    : "父单未设置版本";
+  const link = document.querySelector("#detail-parent-link");
+  link.href = parent.url || "#";
+  link.textContent = `${parent.key} ↗`;
+  renderRichText(
+    document.querySelector("#detail-parent-summary"),
+    unavailable
+      ? issue.parentContext.message || "父单详情暂时无法读取；当前执行单仍可正常处理。"
+      : issue.parentIssue
+        ? parent.summary
+        : "正在读取父级需求上下文…"
+  );
+  const attachments = issue.parentIssue?.attachments || [];
+  document.querySelector("#parent-attachment-count").textContent = String(attachments.length);
+  document.querySelector("#detail-parent-attachments").replaceChildren(...(
+    attachments.length
+      ? attachments.map(createAttachmentCard)
+      : [element("span", "detail-empty", unavailable ? "父单附件暂不可用" : "无附件")]
+  ));
+}
+
+function renderIssueDetail(issue) {
   state.selectedIssue = issue;
   document.querySelector("#detail-type").textContent = typeLabel(issue);
   document.querySelector("#detail-key").textContent = issue.key;
@@ -1913,6 +2124,7 @@ function openDetails(issue) {
   document.querySelector("#detail-issue-type").textContent = typeLabel(issue);
   document.querySelector("#detail-project").textContent = issue.projectName || "—";
   document.querySelector("#detail-updated").textContent = formatDate(issue.updated);
+  renderParentContext(issue);
   const collaborators = normalizeCollaborators(issue.collaborators || []);
   document.querySelector("#collaborator-count").textContent = String(collaborators.length);
   const collaboratorList = document.querySelector("#detail-collaborators");
@@ -1925,18 +2137,53 @@ function openDetails(issue) {
   attachmentList.replaceChildren(...(attachments.length
     ? attachments.map(createAttachmentCard)
     : [element("span", "detail-empty", "无附件")]));
+  const issueLabels = issue.labels || [];
   const labels = document.querySelector("#detail-labels");
-  labels.replaceChildren(...(issue.labels.length
-    ? issue.labels.map((label) => element("span", "", label))
+  labels.replaceChildren(...(issueLabels.length
+    ? issueLabels.map((label) => element("span", "", label))
     : [element("em", "", "无标签")]));
   const link = document.querySelector("#detail-link");
   link.href = issue.url;
   updatePrimaryAction(issue);
   renderAssociationWait();
+}
+
+async function loadIssueDetailContext(issueKey) {
+  const key = String(issueKey || "").trim().toUpperCase();
+  const requestId = ++issueDetailRequestId;
+  try {
+    const payload = await api(`/api/issues/${encodeURIComponent(key)}`);
+    if (requestId !== issueDetailRequestId || state.selectedIssue?.key !== key) return;
+    if (payload?.binding) state.bindings[key] = payload.binding;
+    else if (Object.prototype.hasOwnProperty.call(payload || {}, "binding")) delete state.bindings[key];
+    const revision = Number(payload?.bindingsRevision);
+    if (Number.isInteger(revision) && revision >= 0) state.bindingsRevision = revision;
+    if (payload?.issue?.key) renderIssueDetail(payload.issue);
+  } catch (error) {
+    if (requestId !== issueDetailRequestId || state.selectedIssue?.key !== key) return;
+    if (state.selectedIssue?.parent?.key) {
+      state.selectedIssue = {
+        ...state.selectedIssue,
+        parentContext: {
+          status: "unavailable",
+          key: state.selectedIssue.parent.key,
+          message: `父级上下文暂时无法刷新：${error.message}`
+        }
+      };
+      renderIssueDetail(state.selectedIssue);
+    }
+  }
+}
+
+function openDetails(issue) {
+  renderIssueDetail(issue);
   drawer.hidden = false;
   backdrop.hidden = false;
   drawer.focus();
   void loadIssueTransitions(issue);
+  if (!Object.prototype.hasOwnProperty.call(issue, "parentContext")) {
+    void loadIssueDetailContext(issue.key);
+  }
 }
 
 function updatePrimaryAction(issue) {
@@ -1946,12 +2193,24 @@ function updatePrimaryAction(issue) {
   const svnAction = document.querySelector("#svn-action");
   const bindingSummary = document.querySelector("#binding-summary");
   const bindingThreadTitle = document.querySelector("#binding-thread-title");
+  const bindingProjectScopeList = document.querySelector("#binding-project-scopes");
   const canProcess = issue.status === "todo" || issue.status === "in_progress";
   const associationWaiting = associationPendingIssueKey === String(issue.key || "").toUpperCase();
   const binding = state.bindings[issue.key];
   bindingSummary.hidden = !binding;
   bindingThreadTitle.textContent = binding?.threadTitle || "Codex 对话";
   bindingThreadTitle.title = binding?.threadTitle || "";
+  const projectScopes = bindingProjectScopes(binding);
+  bindingProjectScopeList.replaceChildren(...projectScopes.map((scope) => {
+    const chip = element("span", "binding-project-chip", scope.projectLabel || scope.cwd || scope.projectId);
+    chip.title = scope.cwd || scope.workspaceRoots?.[0] || scope.projectId || "";
+    if (scope.id === binding?.workspace?.defaultProjectScopeId || (!binding?.workspace?.defaultProjectScopeId && scope === projectScopes[0])) {
+      chip.classList.add("primary");
+      chip.setAttribute("aria-label", `${chip.textContent}，主目录`);
+    }
+    return chip;
+  }));
+  bindingProjectScopeList.hidden = projectScopes.length === 0;
   rebindAction.hidden = !(canProcess && binding);
   rebindAction.disabled = associationWaiting;
   clearBindingAction.hidden = !binding;
@@ -2027,7 +2286,12 @@ function desktopActionSucceeded(issueKey, action) {
   postHostMessage("desktop-action-complete", { issueKey: key, action });
 }
 
-async function openBoundIssueConversation(issue, { recreateAnalysis = false, supplementalDescription = "" } = {}) {
+async function openBoundIssueConversation(issue, {
+  recreateAnalysis = false,
+  supplementalDescription = "",
+  workspace = null,
+  workspaceSelection = "preserve"
+} = {}) {
   const key = String(issue?.key || "").trim().toUpperCase();
   if (!key) return;
   const revisionBeforeRequest = state.bindingsRevision;
@@ -2036,7 +2300,12 @@ async function openBoundIssueConversation(issue, { recreateAnalysis = false, sup
     const result = await api(`/api/codex/issues/${encodeURIComponent(key)}/${recreateAnalysis ? "analysis" : "open"}`, {
       method: "POST",
       body: recreateAnalysis
-        ? { supplementalDescription, expectedRevision: revisionBeforeRequest }
+        ? {
+          supplementalDescription,
+          expectedRevision: revisionBeforeRequest,
+          workspace: workspace || (workspaceSelection === "preserve" ? state.bindings[key]?.workspace : null) || null,
+          workspaceSelection
+        }
         : {}
     });
     if (recreateAnalysis) saveAssociationDraft(key, "");
@@ -2085,7 +2354,7 @@ async function openBoundIssueConversation(issue, { recreateAnalysis = false, sup
   }
 }
 
-async function bindExistingConversation(issue, { threadId, confirmConflict = false } = {}) {
+async function bindExistingConversation(issue, { threadId, confirmConflict = false, workspace = null } = {}) {
   const key = String(issue?.key || "").trim().toUpperCase();
   if (!key || !threadId) return;
   let bindingSaved = false;
@@ -2096,7 +2365,9 @@ async function bindExistingConversation(issue, { threadId, confirmConflict = fal
         issueKey: key,
         threadId,
         expectedRevision: state.bindingsRevision,
-        replaceExistingThreadBinding: Boolean(confirmConflict)
+        replaceExistingThreadBinding: Boolean(confirmConflict),
+        workspace,
+        workspaceSelection: workspace ? "explicit" : "thread"
       }
     });
     bindingSaved = true;
@@ -2186,6 +2457,7 @@ function closeDetails() {
   closeClearBindingDialog();
   closeRebindDialog();
   transitionRequestId += 1;
+  issueDetailRequestId += 1;
   drawer.hidden = true;
   backdrop.hidden = true;
   state.selectedIssue = null;
@@ -2271,10 +2543,7 @@ function updateRebindMode() {
   document.querySelector("#confirm-rebind").textContent = isNew
     ? "新建并发送分析消息"
     : "绑定并打开对话";
-  const projectLabel = state.config?.codexProjectId
-    ? `将创建在项目：${state.config.codexProjectLabel || state.config.codexProjectId}`
-    : "将创建不带项目的普通对话";
-  document.querySelector("#rebind-new-project").textContent = projectLabel;
+  updateRebindProjectSelection();
   if (!isNew) updateRebindThreadPreview();
   setRebindStatus("");
   return mode;
@@ -2310,6 +2579,7 @@ function openRebindDialog({ preferredMode = "" } = {}) {
   const mode = preferredMode || (binding ? "existing" : "new");
   const modeInput = document.querySelector(`input[name="rebindMode"][value="${mode}"]`);
   if (modeInput) modeInput.checked = true;
+  renderRebindProjectScopes(binding);
   setRebindStatus("");
   updateRebindThreadPreview();
   updateRebindMode();
@@ -3229,6 +3499,15 @@ document.querySelector("#rebind-supplement").addEventListener("input", (event) =
   if (!state.selectedIssue) return;
   saveAssociationDraft(state.selectedIssue.key, event.currentTarget.value);
 });
+document.querySelector("#rebind-project-options").addEventListener("change", (event) => {
+  const checkbox = event.target.closest("input[data-rebind-project-scope]");
+  const primary = event.target.closest('input[name="rebindPrimaryScope"]');
+  if (primary) {
+    const matchingCheckbox = document.querySelector(`input[data-rebind-project-scope][value="${CSS.escape(primary.value)}"]`);
+    if (matchingCheckbox) matchingCheckbox.checked = true;
+  }
+  if (checkbox || primary) updateRebindProjectSelection();
+});
 document.querySelectorAll('input[name="rebindMode"]').forEach((input) => input.addEventListener("change", updateRebindMode));
 document.querySelector("#close-rebind").addEventListener("click", closeRebindDialog);
 document.querySelector("#cancel-rebind").addEventListener("click", closeRebindDialog);
@@ -3238,6 +3517,7 @@ rebindForm.addEventListener("submit", (event) => {
   if (!state.selectedIssue || associationPendingIssueKey) return;
   const mode = updateRebindMode();
   const issue = state.selectedIssue;
+  const workspace = selectedRebindWorkspace();
   if (mode === "new") {
     const supplementalDescription = document.querySelector("#rebind-supplement").value.trim();
     saveAssociationDraft(issue.key, supplementalDescription);
@@ -3246,7 +3526,12 @@ rebindForm.addEventListener("submit", (event) => {
       title: "正在创建 Codex 会话…",
       description: "会话和首条分析消息确认成功后将自动跳转。"
     })) return;
-    void openBoundIssueConversation(issue, { recreateAnalysis: true, supplementalDescription });
+    void openBoundIssueConversation(issue, {
+      recreateAnalysis: true,
+      supplementalDescription,
+      workspace,
+      workspaceSelection: workspace ? "explicit" : "none"
+    });
     return;
   }
   const target = updateRebindThreadPreview();
@@ -3265,7 +3550,8 @@ rebindForm.addEventListener("submit", (event) => {
   })) return;
   void bindExistingConversation(issue, {
     threadId: target.threadId,
-    confirmConflict: Boolean(target.conflict)
+    confirmConflict: Boolean(target.conflict),
+    workspace
   });
 });
 document.querySelector("#close-settings").addEventListener("click", closeSettings);

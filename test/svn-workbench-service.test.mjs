@@ -2,11 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createSvnWorkbenchService } from "../lib/svn-workbench-service.mjs";
 
-function harness({ dispatchFails = false } = {}) {
+function harness({ dispatchFails = false, bindingWorkspace = null } = {}) {
   const calls = [];
   const review = { id: "review-1", issue: { key: "CT-1" }, threadId: "local:thread-1", workingCopy: { root: "F:\\repo", scopeRoot: "F:\\repo" }, codexReviewEnabled: true, status: "prepared" };
   const reviews = {
-    inspect: async (input) => { calls.push(["inspect", input]); return { threadId: input.threadId, changes: [] }; },
+    inspect: async (input) => {
+      calls.push(["inspect", input]);
+      return {
+        threadId: input.threadId,
+        changes: [],
+        workingCopy: {
+          root: input.workspaceContext?.cwd || "F:\\repo",
+          scopeRoot: input.workspaceContext?.cwd || "F:\\repo"
+        }
+      };
+    },
     listCommitHistory: () => [],
     findLatestReview: () => null,
     previewDiff: async (input) => ({ available: true, ...input }),
@@ -36,7 +46,7 @@ function harness({ dispatchFails = false } = {}) {
     jira: { fetchIssue: async (_config, key) => ({ key, title: "Issue", description: "", fixVersions: [] }) },
     issueBindings: { snapshot: async () => ({ revision: 4, bindings: { "CT-1": {
       threadId: "local:thread-1",
-      workspaceContext: {
+      workspaceContext: bindingWorkspace || {
         cwd: "F:\\repo",
         workspaceRoots: ["F:\\repo"],
         projectId: "project-1",
@@ -103,5 +113,39 @@ test("SVN review operations reject a review id from another Jira issue", async (
   await assert.rejects(
     service.abandonReview("review-1", { acknowledged: true }, "CT-2"),
     (error) => error.code === "SVN_REVIEW_ISSUE_MISMATCH"
+  );
+});
+
+test("multi-project bindings require an explicit SVN scope and keep operations isolated", async () => {
+  const { service, calls } = harness({
+    bindingWorkspace: {
+      projectScopes: [
+        { id: "project:server", cwd: "F:\\server", projectId: "server", projectLabel: "Server" },
+        { id: "project:client", cwd: "F:\\client", projectId: "client", projectLabel: "Client" }
+      ],
+      defaultProjectScopeId: "project:server"
+    }
+  });
+  const selector = await service.context({ issueKey: "CT-1" });
+  assert.equal(selector.scopeSelectionRequired, true);
+  assert.equal(selector.context, null);
+  assert.deepEqual(selector.projectScopes.map((scope) => scope.id), ["project:server", "project:client"]);
+  assert.equal(calls.some(([name]) => name === "inspect"), false);
+
+  await assert.rejects(
+    service.previewDiff({ issueKey: "CT-1", path: "src/a.go" }),
+    (error) => error.code === "SVN_PROJECT_SCOPE_REQUIRED" && error.statusCode === 409
+  );
+
+  const selected = await service.context({ issueKey: "CT-1", projectScopeId: "project:client" });
+  assert.equal(selected.scopeSelectionRequired, false);
+  assert.equal(selected.selectedProjectScopeId, "project:client");
+  const inspect = calls.findLast(([name]) => name === "inspect");
+  assert.equal(inspect[1].workspaceContext.cwd, "F:\\client");
+  assert.equal(inspect[1].workspaceContext.projectScopeId, "project:client");
+
+  await assert.rejects(
+    service.context({ issueKey: "CT-1", projectScopeId: "project:missing" }),
+    (error) => error.code === "SVN_PROJECT_SCOPE_NOT_FOUND" && error.statusCode === 409
   );
 });

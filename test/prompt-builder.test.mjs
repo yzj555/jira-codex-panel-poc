@@ -26,8 +26,9 @@ test("需求首条消息把 Jira 事实与精简分析模板分开", () => {
   assert.match(prompt, /^# Jira 需求/);
   assert.match(prompt, /- 单号：CT-100/);
   assert.match(prompt, /- Jira 链接：https:\/\/jira\.example\/browse\/CT-100/);
-  assert.match(prompt, /## Jira 描述\n\n复现步骤/);
-  assert.match(prompt, /## Jira 附件\n\n- error\.log（42 bytes）/);
+  assert.match(prompt, /## 当前执行单/);
+  assert.match(prompt, /### 当前执行单描述\n\n复现步骤/);
+  assert.match(prompt, /### 当前执行单附件\n\n- error\.log（42 bytes）/);
   assert.match(prompt, /## 分析要求\n\n分析 CT-100 需求/);
   assert.doesNotMatch(prompt, /- 状态：|- 优先级：|- 项目：|- 修复版本：|- 负责人：|- 协同处理人：/);
   assert.doesNotMatch(prompt, /禁止调用 Browser|Jira 上下文约束|ct-devops-tracer/);
@@ -40,7 +41,7 @@ test("Bug 首条消息使用 Bug 独立默认模板", () => {
   });
 
   assert.match(prompt, /^# Jira Bug/);
-  assert.match(prompt, /## Jira 描述/);
+  assert.match(prompt, /### 当前执行单描述/);
   assert.match(prompt, /诊断结论/);
   assert.match(prompt, /根因分析/);
   assert.doesNotMatch(prompt, /需求结论/);
@@ -63,9 +64,45 @@ test("绑定 Skill 可用时首条消息只携带事实，不再叠加降级模�
   });
 
   assert.match(prompt, /^# Jira Bug/);
-  assert.match(prompt, /## Jira 描述/);
+  assert.match(prompt, /### 当前执行单描述/);
   assert.match(prompt, /## 用户补充说明\n\n仅在弱网下出现。/);
   assert.doesNotMatch(prompt, /## 分析要求|诊断结论|根因分析/);
+});
+
+test("父子单内容按来源共同进入首条消息，且当前子单保持执行边界", () => {
+  const prompt = buildIssuePrompt({
+    ...baseIssue,
+    type: "requirement",
+    typeName: "子任务",
+    parent: { key: "CT-10", title: "父级需求", url: "https://jira.example/browse/CT-10" },
+    parentIssue: {
+      key: "CT-10",
+      title: "父级需求",
+      url: "https://jira.example/browse/CT-10",
+      summary: "整体业务规则",
+      attachments: [{ filename: "parent-design.png", size: 128 }]
+    },
+    parentContext: { status: "available", key: "CT-10", message: "" }
+  });
+
+  assert.match(prompt, /## 当前执行单[\s\S]*复现步骤/);
+  assert.match(prompt, /## 父级关联单（需求上下文）[\s\S]*整体业务规则/);
+  assert.match(prompt, /### 父级附件\n\n- parent-design\.png（128 bytes）/);
+  assert.match(prompt, /本次只分析和处理当前执行单 CT-100 的范围/);
+  assert.equal(prompt.match(/整体业务规则/g)?.length, 1);
+});
+
+test("父单读取失败不会丢失当前执行单首条消息", () => {
+  const prompt = buildIssuePrompt({
+    ...baseIssue,
+    type: "requirement",
+    parent: { key: "CT-10", title: "父级需求", url: "https://jira.example/browse/CT-10" },
+    parentIssue: null,
+    parentContext: { status: "unavailable", key: "CT-10", message: "当前用户无权读取父单" }
+  });
+  assert.match(prompt, /复现步骤/);
+  assert.match(prompt, /父单详情暂时无法读取：当前用户无权读取父单/);
+  assert.match(prompt, /当前执行单 CT-100/);
 });
 
 test("自动 Bug 监控会在上下文中标记触发方式", () => {

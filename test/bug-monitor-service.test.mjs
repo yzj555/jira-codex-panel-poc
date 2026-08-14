@@ -28,6 +28,7 @@ async function harness(directory, {
   intervalMs = 60_000,
   retryBaseMs = 1,
   maxAnalysisRuntimeMs,
+  loadIssueContext = async (issue) => issue,
   now
 } = {}) {
   const config = {
@@ -75,6 +76,7 @@ async function harness(directory, {
     stateFile: join(directory, "bug-monitor.json"),
     configStore,
     loadIssues: async () => ({ issues }),
+    loadIssueContext,
     issueBindings: bindings,
     runtime,
     automationManager: automation,
@@ -120,19 +122,58 @@ test("本地 Bug 监控独立创建 App Server 会话并持久化真实 threadId
     assert.equal(bindingState.bindings["CT-101"].threadId, "local:thread-1");
     assert.equal(bindingState.bindings["CT-101"].analysisTurnId, "turn-1");
     assert.equal(bindingState.bindings["CT-101"].runtimeOwner, "standalone-appserver");
-    assert.deepEqual(bindingState.bindings["CT-101"].workspace, {
+    const workspace = bindingState.bindings["CT-101"].workspace;
+    assert.deepEqual(workspace, {
       cwd: "F:\\repo",
       workspaceRoots: ["F:\\repo"],
       projectId: "project-1",
       projectLabel: "测试项目",
       kind: "project",
       source: "bug-monitor-app-server",
-      observedAt: bindingState.bindings["CT-101"].workspace.observedAt
+      observedAt: workspace.observedAt,
+      projectScopes: [{
+        id: "project:project-1",
+        cwd: "F:\\repo",
+        workspaceRoots: ["F:\\repo"],
+        projectId: "project-1",
+        projectLabel: "测试项目",
+        kind: "project",
+        source: "bug-monitor-app-server",
+        observedAt: workspace.observedAt
+      }],
+      defaultProjectScopeId: "project:project-1"
     });
 
     const restarted = await harness(directory);
     await restarted.monitor.poll();
     assert.equal(restarted.starts.length, 0, "重启后不得为同一 Bug 创建重复会话");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("自动 Bug 分析在创建会话前补齐父子单上下文", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-bug-monitor-parent-"));
+  try {
+    const instance = await harness(directory, {
+      issues: [{ ...bug("CT-151"), parent: { key: "CT-100", title: "父级需求" } }],
+      loadIssueContext: async (issue) => ({
+        ...issue,
+        parentIssue: {
+          key: "CT-100",
+          title: "父级需求",
+          summary: "父单中的完整业务规则",
+          url: "http://jira.example/browse/CT-100",
+          attachments: []
+        },
+        parentContext: { status: "available", key: "CT-100", message: "" }
+      })
+    });
+    await instance.monitor.poll();
+    assert.equal(instance.starts.length, 1);
+    assert.match(instance.starts[0].message, /父级关联单（需求上下文）/);
+    assert.match(instance.starts[0].message, /父单中的完整业务规则/);
+    assert.match(instance.starts[0].message, /当前执行单 CT-151 的范围/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

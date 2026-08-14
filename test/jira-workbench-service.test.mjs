@@ -2,13 +2,20 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createJiraWorkbenchService } from "../lib/jira-workbench-service.mjs";
 
-function fixture() {
+function fixture({ parentFailure = false } = {}) {
   const calls = [];
   const config = { configured: true, token: "secret", baseUrl: "http://jira.example.test" };
   const issue = {
     key: "CT-1",
     title: "任务",
+    parent: { key: "CT-ROOT", title: "父级需求", url: "http://jira.example.test/browse/CT-ROOT" },
     attachments: [{ id: "9", filename: "evidence.png", mimeType: "image/png", size: 4 }]
+  };
+  const parentIssue = {
+    key: "CT-ROOT",
+    title: "父级需求",
+    summary: "完整父级背景",
+    attachments: [{ id: "10", filename: "parent.png", mimeType: "image/png", size: 4, sourceIssueKey: "CT-ROOT" }]
   };
   const bindingState = { revision: 3, bindings: { "CT-1": { threadId: "thread-1" } } };
   const service = createJiraWorkbenchService({
@@ -16,7 +23,14 @@ function fixture() {
     loadConfig: async () => config,
     resolveConfig: async (value) => ({ ...value, collaboratorFieldId: "customfield_1" }),
     jira: {
-      fetchIssue: async (value, key) => { calls.push(["issue", value, key]); return issue; },
+      fetchIssue: async (value, key) => {
+        calls.push(["issue", value, key]);
+        if (key === "CT-ROOT") {
+          if (parentFailure) throw Object.assign(new Error("无权读取父单"), { code: "JIRA_ISSUE_HTTP_ERROR" });
+          return parentIssue;
+        }
+        return issue;
+      },
       fetchAttachment: async (value, attachmentId, options) => {
         calls.push(["attachment", value, attachmentId, options]);
         return {
@@ -50,6 +64,9 @@ test("共享工作台把服务端绑定状态加入任务和详情，但不改�
   assert.equal(tasks.issues[0].binding, undefined);
   const detail = await service.getIssue("ct-1");
   assert.equal(detail.issue.key, "CT-1");
+  assert.equal(detail.issue.parentIssue.key, "CT-ROOT");
+  assert.equal(detail.issue.parentIssue.summary, "完整父级背景");
+  assert.equal(detail.issue.parentContext.status, "available");
   assert.equal(detail.binding.threadId, "thread-1");
   assert.equal(detail.bindingsRevision, 3);
 });
@@ -62,10 +79,22 @@ test("官方工作台只按需读取属于当前任务的图片附件", async ()
   assert.equal(preview.thumbnail, true);
   assert.equal(preview.dataUrl, "data:image/png;base64,AQIDBA==");
   assert.deepEqual(calls.find((call) => call[0] === "attachment").slice(2), ["9", { thumbnail: true }]);
+  const parentPreview = await service.getAttachmentPreview("CT-1", "10");
+  assert.equal(parentPreview.sourceIssueKey, "CT-ROOT");
   await assert.rejects(
-    () => service.getAttachmentPreview("CT-1", "10"),
+    () => service.getAttachmentPreview("CT-1", "11"),
     (error) => error.code === "JIRA_ATTACHMENT_NOT_IN_ISSUE"
   );
+});
+
+test("父单无权限时保留当前执行单，并以非阻塞状态暴露上下文缺口", async () => {
+  const { service } = fixture({ parentFailure: true });
+  const detail = await service.getIssue("CT-1");
+  assert.equal(detail.issue.key, "CT-1");
+  assert.equal(detail.issue.parentIssue, null);
+  assert.equal(detail.issue.parentContext.status, "unavailable");
+  assert.equal(detail.issue.parentContext.key, "CT-ROOT");
+  assert.match(detail.issue.parentContext.message, /无权读取父单/);
 });
 
 test("共享工作台对旧 HTTP 与官方 MCP 复用同一份 JXL 权限和 JQL 查询结果", async () => {

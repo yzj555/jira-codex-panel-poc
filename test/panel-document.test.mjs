@@ -60,6 +60,8 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.match(ui, /jira_preview_issue_attachment/);
   assert.match(ui, /data-preview-attachment/);
   assert.match(ui, /previewableAttachments/);
+  assert.match(ui, /父级关联单 · 需求上下文/);
+  assert.match(ui, /父子单共同提供需求上下文/);
   assert.match(ui, /aria-label="上一张图片"/);
   assert.match(ui, /aria-label="下一张图片"/);
   assert.match(ui, /svn-tree-dir/);
@@ -68,6 +70,10 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.match(ui, /\.svn-workbench-actions button[^}]*-webkit-app-region: no-drag/);
   assert.match(ui, /svn-workbench-header/);
   assert.match(ui, /svn-workbench-grid/);
+  assert.match(ui, /svn-project-scope-picker/);
+  assert.match(ui, /data-svn-project-scope/);
+  assert.match(ui, /projectScopeId: activeSvnProjectScopeId/);
+  assert.match(ui, /这个 Jira 关联了 \$\{scopes\.length\} 个项目目录/);
   assert.match(ui, /data-svn-category/);
   assert.match(ui, /人工审核（默认）/);
   assert.match(ui, /Codex 辅助审查/);
@@ -283,7 +289,8 @@ test("服务端持有监控、绑定、项目目录与 SVN 新流程的数据源
   assert.match(server, /stage: "created_unbound"/);
   assert.match(server, /config\.codexProjectPath/);
   assert.doesNotMatch(server, /\/api\/codex\/workspaces/);
-  assert.match(server, /void svnWorkbench\.recordBaseline/);
+  assert.match(server, /scheduleIssueBaselines/);
+  assert.match(server, /svnWorkbench\.recordBaselines/);
   assert.doesNotMatch(server, /buildIssueDetailSnapshot\(await jiraWorkbench\.getIssue/);
   assert.match(svn, /bindingWorkspace|turnReader/);
   assert.match(svn, /sessionReader/); // 只保留旧记录恢复兼容。
@@ -300,6 +307,26 @@ test("完整本地设置 UI 本身仍支持深浅主题和首页状态筛选", a
   assert.match(styles, /\.lane-status-button\.active/);
 });
 
+test("完整面板支持一个 Jira 关联多个项目目录并指定主目录", async () => {
+  const [html, appSource, styles, inject] = await Promise.all([
+    readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
+    readFile(new URL("../inject/client.js", import.meta.url), "utf8")
+  ]);
+  assert.match(html, /id="rebind-project-options"/);
+  assert.match(html, /id="rebind-project-count"/);
+  assert.match(appSource, /function selectedRebindWorkspace/);
+  assert.match(appSource, /projectScopes,/);
+  assert.match(appSource, /defaultProjectScopeId: primary\.id/);
+  assert.match(appSource, /workspaceSelection: workspace \? "explicit" : "none"/);
+  assert.match(appSource, /workspaceSelection: workspace \? "explicit" : "thread"/);
+  assert.match(styles, /\.rebind-project-option\.selected/);
+  assert.match(styles, /\.binding-project-chip\.primary/);
+  assert.match(inject, /关联项目目录 · \$\{projectScopes\.length\}/);
+  assert.match(inject, /SVN 操作会先要求选择一个明确目录/);
+});
+
 test("完整面板的图片附件支持画廊切换，文档附件下载后再本地打开", async () => {
   const [html, appSource, styles, server] = await Promise.all([
     readFile(new URL("../public/index.html", import.meta.url), "utf8"),
@@ -310,6 +337,12 @@ test("完整面板的图片附件支持画廊切换，文档附件下载后再�
   assert.match(html, /id="previous-preview-image"/);
   assert.match(html, /id="next-preview-image"/);
   assert.match(appSource, /attachmentPreviewGallery/);
+  assert.match(html, /id="parent-context-section"/);
+  assert.match(html, /id="detail-parent-attachments"/);
+  assert.match(appSource, /issueContextAttachments/);
+  assert.match(appSource, /renderParentContext/);
+  assert.match(appSource, /loadIssueDetailContext/);
+  assert.match(styles, /\.parent-context-section/);
   assert.match(appSource, /navigateAttachmentPreview\(-1\)/);
   assert.match(appSource, /navigateAttachmentPreview\(1\)/);
   assert.match(appSource, /event\.key === "ArrowLeft"/);

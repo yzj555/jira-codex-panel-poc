@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = "0.31.6";
+  const VERSION = "0.31.7";
   const INJECTION_REVISION = String(window.__JIRA_CODEX_POC_INJECTION_REVISION__ || VERSION);
   const ENTRY_ID = "jira-codex-poc-entry";
   const PAGE_ID = "jira-codex-poc-page";
@@ -177,8 +177,15 @@
       #${FLOAT_ID} .meta strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       #${FLOAT_ID} .section { margin-top: 12px; }
       #${FLOAT_ID} .section h3 { margin: 0 0 6px; font-size: 12px; }
+      #${FLOAT_ID} .parent-context { padding: 9px; border: 1px solid var(--color-border-accent, rgba(63,111,217,.28)); border-radius: 9px; background: var(--color-background-accent, rgba(63,111,217,.06)); }
+      #${FLOAT_ID} .parent-context h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      #${FLOAT_ID} .parent-context h3 a { color: var(--color-text-accent, #3157b7); text-decoration: none; }
+      #${FLOAT_ID} .parent-context strong { display: block; }
+      #${FLOAT_ID} .parent-context p { margin: 6px 0 0; color: var(--color-text-foreground-secondary, #5f6670); font-size: 12px; white-space: pre-wrap; }
       #${FLOAT_ID} .chips { display: flex; flex-wrap: wrap; gap: 5px; }
       #${FLOAT_ID} .chip { padding: 2px 7px; border: 1px solid var(--color-border, #e1e4e8); border-radius: 999px; }
+      #${FLOAT_ID} .project-chip.primary { border-color: var(--color-border-accent, rgba(63,111,217,.36)); color: var(--color-text-accent, #3157b7); background: var(--color-background-accent, rgba(63,111,217,.08)); }
+      #${FLOAT_ID} .project-chip.primary::before { margin-right: 4px; content: "主"; font-size: 9px; font-weight: 700; }
       #${FLOAT_ID} .transition { display: flex; gap: 7px; }
       #${FLOAT_ID} select { min-width: 0; flex: 1; height: 32px; border: 1px solid var(--color-border-heavy, #ccd1d8); border-radius: 8px; color: inherit; background: var(--color-background-control-opaque, #fff); }
       #${FLOAT_ID} .hint, #${FLOAT_ID} .error { margin: 6px 0 0; color: var(--color-text-foreground-secondary, #727984); font-size: 11px; }
@@ -413,6 +420,13 @@
     }
     const collaborators = Array.isArray(issue.collaborators) ? issue.collaborators : [];
     const attachments = Array.isArray(issue.attachments) ? issue.attachments : [];
+    const bindingWorkspace = binding?.workspace && typeof binding.workspace === "object" ? binding.workspace : {};
+    const projectScopes = Array.isArray(bindingWorkspace.projectScopes) && bindingWorkspace.projectScopes.length
+      ? bindingWorkspace.projectScopes
+      : bindingWorkspace.cwd || bindingWorkspace.projectId ? [bindingWorkspace] : [];
+    const defaultProjectScopeId = String(bindingWorkspace.defaultProjectScopeId || projectScopes[0]?.id || "");
+    const parent = issue.parentIssue || issue.parent || null;
+    const parentUnavailable = issue.parentContext?.status === "unavailable" && !issue.parentIssue;
     const transitions = Array.isArray(state.transitions) ? state.transitions : [];
     const transitionOptions = transitions.map((transition) => {
       const label = transition.to?.name || transition.name || "未命名流转";
@@ -431,6 +445,12 @@
           <div><span>类型</span><strong>${escapeHtml(issue.typeName || issue.type || "Jira")}</strong></div>
         </div>
         <div class="description">${escapeHtml(issue.summary || "Jira 中未填写描述。")}</div>
+        ${parent?.key ? `<section class="section parent-context"><h3><span>父级需求上下文</span><a href="${escapeHtml(parent.url || "#")}" target="_blank" rel="noreferrer">${escapeHtml(parent.key)} ↗</a></h3><strong>${escapeHtml(parent.title || parent.key)}</strong><p>${escapeHtml(parentUnavailable ? issue.parentContext?.message || "父单详情暂时无法读取。" : parent.summary || "Jira 中未填写描述。")}</p><p class="hint">父子单共同提供上下文；当前操作仍只作用于 ${escapeHtml(issue.key)}。</p></section>` : ""}
+        ${projectScopes.length ? `<section class="section"><h3>关联项目目录 · ${projectScopes.length}</h3><div class="chips">${projectScopes.map((scope, index) => {
+          const scopeId = String(scope.id || scope.scopeId || "");
+          const primary = scopeId === defaultProjectScopeId || (!defaultProjectScopeId && index === 0);
+          return `<span class="chip project-chip ${primary ? "primary" : ""}" title="${escapeHtml(scope.cwd || scope.workspaceRoots?.[0] || scope.projectId || "")}">${escapeHtml(scope.projectLabel || scope.label || scope.cwd || scope.projectId || `项目 ${index + 1}`)}</span>`;
+        }).join("")}</div><p class="hint">新会话使用主目录；SVN 操作会先要求选择一个明确目录。</p></section>` : ""}
         ${collaborators.length ? `<section class="section"><h3>协同处理人 · ${collaborators.length}</h3><div class="chips">${collaborators.map((person) => `<span class="chip">${escapeHtml(person.displayName || person.name || person)}</span>`).join("")}</div></section>` : ""}
         ${attachments.length ? `<section class="section"><h3>附件 · ${attachments.length}</h3><div class="chips">${attachments.slice(0, 4).map((attachment) => `<button type="button" class="chip" data-open-detail>${escapeHtml(attachment.filename || "未命名附件")}</button>`).join("")}</div><p class="hint">在任务详情中预览或下载附件。</p></section>` : ""}
         <section class="section"><h3>状态流转</h3>${state.transitionError ? `<p class="error">${escapeHtml(state.transitionError)}</p>` : transitions.length ? `<div class="transition"><select data-transition-select aria-label="选择目标状态"><option value="">选择目标状态</option>${transitionOptions}</select><button type="button" data-transition-submit ${state.transitioning ? "disabled" : ""}>${state.transitioning ? "流转中…" : "执行"}</button></div>` : `<p class="hint">${state.refreshing ? "正在读取可用流转…" : "当前没有可直接执行的状态流转。"}</p>`}</section>
@@ -616,6 +636,10 @@
           const started = await codexCommands.createAnalysisConversation(command.payload?.message, {
             desktopOwned: true,
             cwd: command.payload?.cwd || "",
+            workspaceRoots: Array.isArray(command.payload?.workspaceRoots)
+              ? command.payload.workspaceRoots
+              : command.payload?.cwd ? [command.payload.cwd] : [],
+            projectId: command.payload?.projectId || "",
             title: command.payload?.title || `分析 ${command.payload?.issueKey || "Jira"}`,
             attachments: Array.isArray(command.payload?.attachments) ? command.payload.attachments : [],
             referenceFiles: true,

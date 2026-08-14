@@ -94,8 +94,24 @@
         <div class="issue-layout">
           <div class="issue-main">
             <section class="detail-section">
-              <h3>描述</h3>
+              <h3>当前执行单描述</h3>
               <p id="detail-summary" class="detail-summary"></p>
+            </section>
+
+            <section id="parent-context-section" class="detail-section parent-context-section" hidden>
+              <div class="parent-context-heading">
+                <h3>父级关联单 <span class="context-badge">需求上下文</span></h3>
+                <a id="detail-parent-link" class="jira-link" target="_blank" rel="noreferrer noopener"></a>
+              </div>
+              <strong id="detail-parent-title" class="parent-context-title"></strong>
+              <div class="parent-context-meta">
+                <span id="detail-parent-status"></span>
+                <span id="detail-parent-versions"></span>
+              </div>
+              <p id="detail-parent-summary" class="detail-summary parent-context-summary"></p>
+              <h4>父单附件 <span id="parent-attachment-count" class="section-count">0</span></h4>
+              <div id="detail-parent-attachments" class="attachment-grid"></div>
+              <p class="parent-context-boundary">父子单共同提供需求上下文；状态流转、会话关联和 SVN 提交仍只作用于当前执行单。</p>
             </section>
 
             <section class="detail-section">
@@ -104,7 +120,7 @@
             </section>
 
             <section class="detail-section">
-              <h3>附件 <span id="attachment-count" class="section-count">0</span></h3>
+              <h3>当前执行单附件 <span id="attachment-count" class="section-count">0</span></h3>
               <div id="detail-attachments" class="attachment-grid"></div>
             </section>
           </div>
@@ -137,8 +153,8 @@
 
       <footer class="issue-modal-footer">
         <div id="binding-summary" class="binding-summary" hidden>
-          <span>当前绑定</span>
-          <strong id="binding-thread-title"></strong>
+          <div><span>当前绑定</span><strong id="binding-thread-title"></strong></div>
+          <div id="binding-project-scopes" class="binding-project-scopes" aria-label="关联项目范围"></div>
         </div>
         <div class="issue-action-group">
           <button id="clear-binding-action" class="clear-binding-action" type="button" hidden>解除关联</button>
@@ -186,6 +202,17 @@
           <label><input type="radio" name="rebindMode" value="new" checked />新建并绑定</label>
           <label><input type="radio" name="rebindMode" value="existing" />绑定已有会话</label>
         </div>
+        <section class="rebind-project-section" aria-labelledby="rebind-project-title">
+          <div class="rebind-project-heading">
+            <div>
+              <strong id="rebind-project-title">关联项目范围</strong>
+              <small>可选择多个项目；“主目录”决定本次会话的默认处理目录。</small>
+            </div>
+            <span id="rebind-project-count">0 个</span>
+          </div>
+          <div id="rebind-project-options" class="rebind-project-options"></div>
+          <p id="rebind-project-empty" class="rebind-project-empty" hidden>当前 Codex 没有返回可选项目；不选择时会创建普通会话，绑定已有会话时则读取该会话自身目录。</p>
+        </section>
         <div id="rebind-existing-fields">
           <label class="field">
             <span>Codex 会话 ID</span>
@@ -201,7 +228,7 @@
         </div>
         <div id="rebind-new-fields" class="rebind-new-fields" hidden>
           <strong>新建任务对话</strong>
-          <span id="rebind-new-project"></span>
+          <span id="rebind-new-project">请选择本次处理涉及的项目范围。</span>
           <label class="field rebind-supplement-field">
             <span>补充说明（可选）</span>
             <textarea id="rebind-supplement" rows="5" maxlength="6000" placeholder="补充 Jira 中缺失的背景、业务规则、环境或复现信息。"></textarea>

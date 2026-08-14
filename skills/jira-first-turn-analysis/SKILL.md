@@ -24,6 +24,8 @@ Apply each rule only when another explicitly invoked Skill does not govern the s
 ## Jira context and attachments
 
 - Use the Jira details supplied in the message, the attached files, and read-only content from the bound Codex project.
+- When the message contains both a current execution issue and a parent issue, treat both as requirement context while keeping their sources separate. The current execution issue remains the only implementation scope unless the user explicitly expands it.
+- If parent and child content conflict, or if the execution boundary is unclear, identify the conflict instead of silently choosing one side or expanding into sibling work.
 - Do not open Jira, JXL, or the issue URL in a browser merely to repeat information already supplied.
 - Inspect each relevant attached file. State clearly when an attachment is missing, unreadable, or not inspected; never claim evidence that was not read.
 - If required information is missing, identify it instead of guessing.

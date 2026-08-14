@@ -41,11 +41,21 @@ const MAX_LIMIT_PER_TYPE = 100;
 const DESKTOP_APP_SERVER_RUNTIME_OWNER = "desktop-appserver";
 const uiHtmlPromise = readFile(new URL("./ui/task-board.html", import.meta.url), "utf8");
 
+const projectScopeSchema = z.object({
+  id: z.string(),
+  cwd: z.string(),
+  projectId: z.string(),
+  projectLabel: z.string(),
+  primary: z.boolean()
+});
+
 const bindingSchema = z.object({
   threadId: z.string(),
   title: z.string(),
   runtimeOwner: z.string(),
-  updatedAt: z.string()
+  updatedAt: z.string(),
+  projectScopes: z.array(projectScopeSchema),
+  defaultProjectScopeId: z.string()
 }).nullable();
 
 const taskSchema = z.object({
@@ -59,6 +69,7 @@ const taskSchema = z.object({
   assignee: z.string(),
   collaboratorCount: z.number().int().nonnegative(),
   attachmentCount: z.number().int().nonnegative(),
+  parentKey: z.string(),
   updated: z.string().nullable(),
   url: z.string(),
   binding: bindingSchema
@@ -81,11 +92,24 @@ const sheetSchema = z.object({
 function bindingFor(bindingState, issueKey) {
   const binding = bindingState?.bindings?.[issueKey];
   if (!binding?.threadId) return null;
+  const workspace = binding.workspace && typeof binding.workspace === "object" ? binding.workspace : {};
+  const rawScopes = Array.isArray(workspace.projectScopes) && workspace.projectScopes.length
+    ? workspace.projectScopes
+    : workspace.cwd || workspace.projectId ? [workspace] : [];
+  const defaultProjectScopeId = String(workspace.defaultProjectScopeId || rawScopes[0]?.id || "");
   return {
     threadId: String(binding.threadId),
     title: String(binding.title || binding.threadTitle || "已关联 Codex 会话"),
     runtimeOwner: String(binding.runtimeOwner || DESKTOP_APP_SERVER_RUNTIME_OWNER),
-    updatedAt: String(binding.updatedAt || binding.boundAt || "")
+    updatedAt: String(binding.updatedAt || binding.boundAt || ""),
+    projectScopes: rawScopes.map((scope, index) => ({
+      id: String(scope.id || scope.scopeId || scope.projectId || scope.cwd || `scope:${index + 1}`),
+      cwd: String(scope.cwd || ""),
+      projectId: String(scope.projectId || ""),
+      projectLabel: String(scope.projectLabel || scope.label || scope.cwd || scope.projectId || `项目 ${index + 1}`),
+      primary: String(scope.id || scope.scopeId || "") === defaultProjectScopeId || (!defaultProjectScopeId && index === 0)
+    })),
+    defaultProjectScopeId
   };
 }
 
@@ -106,6 +130,7 @@ function normalizeTask(issue, bindingState) {
     assignee: String(issue?.assignee || "未分配"),
     collaboratorCount: Array.isArray(issue?.collaborators) ? issue.collaborators.length : 0,
     attachmentCount: Array.isArray(issue?.attachments) ? issue.attachments.length : 0,
+    parentKey: String(issue?.parent?.key || ""),
     updated: issue?.updated ? String(issue.updated) : null,
     url: String(issue?.url || ""),
     binding: bindingFor(bindingState, key)
@@ -177,35 +202,51 @@ export function buildTaskBoardSnapshot(result, {
   };
 }
 
+function normalizeIssueDetail(issue, binding = null) {
+  const task = normalizeTask(issue, {
+    bindings: binding ? { [issue?.key]: binding } : {}
+  });
+  return {
+    ...task,
+    summary: String(issue?.summary || "Jira 中未填写描述。"),
+    hasDescription: issue?.hasDescription !== false,
+    collaborators: (issue?.collaborators || []).map((person) => ({
+      displayName: String(person?.displayName || person?.name || "未知用户"),
+      active: person?.active !== false
+    })),
+    attachments: (issue?.attachments || []).map((attachment) => ({
+      id: String(attachment?.id || ""),
+      filename: String(attachment?.filename || "未命名附件"),
+      mimeType: String(attachment?.mimeType || "application/octet-stream"),
+      size: Number(attachment?.size || 0),
+      author: String(attachment?.author || "未知用户"),
+      created: attachment?.created ? String(attachment.created) : null,
+      sourceIssueKey: String(attachment?.sourceIssueKey || issue?.key || ""),
+      previewable: /^image\//i.test(String(attachment?.mimeType || ""))
+    })),
+    labels: (issue?.labels || []).map(String),
+    projectName: String(issue?.projectName || ""),
+    fixVersions: (issue?.fixVersions || []).map(String),
+    created: issue?.created ? String(issue.created) : null
+  };
+}
+
 export function buildIssueDetailSnapshot(result) {
   const issue = result?.issue || {};
-  const task = normalizeTask(issue, {
-    bindings: result?.binding ? { [issue.key]: result.binding } : {}
-  });
+  const parent = issue.parentIssue || issue.parent || null;
+  const parentIssue = parent?.key ? normalizeIssueDetail(parent) : null;
   return {
     view: "issue",
     fetchedAt: String(result?.fetchedAt || new Date().toISOString()),
     bindingsRevision: Number(result?.bindingsRevision || 0),
     issue: {
-      ...task,
-      summary: String(issue.summary || "Jira 中未填写描述。"),
-      collaborators: (issue.collaborators || []).map((person) => ({
-        displayName: String(person?.displayName || person?.name || "未知用户"),
-        active: person?.active !== false
-      })),
-      attachments: (issue.attachments || []).map((attachment) => ({
-        id: String(attachment?.id || ""),
-        filename: String(attachment?.filename || "未命名附件"),
-        mimeType: String(attachment?.mimeType || "application/octet-stream"),
-        size: Number(attachment?.size || 0),
-        author: String(attachment?.author || "未知用户"),
-        created: attachment?.created ? String(attachment.created) : null,
-        previewable: /^image\//i.test(String(attachment?.mimeType || ""))
-      })),
-      labels: (issue.labels || []).map(String),
-      projectName: String(issue.projectName || ""),
-      fixVersions: (issue.fixVersions || []).map(String),
-      created: issue.created ? String(issue.created) : null
+      ...normalizeIssueDetail(issue, result?.binding || null),
+      parentIssue,
+      parentContext: {
+        status: String(issue?.parentContext?.status || (parentIssue ? "available" : "none")),
+        key: String(issue?.parentContext?.key || parentIssue?.key || ""),
+        message: String(issue?.parentContext?.message || "")
+      }
     }
   };
 }
@@ -812,12 +853,15 @@ export function createJiraTaskBoardMcpServer({
       {
         title: "检查 Jira 关联的 SVN 改动",
         description: "根据 Jira 的服务端会话关联定位项目，只读执行 SVN info/status，返回当前项目范围、变更文件、自动推荐、历史提交和现有审核草稿。不会修改工作副本。",
-        inputSchema: { issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/) },
+        inputSchema: {
+          issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
+          projectScopeId: z.string().max(1_000).optional().default("")
+        },
         annotations: readOnlyAnnotations(),
         _meta: uiMeta("正在检查 SVN 工作副本…", "SVN 改动已读取")
       },
-      async ({ issueKey }) => {
-        const result = await svn.context({ issueKey });
+      async ({ issueKey, projectScopeId }) => {
+        const result = await svn.context({ issueKey, projectScopeId });
         return {
           structuredContent: { view: "svnContext", issueKey: issueKey.toUpperCase(), ...result },
           content: [{ type: "text", text: `${issueKey.toUpperCase()} 的 SVN 改动已加载到审核面板。` }]
@@ -834,13 +878,14 @@ export function createJiraTaskBoardMcpServer({
         description: "只读执行指定 Jira 关联项目内单个变更文件的 svn diff。",
         inputSchema: {
           issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
+          projectScopeId: z.string().max(1_000).optional().default(""),
           path: z.string().min(1).max(4_000)
         },
         annotations: readOnlyAnnotations(),
         _meta: uiMeta("正在读取 SVN 差异…", "SVN 差异已读取")
       },
-      async ({ issueKey, path }) => {
-        const preview = await svn.previewDiff({ issueKey, path });
+      async ({ issueKey, projectScopeId, path }) => {
+        const preview = await svn.previewDiff({ issueKey, projectScopeId, path });
         return {
           structuredContent: { view: "svnDiff", issueKey: issueKey.toUpperCase(), preview },
           content: [{ type: "text", text: `${path} 的 SVN 差异已加载到审核面板。` }]
@@ -857,13 +902,14 @@ export function createJiraTaskBoardMcpServer({
         description: "在当前 Jira 绑定项目范围内校验单个已纳管变更文件，然后只读启动 TortoiseSVN 原生差异比较；不会修改工作副本。",
         inputSchema: {
           issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
+          projectScopeId: z.string().max(1_000).optional().default(""),
           path: z.string().min(1).max(4_000)
         },
         annotations: readOnlyAnnotations(),
         _meta: uiMeta("正在打开 TortoiseSVN 差异比较…", "TortoiseSVN 差异比较已打开")
       },
-      async ({ issueKey, path }) => {
-        const result = await svn.openExternalDiff({ issueKey, path });
+      async ({ issueKey, projectScopeId, path }) => {
+        const result = await svn.openExternalDiff({ issueKey, projectScopeId, path });
         return {
           structuredContent: { view: "svnExternalDiff", issueKey: issueKey.toUpperCase(), result },
           content: [{ type: "text", text: `${path} 已通过当前项目的安全路径校验，并交给 TortoiseSVN 进行只读比较。` }]
@@ -880,6 +926,7 @@ export function createJiraTaskBoardMcpServer({
         description: "仅在用户已人工选择显式文件后创建不可变 SVN 审核快照。Codex 审查默认关闭；开启时通过官方 App Server 在绑定会话启动只读审查，失败可降级为人工审核。不会提交 SVN。",
         inputSchema: {
           issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
+          projectScopeId: z.string().max(1_000).optional().default(""),
           selectedPaths: z.array(z.string().min(1).max(4_000)).min(1).max(200),
           summary: z.string().max(2_000).optional().default(""),
           codexReviewEnabled: z.boolean().optional().default(false)
@@ -887,9 +934,10 @@ export function createJiraTaskBoardMcpServer({
         annotations: localMutationAnnotations(),
         _meta: uiMeta("正在创建 SVN 审核快照…", "SVN 审核快照已创建")
       },
-      async ({ issueKey, selectedPaths, summary, codexReviewEnabled }) => {
+      async ({ issueKey, projectScopeId, selectedPaths, summary, codexReviewEnabled }) => {
         const result = await svn.createReview({
           issueKey,
+          projectScopeId,
           selectedPaths,
           summary,
           codexReviewEnabled,

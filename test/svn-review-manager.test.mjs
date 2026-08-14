@@ -1096,6 +1096,73 @@ test("任务绑定前已经存在的 SVN 改动会被基线标记并阻断自动
   assert.equal(created.review.mechanical.blockers.some((check) => check.code === "pre_existing_change"), true);
 });
 
+test("同一 Jira 的多个项目目录分别保存 SVN 基线而不互相覆盖", async () => {
+  const root = "F:\\football";
+  const serverScope = `${root}\\server`;
+  const clientScope = `${root}\\client`;
+  const harness = createHarness({ workingRoot: root, cwd: serverScope, workspaceRoots: [serverScope] });
+  const statusFor = (scope, file) => `<?xml version="1.0"?><status><target path="${scope}"><entry path="${scope}/${file}"><wc-status item="modified" revision="120" props="none"></wc-status></entry></target></status>`;
+  const serverWorkspace = {
+    cwd: serverScope,
+    workspaceRoots: [serverScope],
+    projectScopeId: "project:server",
+    projectLabel: "Server",
+    source: "service-binding"
+  };
+  const clientWorkspace = {
+    cwd: clientScope,
+    workspaceRoots: [clientScope],
+    projectScopeId: "project:client",
+    projectLabel: "Client",
+    source: "service-binding"
+  };
+
+  harness.setStatus(statusFor("server", "server.go"));
+  await harness.manager.recordBaseline({
+    threadId: "thread-multi-scope",
+    issueKey: issue.key,
+    boundAt: Date.now(),
+    workspaceContext: serverWorkspace
+  });
+  harness.setStatus(statusFor("server", "newer.go"));
+  const preservedServerBaseline = await harness.manager.recordBaseline({
+    threadId: "thread-multi-scope",
+    issueKey: issue.key,
+    boundAt: Date.now(),
+    workspaceContext: serverWorkspace,
+    preserveExisting: true
+  });
+  assert.equal(preservedServerBaseline.preserved, true);
+  assert.deepEqual(preservedServerBaseline.preExistingPaths, ["server/server.go"]);
+  harness.setStatus(statusFor("client", "client.go"));
+  await harness.manager.recordBaseline({
+    threadId: "thread-multi-scope",
+    issueKey: issue.key,
+    boundAt: Date.now(),
+    workspaceContext: clientWorkspace
+  });
+
+  harness.setStatus(statusFor("server", "server.go"));
+  const server = await harness.manager.inspect({
+    threadId: "thread-multi-scope",
+    issue,
+    workspaceContext: serverWorkspace
+  });
+  assert.equal(server.baseline.available, true);
+  assert.equal(server.workingCopy.projectScopeId, "project:server");
+  assert.deepEqual(server.baseline.preExistingPaths, ["server/server.go"]);
+
+  harness.setStatus(statusFor("client", "client.go"));
+  const client = await harness.manager.inspect({
+    threadId: "thread-multi-scope",
+    issue,
+    workspaceContext: clientWorkspace
+  });
+  assert.equal(client.baseline.available, true);
+  assert.equal(client.workingCopy.projectScopeId, "project:client");
+  assert.deepEqual(client.baseline.preExistingPaths, ["client/client.go"]);
+});
+
 test("任务绑定后出现且不在原基线中的文件会进入系统推荐候选", async () => {
   const harness = createHarness();
   harness.setStatus("<?xml version=\"1.0\"?><status><target path=\".\"></target></status>");

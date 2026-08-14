@@ -3,7 +3,49 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createIssueBindingStore } from "../lib/issue-binding-store.mjs";
+import {
+  createIssueBindingStore,
+  normalizeBindingWorkspace
+} from "../lib/issue-binding-store.mjs";
+
+test("binding workspace keeps multiple project scopes and promotes one primary directory", () => {
+  const workspace = normalizeBindingWorkspace({
+    projectScopes: [
+      {
+        id: "project:server",
+        cwd: "F:\\repo\\server",
+        workspaceRoots: ["F:\\repo\\server"],
+        projectId: "server",
+        projectLabel: "Server"
+      },
+      {
+        id: "project:client",
+        cwd: "F:\\repo\\client",
+        workspaceRoots: ["F:\\repo\\client"],
+        projectId: "client",
+        projectLabel: "Client"
+      }
+    ],
+    defaultProjectScopeId: "project:client"
+  });
+  assert.equal(workspace.cwd, "F:\\repo\\client");
+  assert.equal(workspace.projectId, "client");
+  assert.equal(workspace.defaultProjectScopeId, "project:client");
+  assert.deepEqual(workspace.workspaceRoots, ["F:\\repo\\server", "F:\\repo\\client"]);
+  assert.deepEqual(workspace.projectScopes.map((scope) => scope.id), ["project:server", "project:client"]);
+});
+
+test("path-only project scope keeps its stable id without turning it into a Codex project id", () => {
+  const first = normalizeBindingWorkspace({
+    projectScopes: [{ id: "path:f:\\workspace\\tools", cwd: "F:\\workspace\\tools" }],
+    defaultProjectScopeId: "path:f:\\workspace\\tools"
+  });
+  const roundTripped = normalizeBindingWorkspace(first);
+
+  assert.equal(roundTripped.projectScopes[0].id, "path:f:\\workspace\\tools");
+  assert.equal(roundTripped.projectScopes[0].projectId, "");
+  assert.equal(roundTripped.defaultProjectScopeId, "path:f:\\workspace\\tools");
+});
 
 test("issue bindings migrate from renderer storage and persist runtime ownership", async () => {
   const directory = await mkdtemp(join(tmpdir(), "jira-codex-bindings-"));
@@ -57,6 +99,8 @@ test("issue bindings migrate from renderer storage and persist runtime ownership
     assert.equal(persisted.bindings["CT-13404"].workspace.cwd, "F:\\repo");
     assert.deepEqual(persisted.bindings["CT-13404"].workspace.workspaceRoots, ["F:\\repo"]);
     assert.equal(persisted.bindings["CT-13404"].workspace.projectId, "captain-tsubasa");
+    assert.equal(persisted.bindings["CT-13404"].workspace.projectScopes.length, 1);
+    assert.equal(persisted.bindings["CT-13404"].workspace.projectScopes[0].cwd, "F:\\repo");
     assert.equal(persisted.revision, 2);
   } finally {
     await rm(directory, { recursive: true, force: true });

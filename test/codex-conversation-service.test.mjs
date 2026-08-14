@@ -123,3 +123,39 @@ test("explicit binding workspace supplements App Server metadata", async () => {
   assert.equal(result.binding.workspace.projectId, "explicit-project");
   assert.deepEqual(result.binding.workspace.workspaceRoots, ["F:\\explicit", "F:\\shared"]);
 });
+
+test("explicit multi-project binding survives App Server thread metadata", async () => {
+  const { service } = harness();
+  const result = await service.bindIssue({
+    issueKey: "CT-2",
+    threadId: "thread-2",
+    expectedRevision: 2,
+    workspace: {
+      projectScopes: [
+        { id: "project:server", cwd: "F:\\server", projectId: "server", projectLabel: "Server" },
+        { id: "project:client", cwd: "F:\\client", projectId: "client", projectLabel: "Client" }
+      ],
+      defaultProjectScopeId: "project:client"
+    }
+  });
+  assert.equal(result.binding.workspace.cwd, "F:\\client");
+  assert.equal(result.binding.workspace.defaultProjectScopeId, "project:client");
+  assert.deepEqual(
+    result.binding.workspace.projectScopes.map((scope) => [scope.id, scope.cwd]),
+    [["project:server", "F:\\server"], ["project:client", "F:\\client"]]
+  );
+});
+
+test("choosing the target thread workspace replaces stale project scopes", async () => {
+  const { service } = harness();
+  const result = await service.bindIssue({
+    issueKey: "CT-1",
+    threadId: "thread-2",
+    expectedRevision: 2,
+    workspaceSelection: "thread"
+  });
+
+  assert.equal(result.binding.workspace.cwd, "F:\\repo");
+  assert.equal(result.binding.workspace.projectId, "captain-tsubasa");
+  assert.deepEqual(result.binding.workspace.projectScopes.map((scope) => scope.cwd), ["F:\\repo"]);
+});

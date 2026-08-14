@@ -118,6 +118,45 @@ function attachmentLabel(attachment) {
   return size > 0 ? `${filename}（${size} bytes）` : filename;
 }
 
+function parentForIssue(issue) {
+  return issue?.parentIssue || issue?.parent || null;
+}
+
+function attachmentList(issue) {
+  return (issue?.attachments || []).map((attachment) => `- ${attachmentLabel(attachment)}`).join("\n") || "无";
+}
+
+function buildParentContext(issue) {
+  const parent = parentForIssue(issue);
+  if (!parent?.key) return "";
+  const unavailable = issue?.parentContext?.status === "unavailable" && !issue?.parentIssue;
+  const description = unavailable
+    ? `父单详情暂时无法读取：${issue.parentContext.message || "当前用户可能无权访问，或 Jira 暂时不可用。"}`
+    : parent.summary || "Jira 中未填写描述。";
+  const attachments = unavailable ? "暂不可用" : attachmentList(parent);
+  return `## 父级关联单（需求上下文）
+
+- 单号：${parent.key}
+- 标题：${parent.title || "未提供"}
+- Jira 链接：${parent.url || "未提供"}
+
+### 父级描述
+
+${description}
+
+### 父级附件
+
+${attachments}`;
+}
+
+function buildExecutionBoundary(issue) {
+  const parent = parentForIssue(issue);
+  if (!parent?.key) return "";
+  return `## 处理范围
+
+父单与当前执行单共同组成需求上下文；本次只分析和处理当前执行单 ${issue?.key || ""} 的范围。若两者冲突、信息缺失或边界不清，请明确指出，不要自行扩展到父单中的其他工作。`;
+}
+
 export function templateValuesForIssue(issue) {
   return {
     key: issue?.key || "未提供",
@@ -137,20 +176,22 @@ export function templateValuesForIssue(issue) {
 
 export function buildIssueContext(issue, { automated = false } = {}) {
   const values = templateValuesForIssue(issue);
-  const attachments = (issue?.attachments || []).map((attachment) => `- ${attachmentLabel(attachment)}`).join("\n") || "无";
+  const attachments = attachmentList(issue);
   return `# Jira ${values.type}
+
+## 当前执行单
 
 - 单号：${values.key}
 - 标题：${values.title}
 - Jira 链接：${values.url}${automated ? "\n- 触发方式：Jira Bug 自动监控" : ""}
 
-## Jira 描述
+### 当前执行单描述
 
 ${values.description}
 
-## Jira 附件
+### 当前执行单附件
 
-${attachments}`;
+${attachments}${buildParentContext(issue) ? `\n\n${buildParentContext(issue)}` : ""}${buildExecutionBoundary(issue) ? `\n\n${buildExecutionBoundary(issue)}` : ""}`;
 }
 
 export function buildIssuePrompt(issue, {
@@ -186,7 +227,14 @@ export function buildIssuePrompt(issue, {
   // Jira layout; newer instruction-only templates always receive the fixed context.
   if (LEGACY_CONTEXT_VARIABLE_PATTERN.test(String(selectedTemplate))) {
     const automationNotice = automated ? "触发方式：Jira Bug 自动监控。" : "";
-    return [body, supplementSection, fallback, automationNotice].filter(Boolean).join("\n\n");
+    return [
+      body,
+      buildParentContext(issue),
+      buildExecutionBoundary(issue),
+      supplementSection,
+      fallback,
+      automationNotice
+    ].filter(Boolean).join("\n\n");
   }
 
   const instructionSection = body ? `## 分析要求\n\n${body}` : "";

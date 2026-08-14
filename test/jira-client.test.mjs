@@ -29,6 +29,15 @@ const cloudIssue = {
     }],
     labels: ["codex"],
     fixVersions: [{ name: "DevelopV4" }],
+    parent: {
+      id: "10000",
+      key: "DEMO-1",
+      fields: {
+        summary: "父级需求",
+        issuetype: { name: "Story" },
+        status: { name: "方案设计中", statusCategory: { key: "indeterminate" } }
+      }
+    },
     project: { key: "DEMO", name: "演示项目" },
     created: "2026-08-01T00:00:00.000+0000",
     updated: "2026-08-04T00:00:00.000+0000"
@@ -78,12 +87,24 @@ test("Jira Cloud 使用邮箱和 API Token 调用 REST v3 增强搜索", async (
     author: "附件作者",
     created: "2026-08-04T08:00:00.000+0000",
     downloadUrl: "/api/attachments/900",
-    thumbnailUrl: "/api/attachments/900?thumbnail=1"
+    thumbnailUrl: "/api/attachments/900?thumbnail=1",
+    sourceIssueKey: "DEMO-7"
   });
   const requestedFields = JSON.parse(request.options.body).fields;
   assert.equal(requestedFields.includes("attachment"), true);
   assert.equal(requestedFields.includes("customfield_10600"), true);
   assert.equal(requestedFields.includes("fixVersions"), true);
+  assert.equal(requestedFields.includes("parent"), true);
+  assert.deepEqual(result.issues[0].parent, {
+    id: "10000",
+    key: "DEMO-1",
+    title: "父级需求",
+    type: "requirement",
+    typeName: "Story",
+    status: "todo",
+    statusName: "方案设计中",
+    url: "https://demo.atlassian.net/browse/DEMO-1"
+  });
 });
 
 test("Jira Data Center 使用 PAT Bearer 调用 REST v2 搜索", async () => {

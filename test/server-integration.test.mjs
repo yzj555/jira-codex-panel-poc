@@ -495,12 +495,25 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
         "content-type": "application/json",
         "x-jira-codex-desktop-client": "integration-desktop"
       },
-      body: JSON.stringify({ supplementalDescription: "集成补充上下文" })
+      body: JSON.stringify({
+        supplementalDescription: "集成补充上下文",
+        workspaceSelection: "explicit",
+        workspace: {
+          projectScopes: [
+            { id: "project:server", cwd: "F:\\projects\\server", projectId: "server", projectLabel: "Server" },
+            { id: "project:client", cwd: "F:\\projects\\client", projectId: "client", projectLabel: "Client" }
+          ],
+          defaultProjectScopeId: "project:client"
+        }
+      })
     });
     const createCommand = await waitForDesktopCommand(baseUrl);
     assert.equal(createCommand.type, "create-analysis");
     assert.equal(createCommand.payload.issueKey, "REAL-9");
     assert.match(createCommand.payload.message, /集成补充上下文/);
+    assert.equal(createCommand.payload.cwd, "F:\\projects\\client");
+    assert.equal(createCommand.payload.projectId, "client");
+    assert.deepEqual(createCommand.payload.workspaceRoots, ["F:\\projects\\server", "F:\\projects\\client"]);
     assert.equal(createCommand.payload.attachments[0].path, materializedPayload.attachment.path);
     const issueReadsBeforeDesktopCompletion = requests.filter(
       (request) => request.url.startsWith("/rest/api/2/issue/REAL-9?fields=")
@@ -516,6 +529,11 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
     assert.equal(analysisPayload.threadId, "019fc6eb-2d03-7a62-be45-840481d26b99");
     assert.equal(analysisPayload.turnId, "turn-integration-1");
     assert.equal(analysisPayload.binding.runtimeOwner, "desktop-appserver");
+    assert.equal(analysisPayload.binding.workspace.defaultProjectScopeId, "project:client");
+    assert.deepEqual(
+      analysisPayload.binding.workspace.projectScopes.map((scope) => scope.id),
+      ["project:server", "project:client"]
+    );
     assert.equal(analysisPayload.bindingsRevision, concurrentlyMutatedBindings.revision + 1);
     assert.equal(analysisPayload.issueSnapshot.bindingsRevision, analysisPayload.bindingsRevision);
     assert.equal(analysisPayload.issueSnapshot.issue.key, "REAL-9");
