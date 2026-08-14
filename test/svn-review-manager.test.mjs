@@ -1070,6 +1070,41 @@ test("文件差异变化会使审核快照失效", async () => {
   assert.equal(harness.manager.getReview(created.review.id).status, "stale");
 });
 
+test("多项目草稿复检始终使用创建时锁定的项目范围", async () => {
+  const harness = createHarness();
+  const workspaceContext = {
+    cwd: workingCopyRoot,
+    workspaceRoots: [workingCopyRoot],
+    projectScopeId: "project:captain-server",
+    projectLabel: "captain_tsubasa_server-v4-cbt-release",
+    source: "service-binding"
+  };
+  const created = await harness.manager.createReview({
+    threadId: "thread-multi-project-confirm",
+    issue,
+    selectedPaths: ["src/player.go"],
+    summary: "完成多项目范围提交",
+    codexReviewEnabled: false,
+    workspaceContext
+  });
+
+  assert.equal(created.review.status, "manual_review");
+  assert.equal(created.review.workingCopy.projectScopeId, workspaceContext.projectScopeId);
+  const confirmation = await harness.manager.confirm(created.review.id, {
+    issue,
+    issueKey: issue.key,
+    reviewed: true
+  });
+  const committed = await harness.manager.commit(created.review.id, {
+    issue,
+    confirmationToken: confirmation.confirmationToken
+  });
+
+  assert.equal(committed.status, "committed");
+  assert.equal(committed.workingCopy.projectScopeId, workspaceContext.projectScopeId);
+  assert.deepEqual(committed.commit.paths, ["src/player.go"]);
+});
+
 test("任务绑定前已经存在的 SVN 改动会被基线标记并阻断自动提交", async () => {
   const harness = createHarness();
   const baseline = await harness.manager.recordBaseline({

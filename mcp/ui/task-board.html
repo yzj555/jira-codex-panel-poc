@@ -439,6 +439,10 @@
       TOOLS.transitions, TOOLS.threads, TOOLS.automationStatus,
       TOOLS.svnDiff, TOOLS.svnGetReview
     ]);
+    const SVN_REVIEW_REFRESH_ON_FAILURE = new Set([
+      TOOLS.svnConfirmReview,
+      TOOLS.svnCommit
+    ]);
     async function desktopBridgeRequest(method, params, attempt = 0) {
       const id = requestId++;
       const toolName = method === "tools/call" ? String(params?.name || "") : "";
@@ -545,6 +549,9 @@
         return output;
       } catch (error) {
         if (!background) showError(error);
+        if (!background && SVN_REVIEW_REFRESH_ON_FAILURE.has(name)) {
+          await refreshSvnReviewAfterFailure(error);
+        }
         if (background && name === TOOLS.updateStatus) {
           if (updatePollTimer) clearTimeout(updatePollTimer);
           updatePollTimer = setTimeout(() => void callTool(TOOLS.updateStatus, {}, { background: true }), 1_500);
@@ -819,6 +826,21 @@
         const result = await request("tools/call", { name: TOOLS.svnGetReview, arguments: { issueKey, reviewId: review.id } });
         if (result?.structuredContent) acceptResult(result.structuredContent);
       } catch (error) { showError(error); }
+    }
+    async function refreshSvnReviewAfterFailure(originalError) {
+      const review = cache.svnReview;
+      const issueKey = cache.svnContext?.issueKey;
+      if (!review?.id || !issueKey) return;
+      try {
+        const result = await request("tools/call", {
+          name: TOOLS.svnGetReview,
+          arguments: { issueKey, reviewId: review.id }
+        });
+        if (result?.structuredContent) {
+          acceptResult(result.structuredContent);
+          showError(originalError);
+        }
+      } catch {}
     }
     function syncSvnPolling() {
       const active = ["prepared", "dispatching", "running"].includes(cache.svnReview?.status);

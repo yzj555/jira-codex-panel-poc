@@ -87,6 +87,9 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.doesNotMatch(ui, /class="svn-file-diff"/);
   assert.doesNotMatch(ui, /button\[data-svn-preview\]/);
   assert.match(ui, /createSvnFileInteraction/);
+  assert.match(ui, /SVN_REVIEW_REFRESH_ON_FAILURE/);
+  assert.match(ui, /refreshSvnReviewAfterFailure\(error\)/);
+  assert.match(ui, /name: TOOLS\.svnGetReview/);
   assert.match(ui, /svnFileInteraction\.click\(event\)/);
   assert.match(ui, /svnFileInteraction\.doubleClick\(event\)/);
   assert.match(ui, /event\.target\.closest\("input, button"\)/);
