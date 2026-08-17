@@ -84,41 +84,41 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.equal(manifest.productId, "jira-codex-panel");
   assert.equal(manifest.displayName, "Jira Codex 助手");
   assert.equal(manifest.components.some((component) => component.id === "release-updater"
-    && component.required && component.path === "installer/update-bootstrap.ps1"), true);
+    && component.required && component.path === "packages/codex/installer/update-bootstrap.ps1"), true);
   assert.equal(manifest.components.some((component) => component.id === "release-updater-host"
-    && component.required && component.path === "scripts/update-launcher.mjs"), true);
+    && component.required && component.path === "packages/codex/scripts/update-launcher.mjs"), true);
   assert.equal(manifest.components.some((component) => component.id === "release-restart-helper"
-    && component.required && component.path === "scripts/restart-codex-after-update.ps1"), true);
+    && component.required && component.path === "packages/codex/scripts/restart-codex-after-update.ps1"), true);
   assert.equal(manifest.components.some((component) => component.id === "update-manager"
-    && component.required && component.path === "lib/update-manager.mjs"), true);
+    && component.required && component.path === "packages/codex/lib/update-manager.mjs"), true);
   assert.equal(manifest.components.some((component) => component.id === "github-update-checker"
-    && component.required && component.path === "lib/github-update-checker.mjs"), true);
+    && component.required && component.path === "packages/codex/lib/github-update-checker.mjs"), true);
   assert.equal(manifest.components.some((component) => (
     component.id === "official-plugin"
     && component.required
-    && component.path === "plugins/jira-codex-assistant"
+    && component.path === "packages/codex/plugins/jira-codex-assistant"
   )), true);
   assert.equal(manifest.components.some((component) => component.id === "plugin-marketplace" && component.required), true);
   assert.equal(manifest.components.some((component) => (
     component.id === "settings-ui"
     && component.required
-    && component.path === "public"
+    && component.path === "packages/codex/public"
   )), true);
   assert.equal(manifest.components.some((component) => component.id === "mcp-server" && component.required), true);
   assert.equal(manifest.components.some((component) => (
     component.id === "minimal-desktop-ui-host"
     && component.required
-    && component.path === "injector.mjs"
+    && component.path === "packages/codex/injector.mjs"
   )), true);
   assert.equal(manifest.components.some((component) => (
     component.id === "codex-application-commands"
     && component.required
-    && component.path === "lib/codex-application-commands.mjs"
+    && component.path === "packages/codex/lib/codex-application-commands.mjs"
   )), true);
   for (const [id, path] of [
-    ["jira-workbench-service", "lib/jira-workbench-service.mjs"],
-    ["codex-conversation-service", "lib/codex-conversation-service.mjs"],
-    ["svn-workbench-service", "lib/svn-workbench-service.mjs"]
+    ["jira-workbench-service", "packages/core/lib/jira-workbench-service.mjs"],
+    ["codex-conversation-service", "packages/codex/lib/codex-conversation-service.mjs"],
+    ["svn-workbench-service", "packages/core/lib/svn-workbench-service.mjs"]
   ]) {
     assert.equal(manifest.components.some((component) => (
       component.id === id && component.required && component.path === path
@@ -145,13 +145,13 @@ test("lifecycle status detects missing installed components from the live filesy
 }, async () => {
   const installRoot = await mkdtemp(join(tmpdir(), "jira-codex-lifecycle-status-"));
   try {
-    await mkdir(join(installRoot, "installer"), { recursive: true });
-    await writeFile(join(installRoot, "installer", "product-manifest.json"), JSON.stringify({
+    await mkdir(join(installRoot, "packages", "codex", "installer"), { recursive: true });
+    await writeFile(join(installRoot, "packages", "codex", "installer", "product-manifest.json"), JSON.stringify({
       productId: "jira-codex-panel",
       components: [
-        { id: "local-service", required: true, path: "server.mjs" },
-        { id: "panel-ui", required: true, path: "public" },
-        { id: "official-plugin", required: false, path: ".codex-plugin/plugin.json" }
+        { id: "local-service", required: true, path: "packages/codex/server.mjs" },
+        { id: "panel-ui", required: true, path: "packages/codex/public" },
+        { id: "official-plugin", required: false, path: "packages/codex/.codex-plugin/plugin.json" }
       ]
     }), "utf8");
     await writeFile(join(installRoot, "install-state.json"), JSON.stringify({
@@ -160,7 +160,7 @@ test("lifecycle status detects missing installed components from the live filesy
       shortcuts: [],
       uninstallRegistryPath: "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JiraCodexAssistantStatusTest"
     }), "utf8");
-    await writeFile(join(installRoot, "server.mjs"), "", "utf8");
+    await writeFile(join(installRoot, "packages", "codex", "server.mjs"), "", "utf8");
 
     const output = execFileSync("powershell.exe", [
       "-NoProfile",
@@ -232,8 +232,8 @@ test("lifecycle status verifies live Codex plugin and marketplace registration",
     const manifest = {
       productId: "jira-codex-panel",
       components: [
-        { id: "official-plugin", required: true, path: "plugins/jira-codex-assistant" },
-        { id: "plugin-marketplace", required: true, path: ".agents/plugins/marketplace.json" }
+        { id: "official-plugin", required: true, path: "packages/codex/plugins/jira-codex-assistant" },
+        { id: "plugin-marketplace", required: true, path: "packages/codex/.agents/plugins/marketplace.json" }
       ]
     };
     const fakeCodex = join(installRoot, "fake-codex.cmd");
@@ -247,11 +247,11 @@ test("lifecycle status verifies live Codex plugin and marketplace registration",
     const marketplaceJson = JSON.stringify({
       marketplaces: [{ name: "jira-codex-local", root: installRoot }]
     });
-    await mkdir(join(installRoot, "installer"), { recursive: true });
-    await mkdir(join(installRoot, "plugins", "jira-codex-assistant"), { recursive: true });
-    await mkdir(join(installRoot, ".agents", "plugins"), { recursive: true });
-    await writeFile(join(installRoot, "installer", "product-manifest.json"), JSON.stringify(manifest), "utf8");
-    await writeFile(join(installRoot, ".agents", "plugins", "marketplace.json"), "{}", "utf8");
+    await mkdir(join(installRoot, "packages", "codex", "installer"), { recursive: true });
+    await mkdir(join(installRoot, "packages", "codex", "plugins", "jira-codex-assistant"), { recursive: true });
+    await mkdir(join(installRoot, "packages", "codex", ".agents", "plugins"), { recursive: true });
+    await writeFile(join(installRoot, "packages", "codex", "installer", "product-manifest.json"), JSON.stringify(manifest), "utf8");
+    await writeFile(join(installRoot, "packages", "codex", ".agents", "plugins", "marketplace.json"), "{}", "utf8");
     await writeFile(fakeCodex, [
       "@echo off",
       `if \"%*\"==\"plugin list --json\" (echo ${pluginJson}& exit /b 0)`,

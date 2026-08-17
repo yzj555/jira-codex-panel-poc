@@ -5,134 +5,164 @@
   "publisher": "Jira Codex Assistant",
   "components": [
     {
+      "id": "workspace-root",
+      "required": true,
+      "path": "package.json"
+    },
+    {
+      "id": "workspace-lock",
+      "required": true,
+      "path": "package-lock.json"
+    },
+    {
+      "id": "product-readme",
+      "required": true,
+      "path": "README.md"
+    },
+    {
+      "id": "install-entry",
+      "required": true,
+      "path": "install.cmd"
+    },
+    {
+      "id": "core-package",
+      "required": true,
+      "path": "packages/core"
+    },
+    {
+      "id": "codex-package",
+      "required": true,
+      "path": "packages/codex"
+    },
+    {
       "id": "local-service",
       "required": true,
-      "path": "server.mjs"
+      "path": "packages/codex/server.mjs"
     },
     {
       "id": "settings-ui",
       "required": true,
-      "path": "public"
+      "path": "packages/codex/public"
     },
     {
       "id": "minimal-desktop-ui-host",
       "required": true,
-      "path": "injector.mjs"
+      "path": "packages/codex/injector.mjs"
     },
     {
       "id": "desktop-ui-client",
       "required": true,
-      "path": "inject/client.js"
+      "path": "packages/codex/inject/client.js"
     },
     {
       "id": "embedded-panel-builder",
       "required": true,
-      "path": "lib/panel-document.mjs"
+      "path": "packages/codex/lib/panel-document.mjs"
     },
     {
       "id": "embedded-panel-document",
       "required": true,
-      "path": "public/index.html"
+      "path": "packages/codex/public/index.html"
     },
     {
       "id": "embedded-panel-application",
       "required": true,
-      "path": "public/app.js"
+      "path": "packages/codex/public/app.js"
     },
     {
       "id": "embedded-panel-styles",
       "required": true,
-      "path": "public/styles.css"
+      "path": "packages/codex/public/styles.css"
     },
     {
       "id": "embedded-panel-prompt-builder",
       "required": true,
-      "path": "public/prompt-builder.js"
+      "path": "packages/core/public/prompt-builder.js"
     },
     {
       "id": "embedded-panel-issue-views",
       "required": true,
-      "path": "public/issue-views.js"
+      "path": "packages/core/public/issue-views.js"
     },
     {
       "id": "official-mcp-app-ui",
       "required": true,
-      "path": "mcp/ui/task-board.html"
+      "path": "packages/core/mcp/ui/task-board.html"
     },
     {
       "id": "codex-app-server-adapter",
       "required": true,
-      "path": "lib/codex-app-server-client.mjs"
+      "path": "packages/codex/lib/codex-app-server-client.mjs"
     },
     {
       "id": "codex-runtime-gateway",
       "required": true,
-      "path": "lib/codex-runtime-gateway.mjs"
+      "path": "packages/codex/lib/codex-runtime-gateway.mjs"
     },
     {
       "id": "codex-application-commands",
       "required": true,
-      "path": "lib/codex-application-commands.mjs"
+      "path": "packages/codex/lib/codex-application-commands.mjs"
     },
     {
       "id": "release-updater",
       "required": true,
-      "path": "installer/update-bootstrap.ps1"
+      "path": "packages/codex/installer/update-bootstrap.ps1"
     },
     {
       "id": "release-updater-host",
       "required": true,
-      "path": "scripts/update-launcher.mjs"
+      "path": "packages/codex/scripts/update-launcher.mjs"
     },
     {
       "id": "release-restart-helper",
       "required": true,
-      "path": "scripts/restart-codex-after-update.ps1"
+      "path": "packages/codex/scripts/restart-codex-after-update.ps1"
     },
     {
       "id": "update-manager",
       "required": true,
-      "path": "lib/update-manager.mjs"
+      "path": "packages/codex/lib/update-manager.mjs"
     },
     {
       "id": "github-update-checker",
       "required": true,
-      "path": "lib/github-update-checker.mjs"
+      "path": "packages/codex/lib/github-update-checker.mjs"
     },
     {
       "id": "jira-workbench-service",
       "required": true,
-      "path": "lib/jira-workbench-service.mjs"
+      "path": "packages/core/lib/jira-workbench-service.mjs"
     },
     {
       "id": "codex-conversation-service",
       "required": true,
-      "path": "lib/codex-conversation-service.mjs"
+      "path": "packages/codex/lib/codex-conversation-service.mjs"
     },
     {
       "id": "svn-workbench-service",
       "required": true,
-      "path": "lib/svn-workbench-service.mjs"
+      "path": "packages/core/lib/svn-workbench-service.mjs"
     },
     {
       "id": "bundled-skills",
       "required": true,
-      "path": "skills"
+      "path": "packages/codex/skills"
     },
     {
       "id": "official-plugin",
       "required": true,
-      "path": "plugins/jira-codex-assistant"
+      "path": "packages/codex/plugins/jira-codex-assistant"
     },
     {
       "id": "plugin-marketplace",
       "required": true,
-      "path": ".agents/plugins/marketplace.json"
+      "path": "packages/codex/.agents/plugins/marketplace.json"
     },
     {
       "id": "mcp-server",
       "required": true,
-      "path": "mcp"
+      "path": "packages/core/mcp"
     }
   ]
 }

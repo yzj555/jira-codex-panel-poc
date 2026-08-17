@@ -2,7 +2,8 @@
 param([string]$OutputDirectory = '')
 
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
+# Script lives in packages/codex/scripts/; the repo root is three levels up.
+$root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'dist' }
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $rootPath = [System.IO.Path]::GetFullPath($root).TrimEnd('\')
@@ -16,36 +17,53 @@ if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'package.j
 
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("jira-codex-release-{0}" -f ([Guid]::NewGuid().ToString('N')))
 $archive = Join-Path $OutputDirectory "jira-codex-assistant-$version-win-x64.zip"
+
+function Copy-ReleaseTree {
+  param(
+    [string]$Source,
+    [string]$Destination,
+    [string[]]$ExcludeDirectory
+  )
+
+  New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+  foreach ($entry in @(Get-ChildItem -LiteralPath $Source -Force)) {
+    if ($entry.PSIsContainer) {
+      if ($entry.Name -in $ExcludeDirectory) { continue }
+      Copy-ReleaseTree -Source $entry.FullName -Destination (Join-Path $Destination $entry.Name) -ExcludeDirectory $ExcludeDirectory
+    } else {
+      Copy-Item -LiteralPath $entry.FullName -Destination (Join-Path $Destination $entry.Name) -Force
+    }
+  }
+}
+
 try {
   Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
   New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
-  $files = @(
-    '.gitattributes', '.gitignore', 'README.md', 'install.cmd',
-    'package.json', 'package-lock.json', 'server.mjs', 'injector.mjs',
-    'jira-client.mjs', 'jxl-client.mjs', 'config-store.mjs'
-  )
-  $directories = @('public', 'inject', 'lib', 'mcp', 'scripts', 'installer', 'skills', 'plugins')
-  foreach ($relative in $files) {
+  # Root files; install.cmd is copied from the codex shell to the release root.
+  foreach ($relative in @('.gitattributes', '.gitignore', 'README.md', 'package.json', 'package-lock.json')) {
     Copy-Item -LiteralPath (Join-Path $root $relative) -Destination (Join-Path $stage $relative) -Force
   }
-  foreach ($relative in $directories) {
-    Copy-Item -LiteralPath (Join-Path $root $relative) -Destination (Join-Path $stage $relative) -Recurse -Force
-  }
-  $marketplaceSource = Join-Path $root '.agents\plugins\marketplace.json'
-  $marketplaceDestination = Join-Path $stage '.agents\plugins'
-  New-Item -ItemType Directory -Path $marketplaceDestination -Force | Out-Null
-  Copy-Item -LiteralPath $marketplaceSource -Destination (Join-Path $marketplaceDestination 'marketplace.json') -Force
+  Copy-Item -LiteralPath (Join-Path $root 'packages\codex\install.cmd') -Destination (Join-Path $stage 'install.cmd') -Force
+
+  # Workspace packages: copy core and codex trees, excluding tests and dev runtime dirs.
+  Copy-ReleaseTree -Source (Join-Path $root 'packages\core') -Destination (Join-Path $stage 'packages\core') -ExcludeDirectory @('test')
+  Copy-ReleaseTree -Source (Join-Path $root 'packages\codex') -Destination (Join-Path $stage 'packages\codex') -ExcludeDirectory @('test', '.runtime', '.cdp-profile')
 
   foreach ($required in @(
     'install.cmd',
-    'installer\update-bootstrap.ps1',
-    'scripts\restart-codex-after-update.ps1',
-    'lib\update-manager.mjs',
-    'mcp\ui\task-board.html',
-    'plugins\jira-codex-assistant\.codex-plugin\plugin.json',
-    '.agents\plugins\marketplace.json'
+    'package.json',
+    'package-lock.json',
+    'packages\codex\installer\update-bootstrap.ps1',
+    'packages\codex\scripts\restart-codex-after-update.ps1',
+    'packages\codex\lib\update-manager.mjs',
+    'packages\core\mcp\ui\task-board.html',
+    'packages\codex\plugins\jira-codex-assistant\.codex-plugin\plugin.json',
+    'packages\codex\.agents\plugins\marketplace.json',
+    'packages\codex\server.mjs',
+    'packages\codex\injector.mjs',
+    'packages\core\index.mjs'
   )) {
     if (-not (Test-Path -LiteralPath (Join-Path $stage $required) -PathType Leaf)) {
       throw "Release staging is missing required file: $required"
@@ -54,7 +72,7 @@ try {
 
   $stageItems = @(Get-ChildItem -LiteralPath $stage -Force | ForEach-Object { $_.FullName })
   Compress-Archive -LiteralPath $stageItems -DestinationPath $archive -CompressionLevel Optimal -Force
-  & node (Join-Path $root 'scripts\generate-update-manifest.mjs') $archive $OutputDirectory
+  & node (Join-Path $PSScriptRoot 'generate-update-manifest.mjs') $archive $OutputDirectory
   if ($LASTEXITCODE -ne 0) { throw "Manifest generator failed with exit code $LASTEXITCODE." }
   $sumFiles = @($archive, (Join-Path $OutputDirectory 'update-manifest.json'))
   $sumLines = $sumFiles | ForEach-Object {

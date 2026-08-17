@@ -23,7 +23,7 @@ jobs:
         shell: pwsh
         run: |
           $failed = $false
-          Get-ChildItem installer,scripts -Filter *.ps1 -Recurse | ForEach-Object {
+          Get-ChildItem packages/codex/installer,packages/codex/scripts -Filter *.ps1 -Recurse | ForEach-Object {
             $errors = $null
             $tokens = $null
             [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null

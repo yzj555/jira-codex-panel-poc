@@ -15,7 +15,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$sourceRoot = Split-Path -Parent $PSScriptRoot
+# 脚本位于 packages/codex/installer/，安装源（workspace 根）为其上三级。
+$sourceRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 $statePath = Join-Path $InstallRoot 'install-state.json'
 $legacyStatePath = Join-Path $InstallRoot 'install-metadata.json'
 $startAtLogonSpecified = $PSBoundParameters.ContainsKey('StartAtLogon')
@@ -130,7 +131,7 @@ function Get-LifecycleStatus {
 
   $manifestAvailable = $false
   $componentDefinitions = @($installedState.components)
-  $installedManifestPath = Join-Path $InstallRoot 'installer\product-manifest.json'
+  $installedManifestPath = Join-Path $InstallRoot 'packages\codex\installer\product-manifest.json'
   if (Test-Path -LiteralPath $installedManifestPath) {
     try {
       $installedManifest = Get-Content -Raw -LiteralPath $installedManifestPath | ConvertFrom-Json
@@ -196,7 +197,7 @@ function Invoke-ProductInstall {
 function Invoke-ProductUninstall {
   param([bool]$Purge)
 
-  $uninstallScript = Join-Path $InstallRoot 'installer\uninstall.ps1'
+  $uninstallScript = Join-Path $InstallRoot 'packages\codex\installer\uninstall.ps1'
   if (-not (Test-Path -LiteralPath $uninstallScript)) {
     $uninstallScript = Join-Path $PSScriptRoot 'uninstall.ps1'
   }

@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const root = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const archivePath = resolve(process.argv[2] || "");
 const outputDirectory = resolve(process.argv[3] || dirname(archivePath));
 if (!process.argv[2]) throw new Error("Usage: node scripts/generate-update-manifest.mjs <archive.zip> [output-directory]");

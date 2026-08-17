@@ -22,13 +22,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run release:verify -- "${{ github.ref_name }}"
+      - run: node packages/codex/scripts/verify-release-version.mjs "${{ github.ref_name }}"
       - run: npm test
       - name: Refresh Plugin cachebuster for this Release package
-        run: node scripts/set-plugin-cachebuster.mjs "release-${{ github.run_id }}-${{ github.run_attempt }}"
+        run: node packages/codex/scripts/set-plugin-cachebuster.mjs "release-${{ github.run_id }}-${{ github.run_attempt }}"
       - name: Build signed-input Release assets
         shell: pwsh
-        run: ./scripts/build-release.ps1
+        run: ./packages/codex/scripts/build-release.ps1
       - name: Attest Windows archive provenance
         uses: actions/attest-build-provenance@v2
         with:

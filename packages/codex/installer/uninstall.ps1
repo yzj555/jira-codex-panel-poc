@@ -136,7 +136,7 @@ if (-not $Force) {
 
 if (-not $PSCmdlet.ShouldProcess($InstallRoot, "卸载 $productName")) { return }
 
-$runtimeDirectory = Join-Path $InstallRoot '.runtime'
+$runtimeDirectory = Join-Path $InstallRoot 'packages\codex\.runtime'
 Stop-TrackedProcess -PidFile (Join-Path $runtimeDirectory 'injector.pid') -ExpectedScript 'injector.mjs' -ExpectedRoot $InstallRoot
 Stop-TrackedProcess -PidFile (Join-Path $runtimeDirectory 'server.pid') -ExpectedScript 'server.mjs' -ExpectedRoot $InstallRoot
 

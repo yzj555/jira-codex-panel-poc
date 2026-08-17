@@ -18,7 +18,8 @@ $productId = 'jira-codex-panel'
 $productName = 'Jira Codex 助手'
 $stateSchemaVersion = 2
 $uninstallRegistryPath = $UninstallRegistryPath
-$sourceRoot = Split-Path -Parent $PSScriptRoot
+# 脚本位于 packages/codex/installer/，安装源（workspace 根）为其上三级。
+$sourceRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 $userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc'
 $pluginMarketplaceName = 'jira-codex-local'
 $pluginSelector = "jira-codex-assistant@$pluginMarketplaceName"
@@ -87,7 +88,7 @@ function Stop-TrackedRuntimeProcesses {
     Stop-Process -Id $TargetProcessId -ErrorAction SilentlyContinue
   }
 
-  $runtimeDirectory = Join-Path $ApplicationRoot '.runtime'
+  $runtimeDirectory = Join-Path $ApplicationRoot 'packages\codex\.runtime'
   $processSnapshot = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
   foreach ($processName in @('injector', 'server')) {
     $pidFile = Join-Path $runtimeDirectory "$processName.pid"
@@ -355,14 +356,14 @@ if (-not $codexPackage) {
   throw '未找到 Microsoft Store 版 Codex（OpenAI.Codex）。'
 }
 
-$requiredFiles = @('package.json', 'package-lock.json', 'server.mjs', 'injector.mjs', 'jira-client.mjs', 'jxl-client.mjs', 'config-store.mjs', 'README.md')
-$requiredDirectories = @('public', 'inject', 'lib', 'mcp', 'scripts', 'installer', 'skills')
+$requiredFiles = @('package.json', 'package-lock.json', 'README.md', 'packages\codex\server.mjs', 'packages\codex\injector.mjs', 'packages\core\index.mjs')
+$requiredDirectories = @('packages\core', 'packages\codex')
 foreach ($relativePath in @($requiredFiles + $requiredDirectories)) {
   if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot $relativePath))) {
     throw "安装源缺少必要文件：$relativePath"
   }
 }
-$productManifestPath = Join-Path $sourceRoot 'installer\product-manifest.json'
+$productManifestPath = Join-Path $sourceRoot 'packages\codex\installer\product-manifest.json'
 $productManifest = Get-Content -Raw -LiteralPath $productManifestPath | ConvertFrom-Json
 if ($productManifest.productId -ne $productId) {
   throw "产品清单标识不匹配：$productManifestPath"
@@ -395,7 +396,7 @@ $existingStatePath = @(
 $existingState = if ($existingStatePath) {
   try { Get-Content -Raw -LiteralPath $existingStatePath | ConvertFrom-Json } catch { $null }
 } else { $null }
-$previousManifestPath = Join-Path $InstallRoot 'installer\product-manifest.json'
+$previousManifestPath = Join-Path $InstallRoot 'packages\codex\installer\product-manifest.json'
 $previousProductManifest = if ((Get-FullPath $sourceRoot) -ne (Get-FullPath $InstallRoot) -and (Test-Path -LiteralPath $previousManifestPath)) {
   try { Get-Content -Raw -LiteralPath $previousManifestPath | ConvertFrom-Json } catch { $null }
 } else { $null }
@@ -441,14 +442,6 @@ if (-not $sourceIsInstallRoot) {
     -PreviousManifest $previousProductManifest `
     -CurrentManifest $productManifest `
     -ApplicationRoot $InstallRoot
-  foreach ($file in $requiredFiles) {
-    Copy-Item -LiteralPath (Join-Path $sourceRoot $file) -Destination (Join-Path $InstallRoot $file) -Force
-  }
-  foreach ($directory in $requiredDirectories) {
-    $destinationDirectory = Join-Path $InstallRoot $directory
-    New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
-    Copy-Item -Path (Join-Path (Join-Path $sourceRoot $directory) '*') -Destination $destinationDirectory -Recurse -Force
-  }
   foreach ($component in @($productManifest.components)) {
     $relativePath = [string]$component.path
     if (-not $relativePath) { continue }
@@ -493,8 +486,8 @@ $pluginRegistered = Install-CodexPlugin `
   -PreviousPluginSelector $previousPluginSelector `
   -PreviousMarketplaceName $previousMarketplaceName
 
-$launcherPath = Join-Path $InstallRoot 'scripts\launch-codex-jira.ps1'
-$lifecyclePath = Join-Path $InstallRoot 'installer\lifecycle.ps1'
+$launcherPath = Join-Path $InstallRoot 'packages\codex\scripts\launch-codex-jira.ps1'
+$lifecyclePath = Join-Path $InstallRoot 'packages\codex\installer\lifecycle.ps1'
 $launcherArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPath`""
 $backgroundArguments = "$launcherArguments -Background"
 $maintenanceArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$lifecyclePath`" -Action Menu -InstallRoot `"$InstallRoot`" -UninstallRegistryPath `"$uninstallRegistryPath`""

@@ -168,11 +168,11 @@ function Test-Health([string]$ExpectedVersion, [int]$TimeoutSeconds = 20) {
 function Start-InstalledRuntime([bool]$RestartDesktop) {
   $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   if ($RestartDesktop) {
-    $launcher = Join-Path $InstallRoot 'scripts\launch-codex-jira.ps1'
+    $launcher = Join-Path $InstallRoot 'packages\codex\scripts\launch-codex-jira.ps1'
     $arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`" -Background"
     Start-Process -FilePath $powerShellPath -ArgumentList $arguments -WindowStyle Hidden | Out-Null
   } else {
-    $starter = Join-Path $InstallRoot 'scripts\start-poc.ps1'
+    $starter = Join-Path $InstallRoot 'packages\codex\scripts\start-poc.ps1'
     $profile = Join-Path $UserDataRoot 'codex-profile'
     $arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$starter`" -PanelPort $panelPort -CdpPort $cdpPort -ProfileDirectory `"$profile`""
     Start-Process -FilePath $powerShellPath -ArgumentList $arguments -WindowStyle Hidden | Out-Null
@@ -180,7 +180,7 @@ function Start-InstalledRuntime([bool]$RestartDesktop) {
 }
 
 function Stop-TrackedRuntimeProcesses([string]$ApplicationRoot) {
-  $runtimeDirectory = Join-Path $ApplicationRoot '.runtime'
+  $runtimeDirectory = Join-Path $ApplicationRoot 'packages\codex\.runtime'
   $snapshot = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
   foreach ($name in @('injector', 'server')) {
     $pidFile = Join-Path $runtimeDirectory "$name.pid"
@@ -235,7 +235,7 @@ function Assert-ManagedInstallation {
 }
 
 function Invoke-InstalledStatus {
-  $lifecycle = Join-Path $InstallRoot 'installer\lifecycle.ps1'
+  $lifecycle = Join-Path $InstallRoot 'packages\codex\installer\lifecycle.ps1'
   $json = @(& $lifecycle -Action Status -InstallRoot $InstallRoot 2>&1) -join "`n"
   try { return $json | ConvertFrom-Json } catch { throw "Installed status was not valid JSON: $json" }
 }
@@ -274,7 +274,7 @@ try {
   New-Item -ItemType Directory -Path $script:stagingRoot -Force | Out-Null
   Expand-Archive -LiteralPath $PackagePath -DestinationPath $script:stagingRoot -Force
   $stagedPackage = Join-Path $script:stagingRoot 'package.json'
-  $stagedLifecycle = Join-Path $script:stagingRoot 'installer\lifecycle.ps1'
+  $stagedLifecycle = Join-Path $script:stagingRoot 'packages\codex\installer\lifecycle.ps1'
   if (-not (Test-Path -LiteralPath $stagedPackage) -or -not (Test-Path -LiteralPath $stagedLifecycle)) {
     throw 'The update package is missing package.json or the lifecycle entry point.'
   }
@@ -283,7 +283,7 @@ try {
 
   Write-UpdateLog "Backing up v$script:previousVersion to $script:backupRoot"
   Write-UpdateState -State 'installing' -Message "Backing up the current v$script:previousVersion installation..." -RestartRequired $true -Phase 'backing_up' -OperationProgress 45 -Extra @{ backupPath = $script:backupRoot }
-  Invoke-Robocopy -Source $InstallRoot -Destination $script:backupRoot -ExtraArguments @('/XD', (Join-Path $InstallRoot 'node_modules'), (Join-Path $InstallRoot '.runtime'))
+  Invoke-Robocopy -Source $InstallRoot -Destination $script:backupRoot -ExtraArguments @('/XD', (Join-Path $InstallRoot 'node_modules'), (Join-Path $InstallRoot 'packages\codex\.runtime'))
   $script:mutationStarted = $true
   Write-UpdateState -State 'installing' -Message "Backup complete; installing v$script:targetVersion..." -RestartRequired $true -Phase 'installing' -OperationProgress 65 -Extra @{ backupPath = $script:backupRoot }
 
@@ -326,7 +326,7 @@ try {
       Write-UpdateState -State 'installing' -Message 'New version validation failed; rolling back...' -ErrorMessage $message -Phase 'rolling_back' -OperationProgress 72
       Stop-TrackedRuntimeProcesses -ApplicationRoot $InstallRoot
       Invoke-Robocopy -Source $script:backupRoot -Destination $InstallRoot -ExtraArguments @('/PURGE')
-      $repair = Join-Path $InstallRoot 'installer\lifecycle.ps1'
+      $repair = Join-Path $InstallRoot 'packages\codex\installer\lifecycle.ps1'
       & $repair -Action Repair -InstallRoot $InstallRoot -LaunchAfterInstall:$false -InstallCodexCli:$false
       Start-InstalledRuntime -RestartDesktop $false
       $rollbackHealthy = Test-Health -ExpectedVersion $script:previousVersion -TimeoutSeconds 30
