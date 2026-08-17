@@ -66,6 +66,8 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.match(updater, /-Phase 'backing_up' -OperationProgress 45/);
   assert.match(updater, /-Phase 'completed' -OperationProgress 100/);
   assert.match(updater, /if \(-not \$RestartCodex -or -not \$codexRestarted\)/);
+  assert.match(updater, /function Start-LocalServiceOnly/);
+  assert.match(updater, /Health verification only needs the local service/);
   assert.match(launcher, /Complete-PendingUpdateAfterRestart/);
   assert.match(launcher, /\$next\.state = 'completed'/);
   assert.match(launcher, /File\]::ReadAllText\(\$updateStatePath, \[System\.Text\.Encoding\]::UTF8\)/);
