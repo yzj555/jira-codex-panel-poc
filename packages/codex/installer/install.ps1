@@ -284,6 +284,102 @@ function Remove-ObsoleteManifestComponents {
   }
 }
 
+function Remove-LegacyInstallation {
+  param([string]$CodexCommand)
+
+  # 旧版（改名前的 jira-codex-panel-poc / JiraCodexPanel）残留清理。
+  # 程序残留直接删除；用户数据迁移到当前数据目录后，整个旧数据目录连同运行时产物一起删除。
+  $legacyInstallRoot = Get-FullPath (Join-Path $env:LOCALAPPDATA 'Programs\JiraCodexPanel')
+  $legacyUserDataRoot = Get-FullPath (Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc')
+  $legacyProductId = 'jira-codex-panel'
+  $legacyPluginSelector = 'jira-codex-assistant@jira-codex-local'
+  $legacyMarketplaceName = 'jira-codex-local'
+  $legacyRegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JiraCodexAssistant'
+  $legacyMaintenanceShortcut = Join-Path $StartMenuDirectory '维护 Jira Codex 助手.lnk'
+  $legacyDataFiles = @(
+    'config.json',
+    'issue-bindings.json',
+    'svn-baselines.json',
+    'svn-reviews.json',
+    'bug-monitor.json',
+    'automation.json'
+  )
+  $legacyDataDirectories = @('attachments')
+
+  # 1. 旧 Codex plugin/marketplace 注册（best-effort，不存在不中断）。
+  if ($CodexCommand) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & $CodexCommand plugin remove $legacyPluginSelector --json 2>$null | Out-Null
+    & $CodexCommand plugin marketplace remove $legacyMarketplaceName --json 2>$null | Out-Null
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  # 2. 旧注册表卸载项。
+  if (Test-Path -LiteralPath $legacyRegistryPath) {
+    Remove-Item -LiteralPath $legacyRegistryPath -Recurse -Force
+    Write-Host "已清理旧版卸载注册项：$legacyRegistryPath"
+  }
+
+  # 3. 指向旧安装目录的旧快捷方式。
+  Remove-LegacyLifecycleShortcut -Path $legacyMaintenanceShortcut -ExpectedRoot $legacyInstallRoot
+
+  # 4. 迁移旧用户数据文件到当前数据目录，然后删除整个旧数据目录（含运行时产物）。
+  $migratedAny = $false
+  if ((Get-FullPath $userDataRoot) -ne $legacyUserDataRoot -and (Test-Path -LiteralPath $legacyUserDataRoot)) {
+    New-Item -ItemType Directory -Path $userDataRoot -Force | Out-Null
+    foreach ($fileName in $legacyDataFiles) {
+      $source = Join-Path $legacyUserDataRoot $fileName
+      $destination = Join-Path $userDataRoot $fileName
+      if ((Test-Path -LiteralPath $source -PathType Leaf) -and -not (Test-Path -LiteralPath $destination)) {
+        Copy-Item -LiteralPath $source -Destination $destination -Force
+        $migratedAny = $true
+      }
+    }
+    foreach ($dirName in $legacyDataDirectories) {
+      $source = Join-Path $legacyUserDataRoot $dirName
+      if (-not (Test-Path -LiteralPath $source -PathType Container)) { continue }
+      New-Item -ItemType Directory -Path (Join-Path $userDataRoot $dirName) -Force | Out-Null
+      foreach ($child in @(Get-ChildItem -LiteralPath $source -Force)) {
+        $destination = Join-Path (Join-Path $userDataRoot $dirName) $child.Name
+        if (-not (Test-Path -LiteralPath $destination)) {
+          Copy-Item -LiteralPath $child.FullName -Destination $destination -Recurse -Force
+          $migratedAny = $true
+        }
+      }
+    }
+    if ($migratedAny) {
+      Write-Host "已把旧版用户数据迁移到：$userDataRoot"
+    }
+
+    # 数据迁移完成后，整个旧数据目录（含 codex-profile、updates 等运行时产物）一并清理。
+    Set-Location $env:TEMP
+    Remove-Item -LiteralPath $legacyUserDataRoot -Recurse -Force
+    Write-Host "已清理旧版数据目录：$legacyUserDataRoot"
+  }
+
+  # 5. 删除旧安装目录（仅当旧安装状态清单能证明其归属旧版）。
+  if (Test-Path -LiteralPath $legacyInstallRoot) {
+    $legacyStatePath = @(
+      (Join-Path $legacyInstallRoot 'install-state.json'),
+      (Join-Path $legacyInstallRoot 'install-metadata.json')
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    $legacyState = if ($legacyStatePath) {
+      try { Get-Content -Raw -LiteralPath $legacyStatePath | ConvertFrom-Json } catch { $null }
+    } else { $null }
+    $legacyOwned = $legacyState -and [string]$legacyState.productId -eq $legacyProductId -and
+      (Get-FullPath ([string]$legacyState.installRoot)).TrimEnd('\') -eq $legacyInstallRoot.TrimEnd('\')
+    if ($legacyOwned) {
+      Stop-TrackedRuntimeProcesses -ApplicationRoot $legacyInstallRoot
+      Set-Location $env:TEMP
+      Remove-Item -LiteralPath $legacyInstallRoot -Recurse -Force
+      Write-Host "已清理旧版安装目录：$legacyInstallRoot"
+    } else {
+      Write-Warning "旧安装目录缺少可验证的旧版状态清单，已保留：$legacyInstallRoot"
+    }
+  }
+}
+
 function Install-CodexPlugin {
   param(
     [string]$CodexCommand,
@@ -441,6 +537,8 @@ Stop-TrackedRuntimeProcesses -ApplicationRoot $InstallRoot
 if ((Get-FullPath $sourceRoot) -ne (Get-FullPath $InstallRoot)) {
   Stop-TrackedRuntimeProcesses -ApplicationRoot $sourceRoot
 }
+
+Remove-LegacyInstallation -CodexCommand $codexCliPath
 
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 $sourceIsInstallRoot = (Get-FullPath $sourceRoot).TrimEnd('\') -eq (Get-FullPath $InstallRoot).TrimEnd('\')

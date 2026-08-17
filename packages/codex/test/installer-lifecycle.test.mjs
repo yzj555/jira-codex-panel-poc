@@ -44,6 +44,12 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.match(install, /plugin add \$pluginSelector/);
   assert.match(install, /plugin add \$pluginSelector --json \| Out-Null/);
   assert.match(install, /function Remove-ObsoleteManifestComponents/);
+  assert.match(install, /function Remove-LegacyInstallation/);
+  assert.match(install, /Remove-LegacyInstallation -CodexCommand \$codexCliPath/);
+  assert.match(install, /jira-codex-assistant@jira-codex-local/);
+  assert.match(install, /Programs\\JiraCodexPanel/);
+  assert.match(install, /已把旧版用户数据迁移到/);
+  assert.match(install, /旧安装目录缺少可验证的旧版状态清单/);
   assert.match(install, /未找到 Codex CLI，无法注册核心 Codex Plugin/);
   assert.match(install, /未能核验核心 Plugin\/Marketplace 注册/);
   assert.match(install, /Windows\\CurrentVersion\\Uninstall\\JiraWorkbenchAssistant/);
