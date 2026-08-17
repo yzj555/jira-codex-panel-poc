@@ -1,0 +1,11 @@
+{
+  "name": "@jira-codex/core",
+  "version": "0.31.8",
+  "private": true,
+  "type": "module",
+  "description": "Host-agnostic Jira/JXL/SVN business core shared by the Codex shell and the DSH shell.",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  }
+}

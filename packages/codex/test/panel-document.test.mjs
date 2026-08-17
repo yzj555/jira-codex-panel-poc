@@ -31,8 +31,8 @@ test("实际完整工作台脚本可以在同一 srcdoc 作用域中编译", asy
     readFile(new URL("../public/index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
     readFile(new URL("../public/app.js", import.meta.url), "utf8"),
-    readFile(new URL("../public/prompt-builder.js", import.meta.url), "utf8"),
-    readFile(new URL("../public/issue-views.js", import.meta.url), "utf8")
+    readFile(new URL("../../core/public/prompt-builder.js", import.meta.url), "utf8"),
+    readFile(new URL("../../core/public/issue-views.js", import.meta.url), "utf8")
   ]);
   const document = createEmbeddedPanelDocument({
     html,
@@ -49,7 +49,7 @@ test("实际完整工作台脚本可以在同一 srcdoc 作用域中编译", asy
 });
 
 test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话与 SVN", async () => {
-  const ui = await readFile(new URL("../mcp/ui/task-board.html", import.meta.url), "utf8");
+  const ui = await readFile(new URL("../../core/mcp/ui/task-board.html", import.meta.url), "utf8");
   for (const label of ["待我处理", "Jira Sheets", "处理历史", "状态流转", "Codex 会话", "SVN 审核与提交"]) {
     assert.match(ui, new RegExp(label));
   }
@@ -120,7 +120,7 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
 });
 
 test("SVN 文件行区分单击预览与双击 TortoiseSVN，且交互控件不会误触发", async () => {
-  const ui = await readFile(new URL("../mcp/ui/task-board.html", import.meta.url), "utf8");
+  const ui = await readFile(new URL("../../core/mcp/ui/task-board.html", import.meta.url), "utf8");
   const start = ui.indexOf("function createSvnFileInteraction");
   const end = ui.indexOf("/* SVN_FILE_INTERACTION_END */");
   assert.ok(start >= 0 && end > start);
@@ -190,7 +190,7 @@ test("设置面板保留七个独立分组和数据同步配置", async () => {
   const [html, styles, configSource, appSource] = await Promise.all([
     readFile(new URL("../public/index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
-    readFile(new URL("../config-store.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../../core/config-store.mjs", import.meta.url), "utf8"),
     readFile(new URL("../public/app.js", import.meta.url), "utf8")
   ]);
   for (const section of ["jira", "codex", "sync", "update", "automation", "templates", "advanced"]) {
@@ -226,7 +226,7 @@ test("桌面注入以完整 public 工作台为主 UI，官方 MCP Apps 仍作�
     readFile(new URL("../lib/codex-application-commands.mjs", import.meta.url), "utf8"),
     readFile(new URL("../injector.mjs", import.meta.url), "utf8"),
     readFile(new URL("../plugins/jira-codex-assistant/.codex-plugin/plugin.json", import.meta.url), "utf8"),
-    readFile(new URL("../mcp/ui/task-board.html", import.meta.url), "utf8")
+    readFile(new URL("../../core/mcp/ui/task-board.html", import.meta.url), "utf8")
   ]);
   const stripExports = (source) => source.replace(/\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g, "");
   const compiled = client
@@ -258,8 +258,8 @@ test("桌面注入以完整 public 工作台为主 UI，官方 MCP Apps 仍作�
   assert.match(injector, /readFile\(join\(root, "public", "index\.html"\), "utf8"\)/);
   assert.match(injector, /readFile\(join\(root, "public", "styles\.css"\), "utf8"\)/);
   assert.match(injector, /readFile\(join\(root, "public", "app\.js"\), "utf8"\)/);
-  assert.match(injector, /readFile\(join\(root, "public", "prompt-builder\.js"\), "utf8"\)/);
-  assert.match(injector, /readFile\(join\(root, "public", "issue-views\.js"\), "utf8"\)/);
+  assert.match(injector, /readFile\(corePromptBuilderPath, "utf8"\)/);
+  assert.match(injector, /readFile\(coreIssueViewsPath, "utf8"\)/);
   assert.match(injector, /const panelDocument = createEmbeddedPanelDocument/);
   assert.match(injector, /__JIRA_CODEX_POC_PANEL_DOCUMENT__/);
   assert.ok((injector.match(/window\.__JIRA_CODEX_BRIDGE_TOKEN__\s*=/g) || []).length >= 2,
@@ -273,10 +273,10 @@ test("桌面注入以完整 public 工作台为主 UI，官方 MCP Apps 仍作�
 test("服务端持有监控、绑定、项目目录与 SVN 新流程的数据源", async () => {
   const [server, bindings, conversations, monitor, svn] = await Promise.all([
     readFile(new URL("../server.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../lib/issue-binding-store.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../../core/lib/issue-binding-store.mjs", import.meta.url), "utf8"),
     readFile(new URL("../lib/codex-conversation-service.mjs", import.meta.url), "utf8"),
     readFile(new URL("../lib/bug-monitor-service.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../lib/svn-review-manager.mjs", import.meta.url), "utf8")
+    readFile(new URL("../../core/lib/svn-review-manager.mjs", import.meta.url), "utf8")
   ]);
   assert.match(bindings, /legacyImportCompletedAt/);
   assert.match(bindings, /ISSUE_BINDINGS_REVISION_CONFLICT/);

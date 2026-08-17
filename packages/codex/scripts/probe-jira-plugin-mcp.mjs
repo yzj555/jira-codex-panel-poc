@@ -32,7 +32,7 @@ import {
   UPDATE_DOWNLOAD_TOOL,
   UPDATE_RESTART_TOOL,
   UPDATE_STATUS_TOOL
-} from "../mcp/jira-task-board-mcp.mjs";
+} from "@jira-codex/core/mcp/jira-task-board-mcp.mjs";
 
 const endpoint = new URL(process.env.JIRA_CODEX_MCP_URL || "http://127.0.0.1:47823/mcp");
 const client = new Client({ name: "jira-codex-plugin-probe", version: "2.0.0" });

@@ -5,7 +5,7 @@ import {
   DEFAULT_BUG_MESSAGE_TEMPLATE,
   buildIssuePrompt,
   isBugIssue
-} from "../public/prompt-builder.js";
+} from "@jira-codex/core/public/prompt-builder.js";
 
 const MAX_SEEN_ISSUES = 2_000;
 const MAX_QUEUE_ITEMS = 500;

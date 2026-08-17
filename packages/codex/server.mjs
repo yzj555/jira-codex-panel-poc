@@ -10,14 +10,14 @@ import {
   ConfigurationError,
   buildBoardQueries,
   createConfigStore
-} from "./config-store.mjs";
-import { JiraApiError, createJiraClient } from "./jira-client.mjs";
-import { createJxlClient } from "./jxl-client.mjs";
+} from "@jira-codex/core/config-store.mjs";
+import { JiraApiError, createJiraClient } from "@jira-codex/core/jira-client.mjs";
+import { createJxlClient } from "@jira-codex/core/jxl-client.mjs";
 import {
   findCachedAttachment,
   materializeAttachment,
   openLocalAttachment
-} from "./lib/attachment-cache.mjs";
+} from "@jira-codex/core/lib/attachment-cache.mjs";
 import { createAutomationManager } from "./lib/automation-manager.mjs";
 import { createBugMonitorService } from "./lib/bug-monitor-service.mjs";
 import { createDesktopCommandBroker, DesktopCommandError } from "./lib/desktop-command-broker.mjs";
@@ -37,23 +37,26 @@ import {
   createIssueBindingStore,
   IssueBindingStoreError,
   normalizeBindingWorkspace
-} from "./lib/issue-binding-store.mjs";
-import { createJiraWorkbenchService } from "./lib/jira-workbench-service.mjs";
+} from "@jira-codex/core/lib/issue-binding-store.mjs";
+import { createJiraWorkbenchService } from "@jira-codex/core/lib/jira-workbench-service.mjs";
 import {
   buildSvnCommitMessage,
   createSvnReviewManager,
   SvnReviewError
-} from "./lib/svn-review-manager.mjs";
-import { createSvnWorkbenchService } from "./lib/svn-workbench-service.mjs";
-import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "./mcp/jira-task-board-mcp.mjs";
-import { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
-import { attachmentCanOpenLocally } from "./public/issue-views.js";
+} from "@jira-codex/core/lib/svn-review-manager.mjs";
+import { createSvnWorkbenchService } from "@jira-codex/core/lib/svn-workbench-service.mjs";
+import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "@jira-codex/core/mcp/jira-task-board-mcp.mjs";
+import { buildIssuePrompt, isBugIssue } from "@jira-codex/core/public/prompt-builder.js";
+import { attachmentCanOpenLocally } from "@jira-codex/core/public/issue-views.js";
 
 const VERSION = "0.31.8";
 const host = process.env.JIRA_POC_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_POC_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(root, "public");
+const corePromptBuilderFile = fileURLToPath(import.meta.resolve("@jira-codex/core/public/prompt-builder.js"));
+const coreIssueViewsFile = fileURLToPath(import.meta.resolve("@jira-codex/core/public/issue-views.js"));
+const coreMcpUiFile = fileURLToPath(import.meta.resolve("@jira-codex/core/mcp/ui/task-board.html"));
 const configStore = createConfigStore();
 const updateChecker = createGitHubUpdateChecker({
   currentVersion: VERSION,
@@ -736,10 +739,10 @@ const staticFiles = new Map([
   ["/", [join(publicDir, "index.html"), "text/html; charset=utf-8"]],
   ["/index.html", [join(publicDir, "index.html"), "text/html; charset=utf-8"]],
   ["/app.js", [join(publicDir, "app.js"), "text/javascript; charset=utf-8"]],
-  ["/prompt-builder.js", [join(publicDir, "prompt-builder.js"), "text/javascript; charset=utf-8"]],
-  ["/issue-views.js", [join(publicDir, "issue-views.js"), "text/javascript; charset=utf-8"]],
+  ["/prompt-builder.js", [corePromptBuilderFile, "text/javascript; charset=utf-8"]],
+  ["/issue-views.js", [coreIssueViewsFile, "text/javascript; charset=utf-8"]],
   ["/styles.css", [join(publicDir, "styles.css"), "text/css; charset=utf-8"]],
-  ["/mcp-app.html", [join(root, "mcp", "ui", "task-board.html"), "text/html; charset=utf-8"]]
+  ["/mcp-app.html", [coreMcpUiFile, "text/html; charset=utf-8"]]
 ]);
 
 function json(response, statusCode, payload) {

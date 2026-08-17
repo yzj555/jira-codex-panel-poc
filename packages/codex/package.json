@@ -1,0 +1,26 @@
+{
+  "name": "jira-codex-panel-codex",
+  "version": "0.31.8",
+  "private": true,
+  "type": "module",
+  "description": "Codex Desktop shell: App Server adapter, CDP injection, installer, and official Plugin/MCP Apps UI.",
+  "scripts": {
+    "server": "node server.mjs",
+    "inject": "node injector.mjs --watch",
+    "inject:once": "node injector.mjs --once",
+    "codex:probe": "node scripts/probe-codex-app-server.mjs",
+    "codex:probe:http": "node scripts/probe-panel-app-server.mjs",
+    "mcp:probe": "node scripts/probe-jira-plugin-mcp.mjs",
+    "capture": "node scripts/capture-screenshot.mjs",
+    "version:set": "node scripts/set-version.mjs",
+    "release:verify": "node scripts/verify-release-version.mjs",
+    "release:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@jira-codex/core": "*",
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  }
+}

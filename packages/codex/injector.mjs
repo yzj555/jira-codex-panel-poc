@@ -6,6 +6,8 @@ import { CdpClient, listPageTargets } from "./lib/cdp.mjs";
 import { createEmbeddedPanelDocument } from "./lib/panel-document.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
+const corePromptBuilderPath = fileURLToPath(import.meta.resolve("@jira-codex/core/public/prompt-builder.js"));
+const coreIssueViewsPath = fileURLToPath(import.meta.resolve("@jira-codex/core/public/issue-views.js"));
 const args = new Set(process.argv.slice(2));
 const watch = !args.has("--once");
 const cdpPort = Number(process.env.CODEX_CDP_PORT || 47824);
@@ -29,8 +31,8 @@ const [
   readFile(join(root, "public", "index.html"), "utf8"),
   readFile(join(root, "public", "styles.css"), "utf8"),
   readFile(join(root, "public", "app.js"), "utf8"),
-  readFile(join(root, "public", "prompt-builder.js"), "utf8"),
-  readFile(join(root, "public", "issue-views.js"), "utf8")
+  readFile(corePromptBuilderPath, "utf8"),
+  readFile(coreIssueViewsPath, "utf8")
 ]);
 const navigationHelpers = navigationSource.replace(
   /\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g,
