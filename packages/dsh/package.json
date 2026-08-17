@@ -1,6 +1,6 @@
 {
   "name": "jira-workbench-dsh",
-  "version": "0.31.8",
+  "version": "0.32.0",
   "private": true,
   "type": "module",
   "description": "DeepSeek Harness adapter: consumes the shared Jira/SVN core through dsh-mcp-client.",

@@ -8,12 +8,13 @@ const root = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const version = normalizeVersion(process.argv[2]);
 if (!version) throw new Error("Usage: node packages/codex/scripts/set-version.mjs <semver>");
 
-// 根 package.json / package-lock.json，以及两个 workspace 包的 package.json 同步版本。
+// 根 package.json / package-lock.json，以及各 workspace 包的 package.json 同步版本。
 for (const relative of [
   "package.json",
   "package-lock.json",
   "packages/core/package.json",
-  "packages/codex/package.json"
+  "packages/codex/package.json",
+  "packages/dsh/package.json"
 ]) {
   const path = join(root, relative);
   const value = JSON.parse(await readFile(path, "utf8"));
