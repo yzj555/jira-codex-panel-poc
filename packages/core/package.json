@@ -1,6 +1,6 @@
 {
   "name": "@jira-workbench/core",
-  "version": "0.32.1",
+  "version": "0.32.2",
   "private": true,
   "type": "module",
   "description": "Host-agnostic Jira/JXL/SVN business core shared by the Codex adapter and the DSH adapter.",
