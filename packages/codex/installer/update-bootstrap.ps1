@@ -179,6 +179,24 @@ function Start-InstalledRuntime([bool]$RestartDesktop) {
   }
 }
 
+function Start-LocalServiceOnly {
+  # Health verification only needs the local service; it must not depend on
+  # starting or restarting the Codex desktop (which can legitimately be running).
+  $projectRoot = Join-Path $InstallRoot 'packages\codex'
+  $node = (Get-Command node -ErrorAction Stop).Source
+  $serverScript = Join-Path $projectRoot 'server.mjs'
+  $runtimeDirectory = Join-Path $projectRoot '.runtime'
+  New-Item -ItemType Directory -Path $runtimeDirectory -Force | Out-Null
+  $previousPanelPort = $env:JIRA_WORKBENCH_PORT
+  try {
+    $env:JIRA_WORKBENCH_PORT = [string]$panelPort
+    $server = Start-Process -FilePath $node -ArgumentList @($serverScript) -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $runtimeDirectory 'server.stdout.log') -RedirectStandardError (Join-Path $runtimeDirectory 'server.stderr.log') -PassThru
+  } finally {
+    $env:JIRA_WORKBENCH_PORT = $previousPanelPort
+  }
+  Set-Content -LiteralPath (Join-Path $runtimeDirectory 'server.pid') -Value $server.Id
+}
+
 function Stop-TrackedRuntimeProcesses([string]$ApplicationRoot) {
   $runtimeDirectory = Join-Path $ApplicationRoot 'packages\codex\.runtime'
   $snapshot = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
@@ -297,10 +315,10 @@ try {
       $codexRestarted = $true
     } else {
       Write-UpdateLog 'Codex did not exit before the timeout; it will not be force-terminated.'
-      Start-InstalledRuntime -RestartDesktop $false
+      Start-LocalServiceOnly
     }
   } else {
-    Start-InstalledRuntime -RestartDesktop $false
+    Start-LocalServiceOnly
   }
 
   Write-UpdateState -State 'installing' -Message "Verifying the v$script:targetVersion service and installation..." -RestartRequired $true -Phase 'verifying' -OperationProgress 93 -Extra @{ backupPath = $script:backupRoot }
@@ -328,7 +346,7 @@ try {
       Invoke-Robocopy -Source $script:backupRoot -Destination $InstallRoot -ExtraArguments @('/PURGE')
       $repair = Join-Path $InstallRoot 'packages\codex\installer\lifecycle.ps1'
       & $repair -Action Repair -InstallRoot $InstallRoot -LaunchAfterInstall:$false -InstallCodexCli:$false
-      Start-InstalledRuntime -RestartDesktop $false
+      Start-LocalServiceOnly
       $rollbackHealthy = Test-Health -ExpectedVersion $script:previousVersion -TimeoutSeconds 30
       Write-UpdateState -State 'rolled_back' -Message "Update failed and was rolled back to v$script:previousVersion." -ErrorMessage $message -RestartRequired $RestartCodex.IsPresent -Phase 'failed' -OperationProgress 100 -Extra @{ backupPath = $script:backupRoot; rollbackHealthy = $rollbackHealthy }
       Write-UpdateLog "Rollback completed. Healthy: $rollbackHealthy"
@@ -338,7 +356,7 @@ try {
       Write-UpdateState -State 'failed' -Message 'Update and automatic rollback failed. Run Repair from the maintenance assistant.' -ErrorMessage "$message; rollback error: $rollbackError" -RestartRequired $true -Phase 'failed' -OperationProgress 100 -Extra @{ backupPath = $script:backupRoot }
     }
   } else {
-    try { Start-InstalledRuntime -RestartDesktop $false } catch { Write-UpdateLog "Unable to restart the existing local service after the failed update: $($_.Exception.Message)" }
+    try { Start-LocalServiceOnly } catch { Write-UpdateLog "Unable to restart the existing local service after the failed update: $($_.Exception.Message)" }
     Write-UpdateState -State 'failed' -Message 'No files were replaced; the existing installation is unchanged.' -ErrorMessage $message -RestartRequired $false -Phase 'failed' -OperationProgress 100
   }
   exit 1
