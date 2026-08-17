@@ -245,7 +245,7 @@ test("lifecycle status verifies live Codex plugin and marketplace registration",
       }]
     });
     const marketplaceJson = JSON.stringify({
-      marketplaces: [{ name: "jira-codex-local", root: installRoot }]
+      marketplaces: [{ name: "jira-codex-local", root: join(installRoot, "packages", "codex") }]
     });
     await mkdir(join(installRoot, "packages", "codex", "installer"), { recursive: true });
     await mkdir(join(installRoot, "packages", "codex", "plugins", "jira-codex-assistant"), { recursive: true });

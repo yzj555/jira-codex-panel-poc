@@ -41,18 +41,17 @@ try {
   New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
   New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
-  # Root files; install.cmd is copied from the codex shell to the release root.
+  # Root files. install.cmd stays in packages/codex and is the install entry there.
   foreach ($relative in @('.gitattributes', '.gitignore', 'README.md', 'package.json', 'package-lock.json')) {
     Copy-Item -LiteralPath (Join-Path $root $relative) -Destination (Join-Path $stage $relative) -Force
   }
-  Copy-Item -LiteralPath (Join-Path $root 'packages\codex\install.cmd') -Destination (Join-Path $stage 'install.cmd') -Force
 
   # Workspace packages: copy core and codex trees, excluding tests and dev runtime dirs.
   Copy-ReleaseTree -Source (Join-Path $root 'packages\core') -Destination (Join-Path $stage 'packages\core') -ExcludeDirectory @('test')
   Copy-ReleaseTree -Source (Join-Path $root 'packages\codex') -Destination (Join-Path $stage 'packages\codex') -ExcludeDirectory @('test', '.runtime', '.cdp-profile')
 
   foreach ($required in @(
-    'install.cmd',
+    'packages\codex\install.cmd',
     'package.json',
     'package-lock.json',
     'packages\codex\installer\update-bootstrap.ps1',

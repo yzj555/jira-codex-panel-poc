@@ -22,7 +22,7 @@
     {
       "id": "install-entry",
       "required": true,
-      "path": "install.cmd"
+      "path": "packages/codex/install.cmd"
     },
     {
       "id": "core-package",

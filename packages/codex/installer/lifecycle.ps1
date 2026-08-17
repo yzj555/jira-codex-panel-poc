@@ -159,7 +159,7 @@ function Get-LifecycleStatus {
     $UninstallRegistryPath
   }
   $registryPresent = [bool]($registeredPath -and (Test-Path -LiteralPath $registeredPath))
-  $codexRegistration = Get-CodexPluginRegistrationStatus -InstalledState $installedState -ApplicationRoot $InstallRoot
+  $codexRegistration = Get-CodexPluginRegistrationStatus -InstalledState $installedState -ApplicationRoot (Join-Path $InstallRoot 'packages\codex')
 
   $status['installed'] = $true
   $status['healthy'] = $manifestAvailable -and $missingRequired.Count -eq 0 `

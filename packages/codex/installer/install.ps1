@@ -396,8 +396,11 @@ $existingStatePath = @(
 $existingState = if ($existingStatePath) {
   try { Get-Content -Raw -LiteralPath $existingStatePath | ConvertFrom-Json } catch { $null }
 } else { $null }
-$previousManifestPath = Join-Path $InstallRoot 'packages\codex\installer\product-manifest.json'
-$previousProductManifest = if ((Get-FullPath $sourceRoot) -ne (Get-FullPath $InstallRoot) -and (Test-Path -LiteralPath $previousManifestPath)) {
+$previousManifestPath = @(
+  (Join-Path $InstallRoot 'installer\product-manifest.json'),
+  (Join-Path $InstallRoot 'packages\codex\installer\product-manifest.json')
+) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+$previousProductManifest = if ((Get-FullPath $sourceRoot) -ne (Get-FullPath $InstallRoot) -and $previousManifestPath) {
   try { Get-Content -Raw -LiteralPath $previousManifestPath | ConvertFrom-Json } catch { $null }
 } else { $null }
 if ($Operation -eq 'Auto') { $Operation = if ($existingState) { 'Update' } else { 'Install' } }
@@ -470,11 +473,16 @@ if (-not $sourceIsInstallRoot) {
 Write-Host '正在安装本地服务运行依赖……'
 Push-Location $InstallRoot
 try {
-  & $npmCommand.Source ci --omit=dev --no-audit --no-fund
-  if ($LASTEXITCODE -ne 0) {
-    throw "本地服务依赖安装失败（npm 退出码 $LASTEXITCODE）。"
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  & $npmCommand.Source ci --omit=dev --no-audit --no-fund 2>&1 | ForEach-Object { Write-Host $_ }
+  $npmExitCode = $LASTEXITCODE
+  $ErrorActionPreference = $previousErrorActionPreference
+  if ($npmExitCode -ne 0) {
+    throw "本地服务依赖安装失败（npm 退出码 $npmExitCode）。"
   }
 } finally {
+  $ErrorActionPreference = 'Stop'
   Pop-Location
 }
 
@@ -482,7 +490,7 @@ $previousPluginSelector = if ($existingState -and $existingState.codexPluginSele
 $previousMarketplaceName = if ($existingState -and $existingState.codexPluginMarketplace) { [string]$existingState.codexPluginMarketplace } else { '' }
 $pluginRegistered = Install-CodexPlugin `
   -CodexCommand $codexCliPath `
-  -MarketplaceRoot $InstallRoot `
+  -MarketplaceRoot (Join-Path $InstallRoot 'packages\codex') `
   -PreviousPluginSelector $previousPluginSelector `
   -PreviousMarketplaceName $previousMarketplaceName
 
