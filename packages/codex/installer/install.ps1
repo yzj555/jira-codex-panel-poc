@@ -297,12 +297,16 @@ function Install-CodexPlugin {
   }
 
   # Update/repair must not leave a cache snapshot pointing at an older install.
+  # Removal is best-effort: a missing plugin/marketplace must not abort the install.
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
   foreach ($selector in @($pluginSelector, $PreviousPluginSelector) | Where-Object { $_ } | Select-Object -Unique) {
     & $CodexCommand plugin remove $selector --json 2>$null | Out-Null
   }
   foreach ($marketplace in @($pluginMarketplaceName, $PreviousMarketplaceName) | Where-Object { $_ } | Select-Object -Unique) {
     & $CodexCommand plugin marketplace remove $marketplace --json 2>$null | Out-Null
   }
+  $ErrorActionPreference = $previousErrorActionPreference
 
   & $CodexCommand plugin marketplace add $MarketplaceRoot --json | Out-Null
   if ($LASTEXITCODE -ne 0) {
@@ -364,7 +368,7 @@ foreach ($relativePath in @($requiredFiles + $requiredDirectories)) {
   }
 }
 $productManifestPath = Join-Path $sourceRoot 'packages\codex\installer\product-manifest.json'
-$productManifest = Get-Content -Raw -LiteralPath $productManifestPath | ConvertFrom-Json
+$productManifest = Get-Content -Raw -LiteralPath $productManifestPath -Encoding UTF8 | ConvertFrom-Json
 if ($productManifest.productId -ne $productId) {
   throw "产品清单标识不匹配：$productManifestPath"
 }

@@ -134,7 +134,7 @@ function Get-LifecycleStatus {
   $installedManifestPath = Join-Path $InstallRoot 'packages\codex\installer\product-manifest.json'
   if (Test-Path -LiteralPath $installedManifestPath) {
     try {
-      $installedManifest = Get-Content -Raw -LiteralPath $installedManifestPath | ConvertFrom-Json
+      $installedManifest = Get-Content -Raw -LiteralPath $installedManifestPath -Encoding UTF8 | ConvertFrom-Json
       $componentDefinitions = @($installedManifest.components)
       $manifestAvailable = $true
     } catch {}
