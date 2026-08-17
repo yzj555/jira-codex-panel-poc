@@ -49,7 +49,7 @@ import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "@ji
 import { buildIssuePrompt, isBugIssue } from "@jira-workbench/core/public/prompt-builder.js";
 import { attachmentCanOpenLocally } from "@jira-workbench/core/public/issue-views.js";
 
-const VERSION = "0.32.0";
+const VERSION = "0.32.1";
 const host = process.env.JIRA_WORKBENCH_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_WORKBENCH_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));

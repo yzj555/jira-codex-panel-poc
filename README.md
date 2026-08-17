@@ -1,6 +1,6 @@
 # Jira 工作台
 
-> 当前版本：`0.32.0`<br>
+> 当前版本：`0.32.1`<br>
 > 运行环境：Windows Codex Desktop + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 
