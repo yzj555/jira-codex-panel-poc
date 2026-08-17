@@ -8,17 +8,25 @@ Jira Codex 任务面板把 Jira 待办、JXL Sheets 和 Codex 对话连接到同
 
 这不是部署在 Jira 服务器上的插件。它通过本机服务读取 Jira，并只在用户明确确认时提交状态流转或已审核的 SVN 改动。任务首页、历史、Sheets、详情、状态流转、现有会话关联和 SVN 审核提交已经提供官方 Plugin + MCP Apps UI；侧栏入口、会话浮窗和 Codex Desktop 窗口跳转仍由最小兼容层承载，适合个人工作环境使用。
 
-## 仓库结构（单仓三包）
+项目采用"固定业务核 + 多宿主适配"的架构：Jira/JXL/SVN 的全部业务规则沉淀在宿主无关的 `@jira-codex/core`，Codex 与 DeepSeek Harness 只是当前两个接入方式，各自以自己的原生扩展机制适配（详见[仓库结构](#仓库结构核心--宿主适配层)）。
 
-代码按宿主归属拆分为三个 npm workspace 包，业务核与两个宿主壳分离：
+## 仓库结构（核心 + 宿主适配层）
 
-| 包 | 目录 | 职责 |
+代码分为固定业务核与按宿主实现的适配层。业务核稳定不变，负责 Jira/JXL/SVN 的全部规则与状态；每个宿主工具以自己的方式接入这份核，互不影响，新增宿主时只增加一个新的适配包，不改动业务核。
+
+| 包 | 目录 | 角色 |
 | --- | --- | --- |
-| `@jira-codex/core` | `packages/core/` | 宿主无关的 Jira/JXL/SVN 业务核：客户端、配置存储、工作台服务、SVN 审核状态机、MCP 工具与独立服务入口 |
-| `jira-codex-panel-codex` | `packages/codex/` | Codex Desktop 壳：App Server 适配、CDP 注入、installer、官方 Plugin/MCP Apps UI、skills |
-| `jira-codex-panel-dsh` | `packages/dsh/` | DeepSeek Harness 壳：通过 `dsh-mcp-client` bundle 消费同一套 core（见 `packages/dsh/README.md`） |
+| `@jira-codex/core` | `packages/core/` | 固定业务核：客户端、配置存储、工作台服务、SVN 审核状态机、MCP 工具与独立服务入口；不 import 任何宿主的文件，宿主能力全部通过构造参数注入 |
+| `jira-codex-panel-codex` | `packages/codex/` | Codex 适配层：以 App Server 适配 + CDP UI 注入 + 官方 Plugin/MCP Apps UI 的方式接入，含 installer 与 skills |
+| `jira-codex-panel-dsh` | `packages/dsh/` | DeepSeek Harness 适配层：以插件 bundle（`dsh-mcp-client`）的方式接入（见 `packages/dsh/README.md`） |
 
-core 不 import 任何 Codex 壳文件；Codex 壳通过包名 `@jira-codex/core/...` 引用业务核，DSH 壳通过独立 MCP 服务接入同一份数据文件（`%LOCALAPPDATA%\jira-codex-panel-poc\`）。三个包共享仓库根 `package.json` 的单一版本号。
+适配层只负责"把核接到某个宿主"，不承载业务规则：
+
+- **Codex** 用 UI 注入（侧栏工作台、会话浮窗）+ 官方 Plugin/MCP Apps 承载 Jira/SVN 能力。
+- **DeepSeek Harness** 用插件方式（cordis bundle patch）挂载 MCP 客户端接入同一份核。
+- **其他工具**按各自的原生扩展机制接入：有 MCP 能力的直接连独立服务入口，有插件体系的写对应适配包，业务核与数据文件（`%LOCALAPPDATA%\jira-codex-panel-poc\`）保持不变。
+
+当前仓库只有一个 npm workspace 根（单一版本号），下面放一个 core 包和若干适配包；新增宿主适配时在 `packages/` 下加包即可。
 
 ## 快速开始
 
@@ -384,7 +392,7 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 ### 发布 GitHub Release
 
-维护者先把版本改动合入 `main`，然后在 `packages\codex` 目录执行 `npm run version:set -- <版本>`，确认根 `package.json`、锁文件、两个 workspace 包的 `package.json`、Codex 壳服务端、注入客户端和仓库根 README 已同步。仓库根 `npm test` 与 `packages\codex` 的 `npm run release:verify -- v<版本>` 通过后，提交并推送 `main`，再创建并推送同名 tag：
+维护者先把版本改动合入 `main`，然后在 `packages\codex` 目录执行 `npm run version:set -- <版本>`，确认根 `package.json`、锁文件、各 workspace 包的 `package.json`、Codex 适配层的服务端、注入客户端和仓库根 README 已同步。仓库根 `npm test` 与 `packages\codex` 的 `npm run release:verify -- v<版本>` 通过后，提交并推送 `main`，再创建并推送同名 tag：
 
 ~~~powershell
 git tag -a v0.31.3 -m "发布 v0.31.3"
@@ -444,7 +452,7 @@ cd jira-codex-panel-poc\packages\codex
 powershell -ExecutionPolicy Bypass -File .\scripts\start-poc.ps1
 ~~~
 
-开发模式使用 Codex 壳目录下的 `.cdp-profile`（`packages\codex\.cdp-profile`），不会复用安装版的 Codex 隔离目录。
+开发模式使用 Codex 适配层目录下的 `.cdp-profile`（`packages\codex\.cdp-profile`），不会复用安装版的 Codex 隔离目录。
 
 ### 停止
 
@@ -496,7 +504,7 @@ flowchart TB
         Server -.-> LegacySessions["迁移前会话日志<br/>仅用于旧记录恢复"]
     end
 
-    subgraph CodexShell["packages/codex — Codex Desktop 壳"]
+    subgraph CodexShell["packages/codex — Codex 适配层"]
         Codex["Windows Codex Desktop"] --> Plugin["官方 Plugin + MCP Apps UI<br/>标准入口 / SVN 能力组件"]
         Plugin <-->|Streamable HTTP| Server
         Server <-->|官方 JSON-RPC / stdio| AppServer["Codex App Server<br/>会话、Skill、turn、结构化输出"]
@@ -513,7 +521,7 @@ flowchart TB
         Commands <-->|当前桌面会话协议适配| Codex
     end
 
-    subgraph DSHShell["packages/dsh — DeepSeek Harness 壳"]
+    subgraph DSHShell["packages/dsh — DeepSeek Harness 适配层"]
         DSH["DeepSeek Harness<br/>dsh-mcp-client bundle"]
         DSH <-->|Streamable HTTP| Server
     end
@@ -559,7 +567,7 @@ App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.
 | `packages/core/lib/task-board-loader.mjs` | 任务看板数据装配（查询、协同字段解析、Filter 校验、附件物化） |
 | `packages/core/lib/null-review-audit-provider.mjs` | 无宿主审查能力时的降级 reader |
 | `packages/core/mcp/` | MCP 工具、Streamable HTTP 端点和 MCP Apps 工作台 UI |
-| `packages/codex/server.mjs` | Codex 壳本地 Jira/SVN/MCP/桌面命令服务，仅监听 `127.0.0.1` |
+| `packages/codex/server.mjs` | Codex 适配层的本地 Jira/SVN/MCP/桌面命令服务，仅监听 `127.0.0.1` |
 | `packages/codex/injector.mjs` | 编译完整桌面工作台文档并安装最小 CDP UI 宿主 |
 | `packages/codex/inject/client.js` | 实现侧栏工作台容器、当前会话 Jira 浮窗、SVN MCP Apps 弹层、桌面跳转和当前窗口 App Server 命令适配 |
 | `packages/codex/public/` | Codex 内的完整桌面任务工作台及面板内设置；业务数据全部来自共享服务 |
