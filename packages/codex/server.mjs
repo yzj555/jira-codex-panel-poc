@@ -226,7 +226,10 @@ const bugMonitor = createBugMonitorService({
 
 const updateManager = createUpdateManager({
   currentVersion: VERSION,
-  installRoot: root,
+  installRoot: dirname(root),
+  updaterSource: join(root, "installer", "update-bootstrap.ps1"),
+  updaterLauncherSource: join(root, "scripts", "update-launcher.mjs"),
+  restartSource: join(root, "scripts", "restart-codex-after-update.ps1"),
   userDataRoot: dirname(configStore.configFile),
   onInstallHandoff: () => scheduleUpdateShutdown(),
   blockerProvider: async () => {

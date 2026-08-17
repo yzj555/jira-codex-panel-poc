@@ -404,6 +404,8 @@ test("完整面板提供默认开启的 GitHub 更新检查与顶部版本提示
   assert.doesNotMatch(styles, /\.update-operation-progress/);
   assert.match(server, /createGitHubUpdateChecker/);
   assert.match(server, /createUpdateManager/);
+  assert.match(server, /installRoot:\s*dirname\(root\)/);
+  assert.match(server, /updaterSource:\s*join\(root, "installer", "update-bootstrap\.ps1"\)/);
   assert.match(server, /UPDATE_BLOCKED_BY_ACTIVE_OPERATION|blockerProvider/);
   assert.match(server, /autoInstall: true/);
   assert.match(server, /url\.pathname === "\/api\/update\/restart"/);
