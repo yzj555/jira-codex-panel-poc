@@ -8,6 +8,18 @@ Jira Codex 任务面板把 Jira 待办、JXL Sheets 和 Codex 对话连接到同
 
 这不是部署在 Jira 服务器上的插件。它通过本机服务读取 Jira，并只在用户明确确认时提交状态流转或已审核的 SVN 改动。任务首页、历史、Sheets、详情、状态流转、现有会话关联和 SVN 审核提交已经提供官方 Plugin + MCP Apps UI；侧栏入口、会话浮窗和 Codex Desktop 窗口跳转仍由最小兼容层承载，适合个人工作环境使用。
 
+## 仓库结构（单仓三包）
+
+代码按宿主归属拆分为三个 npm workspace 包，业务核与两个宿主壳分离：
+
+| 包 | 目录 | 职责 |
+| --- | --- | --- |
+| `@jira-codex/core` | `packages/core/` | 宿主无关的 Jira/JXL/SVN 业务核：客户端、配置存储、工作台服务、SVN 审核状态机、MCP 工具与独立服务入口 |
+| `jira-codex-panel-codex` | `packages/codex/` | Codex Desktop 壳：App Server 适配、CDP 注入、installer、官方 Plugin/MCP Apps UI、skills |
+| `jira-codex-panel-dsh` | `packages/dsh/` | DeepSeek Harness 壳：通过 `dsh-mcp-client` bundle 消费同一套 core（见 `packages/dsh/README.md`） |
+
+core 不 import 任何 Codex 壳文件；Codex 壳通过包名 `@jira-codex/core/...` 引用业务核，DSH 壳通过独立 MCP 服务接入同一份数据文件（`%LOCALAPPDATA%\jira-codex-panel-poc\`）。三个包共享仓库根 `package.json` 的单一版本号。
+
 ## 快速开始
 
 ### 环境要求
@@ -23,12 +35,12 @@ Jira Codex 任务面板把 Jira 待办、JXL Sheets 和 Codex 对话连接到同
 
 ### 安装
 
-双击项目根目录的 `install.cmd`，或在 PowerShell 中执行：
+双击 `packages\codex\install.cmd`，或在 PowerShell 中执行：
 
 ~~~powershell
 git clone https://github.com/yzj555/jira-codex-panel-poc.git
 cd jira-codex-panel-poc
-& .\installer\lifecycle.ps1 -Action Auto
+& .\packages\codex\installer\lifecycle.ps1 -Action Auto
 ~~~
 
 安装完成后：
@@ -48,8 +60,8 @@ Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属�
 
 当前版本已经把可由公开协议稳定承载的主流程迁入官方 Plugin：
 
-- Plugin 清单：`plugins/jira-codex-assistant/.codex-plugin/plugin.json`。
-- 本地 Marketplace：`.agents/plugins/marketplace.json`。
+- Plugin 清单：`packages/codex/plugins/jira-codex-assistant/.codex-plugin/plugin.json`。
+- 本地 Marketplace：`packages/codex/.agents/plugins/marketplace.json`。
 - MCP 地址：`http://127.0.0.1:47823/mcp`，使用 Streamable HTTP。
 - 只读工具：任务首页/历史、Issue 详情、JXL Sheets、可用状态流转、App Server 会话列表、SVN 状态/差异/审核结果和提交回执核对。
 - 本地写工具：会话关联、解除关联、创建/取消/确认/放弃审核草稿；这些操作不修改 Jira、Codex 对话正文或 SVN 工作副本。
@@ -62,10 +74,11 @@ Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属�
 
 官方工作台通过 `jira-workbench-service`、`codex-conversation-service` 和 `svn-workbench-service` 访问统一业务边界，不会形成两套 Jira、绑定或 SVN 规则。附件预览、自动 Bug 监控、会话绑定和 SVN 状态全部由本地服务负责；注入层只保留四项官方 Desktop API 尚不能替代的能力：侧栏启动入口、当前会话轻量 Jira 浮窗、桌面会话跳转，以及当前窗口 App Server 命令适配。新会话创建仍由当前 Desktop 窗口原子执行，但提示词、附件、Skill、绑定和基线均由服务端编排。
 
-开发验证命令：
+开发验证命令（`npm test` 在仓库根执行，其余在 `packages\codex` 目录执行）：
 
 ~~~powershell
 npm test
+cd packages\codex
 npm run mcp:probe
 python "$env:USERPROFILE\.codex\skills\.system\plugin-creator\scripts\validate_plugin.py" .\plugins\jira-codex-assistant
 codex plugin marketplace add .
@@ -361,17 +374,17 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 ### 升级
 
-普通用户优先在“设置 → 版本更新”中下载正式 GitHub Release；下载校验通过后自动安装，安装验证完成后再由用户确认重启。也可以在新版本项目目录中重新运行 `install.cmd` 或安装命令；两种方式最终都调用同一个统一生命周期入口，保留 Jira PAT、企业微信 Webhook、会话绑定和个人设置。
+普通用户优先在“设置 → 版本更新”中下载正式 GitHub Release；下载校验通过后自动安装，安装验证完成后再由用户确认重启。也可以在新版本项目目录中重新运行 `packages\codex\install.cmd` 或安装命令；两种方式最终都调用同一个统一生命周期入口，保留 Jira PAT、企业微信 Webhook、会话绑定和个人设置。
 
 修复当前安装：
 
 ~~~powershell
-& "$env:LOCALAPPDATA\Programs\JiraCodexPanel\installer\lifecycle.ps1" -Action Repair
+& "$env:LOCALAPPDATA\Programs\JiraCodexPanel\packages\codex\installer\lifecycle.ps1" -Action Repair
 ~~~
 
 ### 发布 GitHub Release
 
-维护者先把版本改动合入 `main`，然后执行 `npm run version:set -- <版本>`，确认 `package.json`、锁文件、服务端、注入客户端和 README 已同步。`npm test` 与 `npm run release:verify -- v<版本>` 通过后，提交并推送 `main`，再创建并推送同名 tag：
+维护者先把版本改动合入 `main`，然后在 `packages\codex` 目录执行 `npm run version:set -- <版本>`，确认根 `package.json`、锁文件、两个 workspace 包的 `package.json`、Codex 壳服务端、注入客户端和仓库根 README 已同步。仓库根 `npm test` 与 `packages\codex` 的 `npm run release:verify -- v<版本>` 通过后，提交并推送 `main`，再创建并推送同名 tag：
 
 ~~~powershell
 git tag -a v0.31.3 -m "发布 v0.31.3"
@@ -384,7 +397,7 @@ tag 会触发 `.github/workflows/release.yml`：在 Windows runner 重跑全量�
 ### 可选：登录自启
 
 ~~~powershell
-& .\installer\lifecycle.ps1 -Action Install -StartAtLogon $true
+& .\packages\codex\installer\lifecycle.ps1 -Action Install -StartAtLogon $true
 ~~~
 
 不建议同时使用登录自启和 Microsoft Store 原始 Codex 入口。
@@ -396,7 +409,7 @@ tag 会触发 `.github/workflows/release.yml`：在 Windows runner 重跑全量�
 彻底删除用户数据：
 
 ~~~powershell
-& "$env:LOCALAPPDATA\Programs\JiraCodexPanel\installer\lifecycle.ps1" -Action Purge
+& "$env:LOCALAPPDATA\Programs\JiraCodexPanel\packages\codex\installer\lifecycle.ps1" -Action Purge
 ~~~
 
 卸载不会删除已经创建的 Codex 对话，也不会卸载可能被其他工具共用的全局 `@openai/codex` CLI。
@@ -413,8 +426,8 @@ tag 会触发 `.github/workflows/release.yml`：在 Windows runner 重跑全量�
 | Jira 附件缓存 | `%LOCALAPPDATA%\jira-codex-panel-poc\attachments` |
 | SVN 基线与审核状态 | `%LOCALAPPDATA%\jira-codex-panel-poc\svn-baselines.json`、`svn-reviews.json` |
 | SVN 审核材料 | `%LOCALAPPDATA%\jira-codex-panel-poc\attachments\svn-reviews` |
-| 内置首轮分析 Skill | `<安装目录>\skills\jira-first-turn-analysis\SKILL.md` |
-| 运行日志与 PID | `%LOCALAPPDATA%\Programs\JiraCodexPanel\.runtime` |
+| 内置首轮分析 Skill | `<安装目录>\packages\codex\skills\jira-first-turn-analysis\SKILL.md` |
+| 运行日志与 PID | `%LOCALAPPDATA%\Programs\JiraCodexPanel\packages\codex\.runtime` |
 | 面板服务 | `http://127.0.0.1:47823` |
 | Codex CDP | `http://127.0.0.1:47824` |
 
@@ -427,15 +440,16 @@ Jira PAT 和企业微信 Webhook 使用 Windows DPAPI 加密后保存，只能�
 ### 启动
 
 ~~~powershell
-cd jira-codex-panel-poc
+cd jira-codex-panel-poc\packages\codex
 powershell -ExecutionPolicy Bypass -File .\scripts\start-poc.ps1
 ~~~
 
-开发模式使用项目目录下的 `.cdp-profile`，不会复用安装版的 Codex 隔离目录。
+开发模式使用 Codex 壳目录下的 `.cdp-profile`（`packages\codex\.cdp-profile`），不会复用安装版的 Codex 隔离目录。
 
 ### 停止
 
 ~~~powershell
+cd jira-codex-panel-poc\packages\codex
 powershell -ExecutionPolicy Bypass -File .\scripts\stop-poc.ps1
 ~~~
 
@@ -443,11 +457,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-poc.ps1
 
 ### 测试
 
+在仓库根执行（覆盖 `packages/core` 与 `packages/codex` 两个包的测试）：
+
 ~~~powershell
 npm test
 ~~~
 
-只读检测 App Server（不会创建任务或发送消息）：
+只读检测 App Server（不会创建任务或发送消息），在 `packages\codex` 目录执行：
 
 ~~~powershell
 npm run codex:probe
@@ -459,39 +475,48 @@ npm run codex:probe
 
 ### 截图
 
-在 Codex 已通过 CDP 启动后执行：
+在 Codex 已通过 CDP 启动后，在 `packages\codex` 目录执行：
 
 ~~~powershell
 npm run capture
 ~~~
 
-截图会写入 `artifacts/windows-codex-jira-panel-poc.png`。
+截图会写入 `packages\codex\artifacts\windows-codex-jira-panel-poc.png`。
 
 ## 架构
 
 ~~~mermaid
 flowchart TB
-    Codex["Windows Codex Desktop"] --> Plugin["官方 Plugin + MCP Apps UI<br/>标准入口 / SVN 能力组件"]
-    Plugin <-->|Streamable HTTP| Server["本地 Jira / SVN 服务<br/>127.0.0.1:47823"]
-    Server <-->|官方 JSON-RPC / stdio| AppServer["Codex App Server<br/>会话、Skill、turn、结构化输出"]
+    subgraph Core["packages/core — 宿主无关业务核"]
+        Server["本地 Jira / SVN 服务<br/>127.0.0.1:47823"]
+        Server --> Jira["Jira Data Center / JXL"]
+        Server --> UserData["DPAPI 配置<br/>附件缓存 / 自动任务状态"]
+        Server -->|人工确认后显式路径提交| SVN["SVN 工作副本 / 仓库"]
+        Server -->|可选| WeCom["企业微信群机器人"]
+        Server -.-> LegacySessions["迁移前会话日志<br/>仅用于旧记录恢复"]
+    end
 
-    Injector["最小 UI 注入层"] <--> Codex
-    Injector --> Sidebar["侧栏完整任务工作台<br/>面板内设置"]
-    Injector --> Float["当前会话 Jira 浮窗<br/>详情 / 流转 / SVN 入口"]
-    Injector --> Navigation["桌面会话跳转"]
-    Injector --> DesktopAdapter["当前窗口 App Server 适配"]
-    Sidebar --> Commands["Application Commands<br/>统一能力与归属路由"]
-    Float --> Commands
-    Navigation --> Commands
-    DesktopAdapter --> Commands
-    Commands <-->|受限本机 API| Server
-    Commands <-->|当前桌面会话协议适配| Codex
+    subgraph CodexShell["packages/codex — Codex Desktop 壳"]
+        Codex["Windows Codex Desktop"] --> Plugin["官方 Plugin + MCP Apps UI<br/>标准入口 / SVN 能力组件"]
+        Plugin <-->|Streamable HTTP| Server
+        Server <-->|官方 JSON-RPC / stdio| AppServer["Codex App Server<br/>会话、Skill、turn、结构化输出"]
+        Injector["最小 UI 注入层"] <--> Codex
+        Injector --> Sidebar["侧栏完整任务工作台<br/>面板内设置"]
+        Injector --> Float["当前会话 Jira 浮窗<br/>详情 / 流转 / SVN 入口"]
+        Injector --> Navigation["桌面会话跳转"]
+        Injector --> DesktopAdapter["当前窗口 App Server 适配"]
+        Sidebar --> Commands["Application Commands<br/>统一能力与归属路由"]
+        Float --> Commands
+        Navigation --> Commands
+        DesktopAdapter --> Commands
+        Commands <-->|受限本机 API| Server
+        Commands <-->|当前桌面会话协议适配| Codex
+    end
 
-    Server --> Jira["Jira Data Center / JXL"]
-    Server --> UserData["DPAPI 配置<br/>附件缓存 / 自动任务状态"]
-    Server -.-> LegacySessions["迁移前会话日志<br/>仅用于旧记录恢复"]
-    Server -->|人工确认后显式路径提交| SVN["SVN 工作副本 / 仓库"]
-    Server -->|可选| WeCom["企业微信群机器人"]
+    subgraph DSHShell["packages/dsh — DeepSeek Harness 壳"]
+        DSH["DeepSeek Harness<br/>dsh-mcp-client bundle"]
+        DSH <-->|Streamable HTTP| Server
+    end
 ~~~
 
 当前采用“官方业务协议为主、桌面展示适配最小化”的混合架构。完整桌面工作台与官方 Plugin/MCP Apps UI 都通过按权限拆分的服务接口访问同一业务边界；待办、历史、Sheets、详情、状态流转、会话关联和 SVN 审核没有两套数据规则。Skill、会话列表/读取/命名、后台分析 turn、中断以及 SVN 审查的 `outputSchema` 通过 App Server 协议。图片使用官方 `localImage`；PDF、diff、JSON 等非图片文件不会伪装成原生附件，而是以只读绝对路径上下文提供给沙箱读取。
@@ -517,38 +542,44 @@ flowchart TB
 
 App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.com/docs/app-server) 实现；项目内部的 Adapter 和命令层负责隔离实验协议变化。
 
-主要文件：
+主要文件（相对仓库根）：
 
 | 文件或目录 | 职责 |
 | --- | --- |
-| `server.mjs` | 本地 Jira/SVN/MCP/桌面命令服务，仅监听 `127.0.0.1` |
-| `config-store.mjs` | 配置校验和 Windows DPAPI 密钥存储 |
-| `jira-client.mjs` | Jira REST 请求、单 Issue 详情、Issue 字段和状态映射 |
-| `jxl-client.mjs` | JXL Directory、分块数据及访问权限解析 |
-| `lib/jira-workbench-service.mjs` | 官方工作台使用的 Jira、JXL、附件和状态流转服务边界 |
-| `lib/codex-conversation-service.mjs` | 官方 App Server 会话发现、会话存在性验证和带 revision 的 Jira 绑定服务边界 |
-| `lib/svn-workbench-service.mjs` | 官方工作台使用的 SVN 状态、差异、审核、确认和提交服务边界 |
-| `lib/action-confirmation-store.mjs` | 官方写工具的短时、一次性人工确认凭据 |
-| `mcp/` | 官方 MCP 工具、Streamable HTTP 端点和 MCP Apps 工作台 UI |
-| `injector.mjs` | 编译完整桌面工作台文档并安装最小 CDP UI 宿主 |
-| `inject/client.js` | 实现侧栏工作台容器、当前会话 Jira 浮窗、SVN MCP Apps 弹层、桌面跳转和当前窗口 App Server 命令适配 |
-| `public/` | Codex 内的完整桌面任务工作台及面板内设置；业务数据全部来自共享服务 |
-| `skills/jira-first-turn-analysis/` | 不进入可见消息正文的首轮只读分析边界和输出要求 |
-| `lib/codex-navigation.mjs` | 当前 Codex Desktop 会话适配器与原生导航；用于桌面持有会话及官方尚未公开的跳转能力 |
-| `lib/codex-app-server-client.mjs` | 官方 App Server JSON-RPC 客户端、npm CLI 自动发现、只读能力探测及明确降级状态 |
-| `lib/codex-runtime-gateway.mjs` | 面向面板业务的稳定 Runtime 能力接口，隔离 App Server 协议细节并标记会话归属 |
-| `lib/codex-application-commands.mjs` | Application Commands、浏览器 App Server Adapter、Runtime 能力选择、安全降级和诊断快照 |
-| `lib/issue-binding-store.mjs` | 服务端会话绑定唯一存储，负责 revision 并发校验和旧 `localStorage` 一次性迁移 |
-| `lib/codex-session-reader.mjs` | 兼容读取迁移前的本地会话目录、文件操作证据和旧审核 turn；新建后台分析与审查结果不再以此为主通道 |
-| `lib/bug-monitor-service.mjs` | 服务端 Bug 发现、去重队列、App Server 分析调度和重启恢复 |
-| `lib/automation-manager.mjs` | 自动分析任务状态、结果跟踪和企业微信推送 |
-| `lib/svn-review-manager.mjs` | SVN 只读检查、审核状态持久化、可选 Codex 审核、人工确认令牌、提交前复检和显式路径 commit |
-| `lib/github-update-checker.mjs`、`lib/update-manager.mjs` | GitHub Release 版本发现、受管下载、SHA-256 校验和持久更新状态机 |
-| `installer/lifecycle.ps1` | 产品唯一生命周期入口：安装、覆盖升级、修复、状态检查、卸载和完全清除 |
-| `installer/update-bootstrap.ps1`、`scripts/restart-codex-after-update.ps1` | 安装目录外运行的独立更新器与重启助手：备份、统一升级、健康检查、显式重启确认、自动收尾和失败回滚 |
-| `installer/product-manifest.json` | 官方 Plugin、MCP、本地服务与最小桌面适配层共用的产品组件清单 |
-| `installer/install.ps1`、`installer/uninstall.ps1` | 由统一入口调用的底层安装与清理执行器 |
-| `.github/workflows/release.yml`、`scripts/build-release.ps1` | tag 版本校验、可重复 Windows 发布包、哈希、provenance 与 Draft Release |
+| `package.json`、`package-lock.json` | npm workspace 根，单一版本号；`npm test` 覆盖 core 与 codex 两包 |
+| `packages/core/index.mjs` | `createCoreService` 组装入口，通过构造参数注入宿主能力 |
+| `packages/core/bin/serve.mjs` | 宿主无关的独立 MCP 服务入口（Jira 工作台 + SVN 人工审核） |
+| `packages/core/config-store.mjs` | 配置校验和 Windows DPAPI 密钥存储 |
+| `packages/core/jira-client.mjs` | Jira REST 请求、单 Issue 详情、Issue 字段和状态映射 |
+| `packages/core/jxl-client.mjs` | JXL Directory、分块数据及访问权限解析 |
+| `packages/core/lib/jira-workbench-service.mjs` | 官方工作台使用的 Jira、JXL、附件和状态流转服务边界 |
+| `packages/core/lib/svn-workbench-service.mjs` | 官方工作台使用的 SVN 状态、差异、审核、确认和提交服务边界 |
+| `packages/core/lib/svn-review-manager.mjs` | SVN 只读检查、审核状态持久化、可选 Codex 审核、人工确认令牌、提交前复检和显式路径 commit |
+| `packages/core/lib/action-confirmation-store.mjs` | 官方写工具的短时、一次性人工确认凭据 |
+| `packages/core/lib/task-board-loader.mjs` | 任务看板数据装配（查询、协同字段解析、Filter 校验、附件物化） |
+| `packages/core/lib/null-review-audit-provider.mjs` | 无宿主审查能力时的降级 reader |
+| `packages/core/mcp/` | MCP 工具、Streamable HTTP 端点和 MCP Apps 工作台 UI |
+| `packages/codex/server.mjs` | Codex 壳本地 Jira/SVN/MCP/桌面命令服务，仅监听 `127.0.0.1` |
+| `packages/codex/injector.mjs` | 编译完整桌面工作台文档并安装最小 CDP UI 宿主 |
+| `packages/codex/inject/client.js` | 实现侧栏工作台容器、当前会话 Jira 浮窗、SVN MCP Apps 弹层、桌面跳转和当前窗口 App Server 命令适配 |
+| `packages/codex/public/` | Codex 内的完整桌面任务工作台及面板内设置；业务数据全部来自共享服务 |
+| `packages/codex/skills/jira-first-turn-analysis/` | 不进入可见消息正文的首轮只读分析边界和输出要求 |
+| `packages/codex/lib/codex-conversation-service.mjs` | 官方 App Server 会话发现、会话存在性验证和带 revision 的 Jira 绑定服务边界 |
+| `packages/codex/lib/codex-navigation.mjs` | 当前 Codex Desktop 会话适配器与原生导航；用于桌面持有会话及官方尚未公开的跳转能力 |
+| `packages/codex/lib/codex-app-server-client.mjs` | 官方 App Server JSON-RPC 客户端、npm CLI 自动发现、只读能力探测及明确降级状态 |
+| `packages/codex/lib/codex-runtime-gateway.mjs` | 面向面板业务的稳定 Runtime 能力接口，隔离 App Server 协议细节并标记会话归属 |
+| `packages/codex/lib/codex-application-commands.mjs` | Application Commands、浏览器 App Server Adapter、Runtime 能力选择、安全降级和诊断快照 |
+| `packages/codex/lib/issue-binding-store.mjs` | 服务端会话绑定唯一存储，负责 revision 并发校验和旧 `localStorage` 一次性迁移 |
+| `packages/codex/lib/codex-session-reader.mjs` | 兼容读取迁移前的本地会话目录、文件操作证据和旧审核 turn；新建后台分析与审查结果不再以此为主通道 |
+| `packages/codex/lib/bug-monitor-service.mjs` | 服务端 Bug 发现、去重队列、App Server 分析调度和重启恢复 |
+| `packages/codex/lib/automation-manager.mjs` | 自动分析任务状态、结果跟踪和企业微信推送 |
+| `packages/codex/lib/github-update-checker.mjs`、`packages/codex/lib/update-manager.mjs` | GitHub Release 版本发现、受管下载、SHA-256 校验和持久更新状态机 |
+| `packages/codex/installer/lifecycle.ps1` | 产品唯一生命周期入口：安装、覆盖升级、修复、状态检查、卸载和完全清除 |
+| `packages/codex/installer/update-bootstrap.ps1`、`packages/codex/scripts/restart-codex-after-update.ps1` | 安装目录外运行的独立更新器与重启助手：备份、统一升级、健康检查、显式重启确认、自动收尾和失败回滚 |
+| `packages/codex/installer/product-manifest.json` | 官方 Plugin、MCP、本地服务与最小桌面适配层共用的产品组件清单 |
+| `packages/codex/installer/install.ps1`、`packages/codex/installer/uninstall.ps1` | 由统一入口调用的底层安装与清理执行器 |
+| `packages/dsh/cordis.patch.yml` | DSH bundle patch，挂载 `dsh-mcp-client` 接入 core 独立服务 |
+| `.github/workflows/release.yml`、`packages/codex/scripts/build-release.ps1` | tag 版本校验、可重复 Windows 发布包、哈希、provenance 与 Draft Release |
 
 ## 常见问题
 
@@ -558,7 +589,7 @@ App Server 接口依据 [OpenAI 官方 App Server 文档](https://learn.chatgpt.
 
 - 面板健康状态：`http://127.0.0.1:47823/api/health`
 - Codex CDP 状态：`http://127.0.0.1:47824/json/version`
-- 启动日志：`%LOCALAPPDATA%\Programs\JiraCodexPanel\.runtime`
+- 启动日志：`%LOCALAPPDATA%\Programs\JiraCodexPanel\packages\codex\.runtime`
 
 ### 启动后出现两个 Codex
 
