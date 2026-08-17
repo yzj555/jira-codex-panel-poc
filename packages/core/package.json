@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "description": "Host-agnostic Jira/JXL/SVN business core shared by the Codex shell and the DSH shell.",
+  "bin": {
+    "jira-codex-core": "bin/serve.mjs"
+  },
+  "scripts": {
+    "serve": "node bin/serve.mjs"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"
