@@ -1,9 +1,9 @@
 {
-  "name": "jira-codex-panel-dsh",
+  "name": "jira-workbench-dsh",
   "version": "0.31.8",
   "private": true,
   "type": "module",
-  "description": "DeepSeek Harness shell: consumes the shared Jira/SVN core through dsh-mcp-client.",
+  "description": "DeepSeek Harness adapter: consumes the shared Jira/SVN core through dsh-mcp-client.",
   "dsh": {
     "bundle": {
       "patch": "cordis.patch.yml"

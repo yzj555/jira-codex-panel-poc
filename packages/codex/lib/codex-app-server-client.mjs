@@ -127,7 +127,7 @@ export function discoverCodexAppServerCommand({
   existsFn = existsSync
 } = {}) {
   const explicit = String(
-    command || env.JIRA_CODEX_APP_SERVER_COMMAND || env.CODEX_CLI_PATH || ""
+    command || env.JIRA_WORKBENCH_APP_SERVER_COMMAND || env.CODEX_CLI_PATH || ""
   ).trim();
   if (explicit) {
     return {
@@ -419,7 +419,7 @@ export class CodexAppServerClient extends EventEmitter {
     const permissionDenied = process.platform === "win32"
       && ["EACCES", "EPERM"].includes(String(cause?.code || "").toUpperCase());
     const guidance = permissionDenied && this.commandInfo.source === "path"
-      ? `。当前命令可能解析到了 Microsoft Store 包内置程序；请安装独立 Codex CLI（${CODEX_CLI_INSTALL_COMMAND}），或设置 JIRA_CODEX_APP_SERVER_COMMAND`
+      ? `。当前命令可能解析到了 Microsoft Store 包内置程序；请安装独立 Codex CLI（${CODEX_CLI_INSTALL_COMMAND}），或设置 JIRA_WORKBENCH_APP_SERVER_COMMAND`
       : "";
     const error = new CodexAppServerError(
       `无法启动 Codex App Server：${cause?.message || cause || this.command}${guidance}`,

@@ -22,11 +22,11 @@ function userDataRoot() {
  * 降级，SVN 提交仍走机械检查、一次性确认与提交对账。
  */
 export function createCoreService({
-  configFile = process.env.JIRA_CODEX_CONFIG_FILE || join(userDataRoot(), "config.json"),
-  bindingsFile = process.env.JIRA_CODEX_BINDINGS_FILE || join(userDataRoot(), "issue-bindings.json"),
-  baselineFile = process.env.JIRA_CODEX_SVN_BASELINES_FILE || join(userDataRoot(), "svn-baselines.json"),
-  reviewStateFile = process.env.JIRA_CODEX_SVN_REVIEWS_FILE || join(userDataRoot(), "svn-reviews.json"),
-  reviewArtifactsRoot = process.env.JIRA_CODEX_SVN_REVIEW_ARTIFACTS_DIR
+  configFile = process.env.JIRA_WORKBENCH_CONFIG_FILE || join(userDataRoot(), "config.json"),
+  bindingsFile = process.env.JIRA_WORKBENCH_BINDINGS_FILE || join(userDataRoot(), "issue-bindings.json"),
+  baselineFile = process.env.JIRA_WORKBENCH_SVN_BASELINES_FILE || join(userDataRoot(), "svn-baselines.json"),
+  reviewStateFile = process.env.JIRA_WORKBENCH_SVN_REVIEWS_FILE || join(userDataRoot(), "svn-reviews.json"),
+  reviewArtifactsRoot = process.env.JIRA_WORKBENCH_SVN_REVIEW_ARTIFACTS_DIR
     || join(userDataRoot(), "attachments", "svn-reviews"),
   version = "0.31.8"
 } = {}) {

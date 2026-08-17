@@ -1,4 +1,4 @@
-import { normalizeBindingWorkspace } from "@jira-codex/core/lib/issue-binding-store.mjs";
+import { normalizeBindingWorkspace } from "@jira-workbench/core/lib/issue-binding-store.mjs";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;

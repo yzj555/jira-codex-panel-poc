@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { createCoreService } from "../index.mjs";
 
 const VERSION = "0.31.8";
-const host = process.env.JIRA_POC_HOST || "127.0.0.1";
-const port = Number(process.env.JIRA_POC_PORT || 47823);
+const host = process.env.JIRA_WORKBENCH_HOST || "127.0.0.1";
+const port = Number(process.env.JIRA_WORKBENCH_PORT || 47823);
 const uiHtmlFile = fileURLToPath(import.meta.resolve("../mcp/ui/task-board.html"));
 
 const core = createCoreService({ version: VERSION });
@@ -26,7 +26,7 @@ const server = createServer(async (request, response) => {
     const config = await core.configStore.getPublic();
     return json(response, 200, {
       ok: true,
-      name: "jira-codex-panel-core",
+      name: "jira-workbench-core",
       version: core.version,
       jiraConfigured: config.configured
     });
@@ -47,5 +47,5 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`jira-codex core listening on http://${host}:${port}`);
+  console.log(`jira-workbench core listening on http://${host}:${port}`);
 });

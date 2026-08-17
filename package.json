@@ -1,5 +1,5 @@
 {
-  "name": "jira-codex-panel-poc",
+  "name": "jira-workbench",
   "version": "0.31.8",
   "private": true,
   "type": "module",

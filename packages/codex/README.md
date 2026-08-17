@@ -1,6 +1,6 @@
-# jira-codex-panel-codex
+# jira-workbench-codex
 
-Codex Desktop 适配层：把宿主无关的 `@jira-codex/core` 接入 Windows Codex Desktop。适配方式是官方 Plugin + MCP Apps UI（承载 Jira/SVN 能力）+ CDP UI 注入（承载官方 Desktop API 尚不提供的侧栏入口、会话浮窗与桌面跳转），并附带 installer 与 skills。
+Codex Desktop 适配层：把宿主无关的 `@jira-workbench/core` 接入 Windows Codex Desktop。适配方式是官方 Plugin + MCP Apps UI（承载 Jira/SVN 能力）+ CDP UI 注入（承载官方 Desktop API 尚不提供的侧栏入口、会话浮窗与桌面跳转），并附带 installer 与 skills。
 
 ## 适配方式
 

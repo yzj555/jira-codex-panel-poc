@@ -658,7 +658,7 @@ function publicConfiguration(record) {
 }
 
 export function createConfigStore({
-  configFile = process.env.JIRA_CODEX_CONFIG_FILE || defaultConfigFile(),
+  configFile = process.env.JIRA_WORKBENCH_CONFIG_FILE || defaultConfigFile(),
   protect = protectWithDpapi,
   unprotect = unprotectWithDpapi
 } = {}) {

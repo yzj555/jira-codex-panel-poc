@@ -1,6 +1,6 @@
-# @jira-codex/core
+# @jira-workbench/core
 
-宿主无关的 Jira/JXL/SVN 业务核，由 Codex 适配层（`jira-codex-panel-codex`）与 DSH 适配层（`jira-codex-panel-dsh`）共享。
+宿主无关的 Jira/JXL/SVN 业务核，由 Codex 适配层（`jira-workbench-codex`）与 DSH 适配层（`jira-workbench-dsh`）共享。
 
 ## 定位
 

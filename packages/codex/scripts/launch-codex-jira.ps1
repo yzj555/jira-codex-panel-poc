@@ -20,7 +20,7 @@ if ($installMetadataPath) {
     $installMetadata = Get-Content -Raw -LiteralPath $installMetadataPath | ConvertFrom-Json
     $configuredAppServerCommand = [string]$installMetadata.codexAppServerCommand
     if ($configuredAppServerCommand -and (Test-Path -LiteralPath $configuredAppServerCommand)) {
-      $env:JIRA_CODEX_APP_SERVER_COMMAND = $configuredAppServerCommand
+      $env:JIRA_WORKBENCH_APP_SERVER_COMMAND = $configuredAppServerCommand
     }
   } catch {
     Write-Warning "无法读取 App Server 安装信息，将使用自动发现：$($_.Exception.Message)"

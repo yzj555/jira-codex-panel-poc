@@ -6,7 +6,7 @@
 
 Jira Codex 任务面板把 Jira 待办、JXL Sheets、Codex 对话和 SVN 提交连接到同一个本地工作台。它通过本机服务读取 Jira，并只在用户明确确认时提交状态流转或已审核的 SVN 改动，适合个人工作环境使用。
 
-这不是部署在 Jira 服务器上的插件，而是一个"固定业务核 + 多宿主适配"的工具：Jira/JXL/SVN 的全部业务规则沉淀在宿主无关的 `@jira-codex/core`，Codex 与 DeepSeek Harness 只是当前两个接入方式，各自以自己的原生扩展机制适配。
+这不是部署在 Jira 服务器上的插件，而是一个"固定业务核 + 多宿主适配"的工具：Jira/JXL/SVN 的全部业务规则沉淀在宿主无关的 `@jira-workbench/core`，Codex 与 DeepSeek Harness 只是当前两个接入方式，各自以自己的原生扩展机制适配。
 
 ## 核心功能
 
@@ -25,9 +25,9 @@ Jira Codex 任务面板把 Jira 待办、JXL Sheets、Codex 对话和 SVN 提交
 
 | 包 | 目录 | 角色 | 适配方式 |
 | --- | --- | --- | --- |
-| `@jira-codex/core` | [`packages/core/`](packages/core/README.md) | 固定业务核：Jira/JXL/SVN 全部规则与状态，宿主能力全部构造参数注入 | 独立 MCP 服务 + `createCoreService` 组装 |
-| `jira-codex-panel-codex` | [`packages/codex/`](packages/codex/README.md) | Codex 适配层 | 官方 Plugin/MCP Apps UI + CDP UI 注入 + installer |
-| `jira-codex-panel-dsh` | [`packages/dsh/`](packages/dsh/README.md) | DeepSeek Harness 适配层 | 插件 bundle（`dsh-mcp-client`） |
+| `@jira-workbench/core` | [`packages/core/`](packages/core/README.md) | 固定业务核：Jira/JXL/SVN 全部规则与状态，宿主能力全部构造参数注入 | 独立 MCP 服务 + `createCoreService` 组装 |
+| `jira-workbench-codex` | [`packages/codex/`](packages/codex/README.md) | Codex 适配层 | 官方 Plugin/MCP Apps UI + CDP UI 注入 + installer |
+| `jira-workbench-dsh` | [`packages/dsh/`](packages/dsh/README.md) | DeepSeek Harness 适配层 | 插件 bundle（`dsh-mcp-client`） |
 
 ```mermaid
 flowchart TB

@@ -1,9 +1,9 @@
 {
-  "name": "jira-codex-panel-codex",
+  "name": "jira-workbench-codex",
   "version": "0.31.8",
   "private": true,
   "type": "module",
-  "description": "Codex Desktop shell: App Server adapter, CDP injection, installer, and official Plugin/MCP Apps UI.",
+  "description": "Codex Desktop adapter: App Server adapter, CDP injection, installer, and official Plugin/MCP Apps UI.",
   "scripts": {
     "server": "node server.mjs",
     "inject": "node injector.mjs --watch",
@@ -20,7 +20,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@jira-codex/core": "*",
+    "@jira-workbench/core": "*",
     "@modelcontextprotocol/sdk": "^1.30.0"
   }
 }

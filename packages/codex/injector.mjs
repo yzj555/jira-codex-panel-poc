@@ -6,12 +6,12 @@ import { CdpClient, listPageTargets } from "./lib/cdp.mjs";
 import { createEmbeddedPanelDocument } from "./lib/panel-document.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const corePromptBuilderPath = fileURLToPath(import.meta.resolve("@jira-codex/core/public/prompt-builder.js"));
-const coreIssueViewsPath = fileURLToPath(import.meta.resolve("@jira-codex/core/public/issue-views.js"));
+const corePromptBuilderPath = fileURLToPath(import.meta.resolve("@jira-workbench/core/public/prompt-builder.js"));
+const coreIssueViewsPath = fileURLToPath(import.meta.resolve("@jira-workbench/core/public/issue-views.js"));
 const args = new Set(process.argv.slice(2));
 const watch = !args.has("--once");
 const cdpPort = Number(process.env.CODEX_CDP_PORT || 47824);
-const panelUrl = process.env.JIRA_POC_PANEL_URL || "http://127.0.0.1:47823/";
+const panelUrl = process.env.JIRA_WORKBENCH_PANEL_URL || "http://127.0.0.1:47823/";
 const bridgeBindingName = "__jiraCodexNodeRequest";
 const bridgeToken = randomUUID();
 const bridgeProtocolVersion = "2";

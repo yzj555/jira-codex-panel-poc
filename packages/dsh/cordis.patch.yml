@@ -1,4 +1,4 @@
-# jira-codex-panel-dsh bundle patch: 第一版为零代码 mcp-client 配置。
+# jira-workbench-dsh bundle patch: 第一版为零代码 mcp-client 配置。
 #
 # 本 patch 叠加在 dsh-base 之上，挂载一个 @deepseek-ai/dsh-mcp-client 行，
 # 通过 streamable-http 连接到宿主无关的 core 独立服务（packages/core/bin/serve.mjs）。
@@ -15,7 +15,7 @@
       config:
         serverName: jira-codex
         transport: streamable-http
-        url: !!js process.env.JIRA_CODEX_CORE_URL || 'http://127.0.0.1:47823/mcp'
+        url: !!js process.env.JIRA_WORKBENCH_CORE_URL || 'http://127.0.0.1:47823/mcp'
         failOnStartupError: false
         reconnect:
           enabled: true

@@ -31,20 +31,20 @@ $health = $null
 try {
   $health = Invoke-RestMethod -Uri "http://127.0.0.1:$PanelPort/api/health" -TimeoutSec 1
 } catch {}
-if ($health -and $health.ok -and $health.name -eq 'jira-codex-panel-poc' -and $health.version -ne $expectedVersion) {
+if ($health -and $health.ok -and $health.name -eq 'jira-workbench' -and $health.version -ne $expectedVersion) {
   throw "Panel port $PanelPort is occupied by Jira panel version $($health.version); expected $expectedVersion. Stop the older panel process and retry."
 }
-$serverReady = [bool]$health.ok -and $health.name -eq 'jira-codex-panel-poc' -and $health.version -eq $expectedVersion
+$serverReady = [bool]$health.ok -and $health.name -eq 'jira-workbench' -and $health.version -eq $expectedVersion
 
 if (-not $serverReady) {
   $serverOut = Join-Path $runtimeDirectory 'server.stdout.log'
   $serverErr = Join-Path $runtimeDirectory 'server.stderr.log'
-  $previousPanelPort = $env:JIRA_POC_PORT
+  $previousPanelPort = $env:JIRA_WORKBENCH_PORT
   try {
-    $env:JIRA_POC_PORT = [string]$PanelPort
+    $env:JIRA_WORKBENCH_PORT = [string]$PanelPort
     $server = Start-Process -FilePath $node -ArgumentList @($serverScript) -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput $serverOut -RedirectStandardError $serverErr -PassThru
   } finally {
-    $env:JIRA_POC_PORT = $previousPanelPort
+    $env:JIRA_WORKBENCH_PORT = $previousPanelPort
   }
   Set-Content -LiteralPath $serverPidFile -Value $server.Id
   for ($attempt = 0; $attempt -lt 20; $attempt++) {
@@ -62,17 +62,17 @@ if (-not (Test-RecordedProcess $injectorPidFile 'injector.mjs')) {
   $injectorErr = Join-Path $runtimeDirectory 'injector.stderr.log'
   $environment = @{
     CODEX_CDP_PORT = [string]$CdpPort
-    JIRA_POC_PANEL_URL = "http://127.0.0.1:$PanelPort/"
+    JIRA_WORKBENCH_PANEL_URL = "http://127.0.0.1:$PanelPort/"
   }
   $previousCdpPort = $env:CODEX_CDP_PORT
-  $previousPanelUrl = $env:JIRA_POC_PANEL_URL
+  $previousPanelUrl = $env:JIRA_WORKBENCH_PANEL_URL
   try {
     $env:CODEX_CDP_PORT = $environment.CODEX_CDP_PORT
-    $env:JIRA_POC_PANEL_URL = $environment.JIRA_POC_PANEL_URL
+    $env:JIRA_WORKBENCH_PANEL_URL = $environment.JIRA_WORKBENCH_PANEL_URL
     $injector = Start-Process -FilePath $node -ArgumentList @($injectorScript, '--watch') -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput $injectorOut -RedirectStandardError $injectorErr -PassThru
   } finally {
     $env:CODEX_CDP_PORT = $previousCdpPort
-    $env:JIRA_POC_PANEL_URL = $previousPanelUrl
+    $env:JIRA_WORKBENCH_PANEL_URL = $previousPanelUrl
   }
   Set-Content -LiteralPath $injectorPidFile -Value $injector.Id
 }

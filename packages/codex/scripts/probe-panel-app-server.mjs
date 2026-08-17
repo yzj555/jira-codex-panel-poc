@@ -12,13 +12,13 @@ const port = Number(process.argv.find((value) => value.startsWith("--port="))?.s
 const temporaryRoot = await mkdtemp(join(tmpdir(), "jira-codex-app-server-probe-"));
 const environment = {
   ...process.env,
-  JIRA_POC_PORT: String(port),
-  JIRA_CODEX_CONFIG_FILE: join(temporaryRoot, "config.json"),
-  JIRA_CODEX_AUTOMATION_FILE: join(temporaryRoot, "automation.json"),
-  JIRA_CODEX_SVN_BASELINES_FILE: join(temporaryRoot, "svn-baselines.json"),
-  JIRA_CODEX_SVN_REVIEWS_FILE: join(temporaryRoot, "svn-reviews.json"),
-  JIRA_CODEX_SVN_REVIEW_ARTIFACTS_DIR: join(temporaryRoot, "review-artifacts"),
-  ...(command ? { JIRA_CODEX_APP_SERVER_COMMAND: command } : {})
+  JIRA_WORKBENCH_PORT: String(port),
+  JIRA_WORKBENCH_CONFIG_FILE: join(temporaryRoot, "config.json"),
+  JIRA_WORKBENCH_AUTOMATION_FILE: join(temporaryRoot, "automation.json"),
+  JIRA_WORKBENCH_SVN_BASELINES_FILE: join(temporaryRoot, "svn-baselines.json"),
+  JIRA_WORKBENCH_SVN_REVIEWS_FILE: join(temporaryRoot, "svn-reviews.json"),
+  JIRA_WORKBENCH_SVN_REVIEW_ARTIFACTS_DIR: join(temporaryRoot, "review-artifacts"),
+  ...(command ? { JIRA_WORKBENCH_APP_SERVER_COMMAND: command } : {})
 };
 const child = spawn(process.execPath, [join(root, "server.mjs")], {
   cwd: root,

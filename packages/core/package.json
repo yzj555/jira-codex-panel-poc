@@ -1,11 +1,11 @@
 {
-  "name": "@jira-codex/core",
+  "name": "@jira-workbench/core",
   "version": "0.31.8",
   "private": true,
   "type": "module",
-  "description": "Host-agnostic Jira/JXL/SVN business core shared by the Codex shell and the DSH shell.",
+  "description": "Host-agnostic Jira/JXL/SVN business core shared by the Codex adapter and the DSH adapter.",
   "bin": {
-    "jira-codex-core": "bin/serve.mjs"
+    "jira-workbench-core": "bin/serve.mjs"
   },
   "scripts": {
     "serve": "node bin/serve.mjs"

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAutomationManager } from "../lib/automation-manager.mjs";
 import { createBugMonitorService } from "../lib/bug-monitor-service.mjs";
-import { createIssueBindingStore } from "@jira-codex/core/lib/issue-binding-store.mjs";
+import { createIssueBindingStore } from "@jira-workbench/core/lib/issue-binding-store.mjs";
 
 function bug(key, title = key) {
   return {

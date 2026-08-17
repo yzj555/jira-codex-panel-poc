@@ -9,15 +9,15 @@ import {
   ConfigurationError,
   buildBoardQueries,
   createConfigStore
-} from "@jira-codex/core/config-store.mjs";
-import { JiraApiError, createJiraClient } from "@jira-codex/core/jira-client.mjs";
-import { createJxlClient } from "@jira-codex/core/jxl-client.mjs";
+} from "@jira-workbench/core/config-store.mjs";
+import { JiraApiError, createJiraClient } from "@jira-workbench/core/jira-client.mjs";
+import { createJxlClient } from "@jira-workbench/core/jxl-client.mjs";
 import {
   findCachedAttachment,
   materializeAttachment,
   openLocalAttachment
-} from "@jira-codex/core/lib/attachment-cache.mjs";
-import { createTaskBoardLoader } from "@jira-codex/core/lib/task-board-loader.mjs";
+} from "@jira-workbench/core/lib/attachment-cache.mjs";
+import { createTaskBoardLoader } from "@jira-workbench/core/lib/task-board-loader.mjs";
 import { createAutomationManager } from "./lib/automation-manager.mjs";
 import { createBugMonitorService } from "./lib/bug-monitor-service.mjs";
 import { createDesktopCommandBroker, DesktopCommandError } from "./lib/desktop-command-broker.mjs";
@@ -37,33 +37,33 @@ import {
   createIssueBindingStore,
   IssueBindingStoreError,
   normalizeBindingWorkspace
-} from "@jira-codex/core/lib/issue-binding-store.mjs";
-import { createJiraWorkbenchService } from "@jira-codex/core/lib/jira-workbench-service.mjs";
+} from "@jira-workbench/core/lib/issue-binding-store.mjs";
+import { createJiraWorkbenchService } from "@jira-workbench/core/lib/jira-workbench-service.mjs";
 import {
   buildSvnCommitMessage,
   createSvnReviewManager,
   SvnReviewError
-} from "@jira-codex/core/lib/svn-review-manager.mjs";
-import { createSvnWorkbenchService } from "@jira-codex/core/lib/svn-workbench-service.mjs";
-import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "@jira-codex/core/mcp/jira-task-board-mcp.mjs";
-import { buildIssuePrompt, isBugIssue } from "@jira-codex/core/public/prompt-builder.js";
-import { attachmentCanOpenLocally } from "@jira-codex/core/public/issue-views.js";
+} from "@jira-workbench/core/lib/svn-review-manager.mjs";
+import { createSvnWorkbenchService } from "@jira-workbench/core/lib/svn-workbench-service.mjs";
+import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "@jira-workbench/core/mcp/jira-task-board-mcp.mjs";
+import { buildIssuePrompt, isBugIssue } from "@jira-workbench/core/public/prompt-builder.js";
+import { attachmentCanOpenLocally } from "@jira-workbench/core/public/issue-views.js";
 
 const VERSION = "0.31.8";
-const host = process.env.JIRA_POC_HOST || "127.0.0.1";
-const port = Number(process.env.JIRA_POC_PORT || 47823);
+const host = process.env.JIRA_WORKBENCH_HOST || "127.0.0.1";
+const port = Number(process.env.JIRA_WORKBENCH_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(root, "public");
-const corePromptBuilderFile = fileURLToPath(import.meta.resolve("@jira-codex/core/public/prompt-builder.js"));
-const coreIssueViewsFile = fileURLToPath(import.meta.resolve("@jira-codex/core/public/issue-views.js"));
-const coreMcpUiFile = fileURLToPath(import.meta.resolve("@jira-codex/core/mcp/ui/task-board.html"));
+const corePromptBuilderFile = fileURLToPath(import.meta.resolve("@jira-workbench/core/public/prompt-builder.js"));
+const coreIssueViewsFile = fileURLToPath(import.meta.resolve("@jira-workbench/core/public/issue-views.js"));
+const coreMcpUiFile = fileURLToPath(import.meta.resolve("@jira-workbench/core/mcp/ui/task-board.html"));
 const configStore = createConfigStore();
 const updateChecker = createGitHubUpdateChecker({
   currentVersion: VERSION,
-  repository: process.env.JIRA_CODEX_UPDATE_REPOSITORY || "yzj555/jira-codex-panel-poc",
-  releaseUrl: process.env.JIRA_CODEX_UPDATE_RELEASE_URL || undefined,
-  packageUrl: process.env.JIRA_CODEX_UPDATE_PACKAGE_URL || undefined,
-  repositoryUrl: process.env.JIRA_CODEX_UPDATE_REPOSITORY_URL || undefined
+  repository: process.env.JIRA_WORKBENCH_UPDATE_REPOSITORY || "yzj555/jira-codex-panel-poc",
+  releaseUrl: process.env.JIRA_WORKBENCH_UPDATE_RELEASE_URL || undefined,
+  packageUrl: process.env.JIRA_WORKBENCH_UPDATE_PACKAGE_URL || undefined,
+  repositoryUrl: process.env.JIRA_WORKBENCH_UPDATE_REPOSITORY_URL || undefined
 });
 const codexAppServer = createCodexAppServerClient({
   clientInfo: {
@@ -75,7 +75,7 @@ const codexAppServer = createCodexAppServerClient({
 const codexRuntime = createCodexRuntimeGateway({ appServer: codexAppServer });
 const attachmentCacheRoot = join(dirname(configStore.configFile), "attachments");
 const issueBindings = createIssueBindingStore({
-  file: process.env.JIRA_CODEX_BINDINGS_FILE
+  file: process.env.JIRA_WORKBENCH_BINDINGS_FILE
     || join(dirname(configStore.configFile), "issue-bindings.json")
 });
 const desktopCommands = createDesktopCommandBroker();
@@ -90,7 +90,7 @@ const sessionsRoot = process.env.CODEX_SESSIONS_DIR
   || join(process.env.CODEX_HOME || join(homedir(), ".codex"), "sessions");
 const sessionReader = createCodexSessionReader({ sessionsRoot });
 const automation = createAutomationManager({
-  stateFile: process.env.JIRA_CODEX_AUTOMATION_FILE || join(dirname(configStore.configFile), "automation.json"),
+  stateFile: process.env.JIRA_WORKBENCH_AUTOMATION_FILE || join(dirname(configStore.configFile), "automation.json"),
   configStore,
   turnReader: codexRuntime,
   sessionReader
@@ -98,11 +98,11 @@ const automation = createAutomationManager({
 const svnReviews = createSvnReviewManager({
   turnReader: codexRuntime,
   sessionReader,
-  baselineFile: process.env.JIRA_CODEX_SVN_BASELINES_FILE
+  baselineFile: process.env.JIRA_WORKBENCH_SVN_BASELINES_FILE
     || join(dirname(configStore.configFile), "svn-baselines.json"),
-  reviewStateFile: process.env.JIRA_CODEX_SVN_REVIEWS_FILE
+  reviewStateFile: process.env.JIRA_WORKBENCH_SVN_REVIEWS_FILE
     || join(dirname(configStore.configFile), "svn-reviews.json"),
-  reviewArtifactsRoot: process.env.JIRA_CODEX_SVN_REVIEW_ARTIFACTS_DIR
+  reviewArtifactsRoot: process.env.JIRA_WORKBENCH_SVN_REVIEW_ARTIFACTS_DIR
     || join(attachmentCacheRoot, "svn-reviews")
 });
 
@@ -205,7 +205,7 @@ async function prepareManualIssueAnalysis(issueKey, supplementalDescription = ""
 }
 
 const bugMonitor = createBugMonitorService({
-  stateFile: process.env.JIRA_CODEX_BUG_MONITOR_FILE
+  stateFile: process.env.JIRA_WORKBENCH_BUG_MONITOR_FILE
     || join(dirname(configStore.configFile), "bug-monitor.json"),
   configStore,
   loadIssues: taskBoardLoader.loadTaskBoardIssues,
@@ -624,7 +624,7 @@ async function handleApi(request, response, url) {
     const config = await configStore.getPublic();
     return json(response, 200, {
       ok: true,
-      name: "jira-codex-panel-poc",
+      name: "jira-workbench",
       version: VERSION,
       jiraConfigured: config.configured
     });

@@ -217,8 +217,8 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
     windowsHide: true,
     env: {
       ...process.env,
-      JIRA_POC_PORT: String(panelPort),
-      JIRA_CODEX_CONFIG_FILE: configFile
+      JIRA_WORKBENCH_PORT: String(panelPort),
+      JIRA_WORKBENCH_CONFIG_FILE: configFile
     },
     stdio: ["ignore", "ignore", "pipe"]
   });
