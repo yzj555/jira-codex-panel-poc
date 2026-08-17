@@ -14,7 +14,7 @@ try {
   await cdp.send("Page.enable");
   await cdp.send("Page.bringToFront");
   const opened = await cdp.send("Runtime.evaluate", {
-    expression: "window.__jiraCodexPoc?.open(); window.__jiraCodexPoc?.state() ?? null",
+    expression: "window.__jiraWorkbenchPoc?.open(); window.__jiraWorkbenchPoc?.state() ?? null",
     awaitPromise: true,
     returnByValue: true
   });

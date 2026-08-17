@@ -9,7 +9,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const commandArgument = process.argv.find((value) => value.startsWith("--command="));
 const command = commandArgument ? commandArgument.slice("--command=".length).trim() : "";
 const port = Number(process.argv.find((value) => value.startsWith("--port="))?.slice("--port=".length) || 47991);
-const temporaryRoot = await mkdtemp(join(tmpdir(), "jira-codex-app-server-probe-"));
+const temporaryRoot = await mkdtemp(join(tmpdir(), "jira-workbench-app-server-probe-"));
 const environment = {
   ...process.env,
   JIRA_WORKBENCH_PORT: String(port),
@@ -98,7 +98,7 @@ try {
   const resolvedTemporaryRoot = resolve(temporaryRoot);
   const resolvedSystemTemp = resolve(tmpdir());
   if (resolvedTemporaryRoot.startsWith(`${resolvedSystemTemp}\\`)
-    && resolvedTemporaryRoot.includes("jira-codex-app-server-probe-")) {
+    && resolvedTemporaryRoot.includes("jira-workbench-app-server-probe-")) {
     await rm(resolvedTemporaryRoot, { recursive: true, force: true });
   }
 }

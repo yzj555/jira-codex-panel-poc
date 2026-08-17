@@ -1,6 +1,6 @@
 ---
 name: jira-first-turn-analysis
-description: Provide fallback-only first-turn boundaries and evidence rules for Jira requirements and bugs opened from the local Jira Codex panel. Use it only to fill concerns not already governed by another explicitly bound Skill.
+description: Provide fallback-only first-turn boundaries and evidence rules for Jira requirements and bugs opened from the local Jira Workbench. Use it only to fill concerns not already governed by another explicitly bound Skill.
 ---
 
 # Jira First-Turn Fallback

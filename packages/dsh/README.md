@@ -14,9 +14,9 @@ DeepSeek Harness 适配层：把宿主无关的 Jira/JXL/SVN 业务核（`@jira-
    node packages/core/bin/serve.mjs
    ```
 
-   core 服务复用 `%LOCALAPPDATA%\jira-codex-panel-poc\` 下的 Jira 配置与 SVN 状态文件，与 Codex 适配层共享同一套数据；若 Codex 适配层正在运行则需改用其他端口并设置 `JIRA_WORKBENCH_CORE_URL`。
+   core 服务复用 `%LOCALAPPDATA%\jira-workbench\` 下的 Jira 配置与 SVN 状态文件，与 Codex 适配层共享同一套数据；若 Codex 适配层正在运行则需改用其他端口并设置 `JIRA_WORKBENCH_CORE_URL`。
 
-2. 用 DSH 挂载本 bundle 启动会话。DSH 侧模型可调用的工具名为 `mcp__jira-codex__<rawName>`。
+2. 用 DSH 挂载本 bundle 启动会话。DSH 侧模型可调用的工具名为 `mcp__jira-workbench__<rawName>`。
 
 ### 工具面
 

@@ -1,10 +1,10 @@
-# Jira Codex 任务面板
+# Jira 工作台
 
 > 当前版本：`0.31.8`<br>
 > 运行环境：Windows Codex Desktop + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 
-Jira Codex 任务面板把 Jira 待办、JXL Sheets、Codex 对话和 SVN 提交连接到同一个本地工作台。它通过本机服务读取 Jira，并只在用户明确确认时提交状态流转或已审核的 SVN 改动，适合个人工作环境使用。
+Jira 工作台把 Jira 待办、JXL Sheets、Codex 对话和 SVN 提交连接到同一个本地工作台。它通过本机服务读取 Jira，并只在用户明确确认时提交状态流转或已审核的 SVN 改动，适合个人工作环境使用。
 
 这不是部署在 Jira 服务器上的插件，而是一个"固定业务核 + 多宿主适配"的工具：Jira/JXL/SVN 的全部业务规则沉淀在宿主无关的 `@jira-workbench/core`，Codex 与 DeepSeek Harness 只是当前两个接入方式，各自以自己的原生扩展机制适配。
 
@@ -80,8 +80,8 @@ flowchart TB
 双击 `packages\codex\install.cmd`，或在 PowerShell 中执行：
 
 ~~~powershell
-git clone https://github.com/yzj555/jira-codex-panel-poc.git
-cd jira-codex-panel-poc
+git clone https://github.com/yzj555/jira-workbench.git
+cd jira-workbench
 & .\packages\codex\installer\lifecycle.ps1 -Action Auto
 ~~~
 
@@ -95,8 +95,8 @@ cd jira-codex-panel-poc
 
 | 内容 | 默认位置或地址 |
 | --- | --- |
-| 安装目录 | `%LOCALAPPDATA%\Programs\JiraCodexPanel` |
-| 用户数据目录 | `%LOCALAPPDATA%\jira-codex-panel-poc\`（配置、绑定、附件缓存、SVN 状态） |
+| 安装目录 | `%LOCALAPPDATA%\Programs\JiraWorkbench` |
+| 用户数据目录 | `%LOCALAPPDATA%\jira-workbench\`（配置、绑定、附件缓存、SVN 状态） |
 | 面板服务 | `http://127.0.0.1:47823` |
 | Codex CDP | `http://127.0.0.1:47824` |
 

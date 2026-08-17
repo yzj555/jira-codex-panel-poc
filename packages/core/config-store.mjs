@@ -270,7 +270,7 @@ function defaultConfigFile() {
       statusCode: 500
     });
   }
-  return join(localAppData, "jira-codex-panel-poc", "config.json");
+  return join(localAppData, "jira-workbench", "config.json");
 }
 
 function normalizeBaseUrl(value) {

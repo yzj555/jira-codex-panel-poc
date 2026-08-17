@@ -1,14 +1,14 @@
 {
-  "name": "jira-codex-local",
+  "name": "jira-workbench-local",
   "interface": {
-    "displayName": "Jira Codex Local"
+    "displayName": "Jira Workbench Local"
   },
   "plugins": [
     {
-      "name": "jira-codex-assistant",
+      "name": "jira-workbench-assistant",
       "source": {
         "source": "local",
-        "path": "./plugins/jira-codex-assistant"
+        "path": "./plugins/jira-workbench-assistant"
       },
       "policy": {
         "installation": "AVAILABLE",

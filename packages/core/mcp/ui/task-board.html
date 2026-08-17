@@ -287,7 +287,7 @@
 </head>
 <body>
   <header>
-    <div><div class="app-title-row"><h1>Jira 任务工作台</h1><button id="version-status" type="button" title="当前安装版本">v__JIRA_CODEX_VERSION__</button></div><div id="meta">等待任务数据…</div></div>
+    <div><div class="app-title-row"><h1>Jira 任务工作台</h1><button id="version-status" type="button" title="当前安装版本">v__JIRA_WORKBENCH_VERSION__</button></div><div id="meta">等待任务数据…</div></div>
     <div class="toolbar"><div class="monitor"><span id="monitor-meta">自动 Bug 监控：读取中</span><button id="monitor-toggle" type="button" aria-pressed="false">开启</button></div><button id="settings" type="button">设置</button><button id="refresh" type="button">刷新</button><button id="local-close" type="button" aria-label="返回 Codex" title="返回 Codex" hidden>×</button></div>
   </header>
   <nav aria-label="工作台页签">
@@ -312,12 +312,12 @@
   <div id="svn-view" hidden></div>
   <div id="loading"><div class="loader"><span class="spinner"></span><span id="loading-text">正在读取…</span></div></div>
   <script>
-    const APP_VERSION = "__JIRA_CODEX_VERSION__";
+    const APP_VERSION = "__JIRA_WORKBENCH_VERSION__";
     const TOOLS = { board: "jira_list_my_tasks", issue: "jira_get_issue", attachmentPreview: "jira_preview_issue_attachment", sheets: "jira_list_sheets", sheet: "jira_get_sheet_issues", transitions: "jira_list_transitions", prepareTransition: "jira_prepare_transition", executeTransition: "jira_execute_transition", threads: "codex_list_bindable_threads", bindIssue: "codex_bind_issue_to_thread", clearBinding: "codex_clear_issue_binding", openBoundThread: "codex_open_bound_issue_thread", createAnalysis: "codex_create_and_bind_issue_analysis", automationStatus: "jira_get_bug_monitor_status", automationToggle: "jira_set_bug_monitor_enabled", updateStatus: "jira_get_update_status", updateDownload: "jira_download_update", updateCancel: "jira_cancel_update_download", updateRestart: "jira_restart_to_complete_update", svnInspect: "svn_inspect_issue_changes", svnDiff: "svn_preview_issue_diff", svnExternalDiff: "svn_open_issue_external_diff", svnCreateReview: "svn_create_issue_review", svnGetReview: "svn_get_issue_review", svnCancelReview: "svn_cancel_issue_review", svnConfirmReview: "svn_confirm_issue_review", svnCommit: "svn_commit_issue_review", svnReconcile: "svn_reconcile_issue_commit", svnConfirmCommitted: "svn_confirm_issue_committed", svnAbandon: "svn_abandon_issue_review" };
     const DESKTOP_BRIDGE_TRANSPORT = document.documentElement.dataset.transport === "desktop-bridge";
     const LOCAL_TRANSPORT = DESKTOP_BRIDGE_TRANSPORT
       || new URLSearchParams(window.location.search).get("transport") === "http";
-    const LOCAL_STATE_KEY = "jira-codex-mcp-app:widget-state:v1";
+    const LOCAL_STATE_KEY = "jira-workbench-mcp-app:widget-state:v1";
     const pending = new Map();
     const cache = { board: null, sheets: null, sheet: null, issue: null, attachmentPreview: null, transitions: null, pendingTransition: null, threads: null, automation: null, update: null, createAnalysisIssueKey: "", svnContext: null, svnPreview: null, svnReview: null, svnConfirmation: null };
     let requestId = 1;
@@ -459,7 +459,7 @@
             resolve: (value) => { window.clearTimeout(timer); resolve(value); },
             reject: (error) => { window.clearTimeout(timer); reject(error); }
           });
-          window.parent.postMessage({ source: "jira-codex-local-ui", jsonrpc: "2.0", id, method, params }, "*");
+          window.parent.postMessage({ source: "jira-workbench-local-ui", jsonrpc: "2.0", id, method, params }, "*");
         });
       } catch (error) {
         if (retryable && attempt === 0 && error?.code === "LOCAL_MCP_TIMEOUT") {
@@ -498,7 +498,7 @@
       if (!LOCAL_TRANSPORT) window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
     }
     function notifyDesktopHost(type, extra = {}) {
-      if (LOCAL_TRANSPORT) window.parent.postMessage({ source: "jira-codex-local-ui", type, ...extra }, "*");
+      if (LOCAL_TRANSPORT) window.parent.postMessage({ source: "jira-workbench-local-ui", type, ...extra }, "*");
     }
     function openLink(url) {
       if (LOCAL_TRANSPORT) {
@@ -1254,7 +1254,7 @@
     async function initialize() {
       let stored = window.openai?.widgetState?.privateContent || window.openai?.widgetState || {};
       if (LOCAL_TRANSPORT) {
-        if (DESKTOP_BRIDGE_TRANSPORT) stored = window.__JIRA_CODEX_INITIAL_WIDGET_STATE__ || {};
+        if (DESKTOP_BRIDGE_TRANSPORT) stored = window.__JIRA_WORKBENCH_INITIAL_WIDGET_STATE__ || {};
         else {
           try { stored = JSON.parse(window.localStorage.getItem(LOCAL_STATE_KEY) || "{}"); } catch { stored = {}; }
         }

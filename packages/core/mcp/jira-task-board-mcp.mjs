@@ -34,7 +34,7 @@ export const SVN_COMMIT_REVIEW_TOOL = "svn_commit_issue_review";
 export const SVN_RECONCILE_COMMIT_TOOL = "svn_reconcile_issue_commit";
 export const SVN_CONFIRM_COMMITTED_TOOL = "svn_confirm_issue_committed";
 export const SVN_ABANDON_REVIEW_TOOL = "svn_abandon_issue_review";
-export const JIRA_TASK_BOARD_RESOURCE_URI = "ui://jira-codex-assistant/workbench-v3.html";
+export const JIRA_TASK_BOARD_RESOURCE_URI = "ui://jira-workbench-assistant/workbench-v3.html";
 
 const DEFAULT_LIMIT_PER_TYPE = 40;
 const MAX_LIMIT_PER_TYPE = 100;
@@ -338,7 +338,7 @@ export function createJiraTaskBoardMcpServer({
   if (!service?.listTasks) throw new TypeError("workbench.listTasks 必须是函数。");
 
   const server = new McpServer(
-    { name: "jira-codex-assistant", version },
+    { name: "jira-workbench-assistant", version },
     { instructions: "通过工具查看当前用户的 Jira 待办、历史、JXL Sheets、任务详情、Codex 会话绑定与 SVN 审核状态。只读工具不会修改外部状态；Jira 状态流转、本地绑定写入和 SVN 提交必须经过用户在交互面板中的明确确认，并由服务端复检。SVN 提交只能使用已审核的显式路径与一次性确认。UI 已展示完整结构化结果，除非用户明确要求，否则不要重复输出长列表。" }
   );
 
@@ -354,7 +354,7 @@ export function createJiraTaskBoardMcpServer({
       contents: [{
         uri: JIRA_TASK_BOARD_RESOURCE_URI,
         mimeType: "text/html;profile=mcp-app",
-        text: (await uiHtmlPromise).replaceAll("__JIRA_CODEX_VERSION__", version),
+        text: (await uiHtmlPromise).replaceAll("__JIRA_WORKBENCH_VERSION__", version),
         _meta: {
           ui: {
             prefersBorder: true,
@@ -407,7 +407,7 @@ export function createJiraTaskBoardMcpServer({
     server.registerTool(
       UPDATE_STATUS_TOOL,
       {
-        title: "检查 Jira Codex 助手更新",
+        title: "检查 Jira 工作台更新",
         description: "从 GitHub Release（无 Release 时回退到远端 main）读取版本，并与当前安装版本比较。只读。",
         inputSchema: { force: z.boolean().optional().default(false) },
         annotations: externalReadOnlyAnnotations(),
@@ -418,10 +418,10 @@ export function createJiraTaskBoardMcpServer({
         const update = status?.update || status;
         const installation = status?.installation || null;
         const text = update.updateAvailable
-          ? `发现 Jira Codex 助手 v${update.latestVersion}，当前版本为 v${update.currentVersion}。`
+          ? `发现 Jira 工作台 v${update.latestVersion}，当前版本为 v${update.currentVersion}。`
           : update.checked
-            ? `Jira Codex 助手当前版本为 v${update.currentVersion}，已是最新版本。`
-            : `Jira Codex 助手当前版本为 v${update.currentVersion}。`;
+            ? `Jira 工作台当前版本为 v${update.currentVersion}，已是最新版本。`
+            : `Jira 工作台当前版本为 v${update.currentVersion}。`;
         return {
           structuredContent: { view: "updateStatus", update, installation },
           content: [{ type: "text", text }]
@@ -434,7 +434,7 @@ export function createJiraTaskBoardMcpServer({
     server.registerTool(
       UPDATE_DOWNLOAD_TOOL,
       {
-        title: "下载并安装 Jira Codex 助手更新",
+        title: "下载并安装 Jira 工作台更新",
         description: "从正式 GitHub Release 下载 Windows 更新包，校验大小与 SHA-256 后自动备份并安装。安装完成后不会立即关闭 Codex，而是等待用户确认重启。",
         inputSchema: {},
         annotations: externalMutationAnnotations(),
@@ -454,7 +454,7 @@ export function createJiraTaskBoardMcpServer({
     server.registerTool(
       UPDATE_CANCEL_DOWNLOAD_TOOL,
       {
-        title: "取消 Jira Codex 助手更新下载",
+        title: "取消 Jira 工作台更新下载",
         description: "取消当前正在进行的更新包下载。不会改变现有安装。",
         inputSchema: {},
         annotations: localMutationAnnotations(),

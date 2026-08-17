@@ -1,32 +1,32 @@
 (() => {
   const VERSION = "0.31.8";
-  const INJECTION_REVISION = String(window.__JIRA_CODEX_POC_INJECTION_REVISION__ || VERSION);
-  const ENTRY_ID = "jira-codex-poc-entry";
-  const PAGE_ID = "jira-codex-poc-page";
-  const FLOAT_ID = "jira-codex-conversation-float";
-  const SVN_OVERLAY_ID = "jira-codex-svn-workbench-overlay";
-  const STYLE_ID = "jira-codex-poc-style";
-  const OWNED = "data-jira-codex-poc-owned";
-  const HIDDEN = "data-jira-codex-poc-hidden";
-  const HOST = "data-jira-codex-poc-host";
-  const BINDINGS_KEY = "jira-codex-panel-poc:issue-bindings:v1";
-  const BUG_MONITOR_STATE_KEY = "jira-codex-panel-poc:bug-monitor:v2";
-  const MCP_WIDGET_STATE_KEY = "jira-codex-mcp-app:widget-state:v1";
-  const PANEL_URL = window.__JIRA_CODEX_POC_PANEL_URL__ || "http://127.0.0.1:47823/";
-  const PANEL_DOCUMENT = String(window.__JIRA_CODEX_POC_PANEL_DOCUMENT__ || "");
+  const INJECTION_REVISION = String(window.__JIRA_WORKBENCH_POC_INJECTION_REVISION__ || VERSION);
+  const ENTRY_ID = "jira-workbench-poc-entry";
+  const PAGE_ID = "jira-workbench-poc-page";
+  const FLOAT_ID = "jira-workbench-conversation-float";
+  const SVN_OVERLAY_ID = "jira-workbench-svn-workbench-overlay";
+  const STYLE_ID = "jira-workbench-poc-style";
+  const OWNED = "data-jira-workbench-poc-owned";
+  const HIDDEN = "data-jira-workbench-poc-hidden";
+  const HOST = "data-jira-workbench-poc-host";
+  const BINDINGS_KEY = "jira-workbench:issue-bindings:v1";
+  const BUG_MONITOR_STATE_KEY = "jira-workbench:bug-monitor:v2";
+  const MCP_WIDGET_STATE_KEY = "jira-workbench-mcp-app:widget-state:v1";
+  const PANEL_URL = window.__JIRA_WORKBENCH_POC_PANEL_URL__ || "http://127.0.0.1:47823/";
+  const PANEL_DOCUMENT = String(window.__JIRA_WORKBENCH_POC_PANEL_DOCUMENT__ || "");
   const PANEL_ORIGIN = new URL(PANEL_URL).origin;
-  const BRIDGE_BINDING_NAME = window.__JIRA_CODEX_BRIDGE_BINDING__ || "__jiraCodexNodeRequest";
+  const BRIDGE_BINDING_NAME = window.__JIRA_WORKBENCH_BRIDGE_BINDING__ || "__jiraWorkbenchNodeRequest";
   const DESKTOP_CLIENT_ID = `desktop-${crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
 
-  /*__JIRA_CODEX_NAVIGATION_HELPERS__*/
-  /*__JIRA_CODEX_APPLICATION_COMMANDS__*/
+  /*__JIRA_WORKBENCH_NAVIGATION_HELPERS__*/
+  /*__JIRA_WORKBENCH_APPLICATION_COMMANDS__*/
 
-  if (window.__jiraCodexPoc?.version === VERSION
-    && window.__jiraCodexPoc?.revision === INJECTION_REVISION) {
-    window.__jiraCodexPoc.ensure();
-    return window.__jiraCodexPoc.state();
+  if (window.__jiraWorkbenchPoc?.version === VERSION
+    && window.__jiraWorkbenchPoc?.revision === INJECTION_REVISION) {
+    window.__jiraWorkbenchPoc.ensure();
+    return window.__jiraWorkbenchPoc.state();
   }
-  window.__jiraCodexPoc?.destroy?.();
+  window.__jiraWorkbenchPoc?.destroy?.();
 
   let active = false;
   let entry = null;
@@ -75,7 +75,7 @@
 
   function hostFetch(request) {
     const binding = window[BRIDGE_BINDING_NAME];
-    const bridgeToken = window.__JIRA_CODEX_BRIDGE_TOKEN__ || "";
+    const bridgeToken = window.__JIRA_WORKBENCH_BRIDGE_TOKEN__ || "";
     if (typeof binding !== "function" || !bridgeToken) {
       return Promise.reject(new Error("Jira 本地服务桥接尚未就绪。"));
     }
@@ -96,7 +96,7 @@
           url: url.href,
           headers: {
             ...(request?.headers || {}),
-            "x-jira-codex-desktop-client": DESKTOP_CLIENT_ID
+            "x-jira-workbench-desktop-client": DESKTOP_CLIENT_ID
           }
         }));
       } catch (error) {
@@ -137,8 +137,8 @@
     }));
   }
 
-  window.__jiraCodexResolveHostFetch = resolveHostFetch;
-  window.__jiraCodexHostFetch = hostFetch;
+  window.__jiraWorkbenchResolveHostFetch = resolveHostFetch;
+  window.__jiraWorkbenchHostFetch = hostFetch;
 
   const desktopHost = createCodexDesktopAppServerHostAdapter();
   const selector = createCodexRuntimeSelector({ runtimes: [desktopHost] });
@@ -227,7 +227,7 @@
     button.type = "button";
     button.removeAttribute("disabled");
     button.removeAttribute("aria-expanded");
-    button.setAttribute("aria-label", "打开 Jira Codex 助手");
+    button.setAttribute("aria-label", "打开 Jira 工作台");
     button.setAttribute("title", "Jira 任务");
     button.setAttribute(OWNED, "true");
     button.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
@@ -284,7 +284,7 @@
     const desktopTheme = theme();
     return String(html || "")
       .replace(/<html\b([^>]*)>/i, `<html$1 data-transport="desktop-bridge" data-theme="${desktopTheme}">`)
-      .replace("<script>", `<script>window.__JIRA_CODEX_INITIAL_WIDGET_STATE__ = ${state};</script><script>`);
+      .replace("<script>", `<script>window.__JIRA_WORKBENCH_INITIAL_WIDGET_STATE__ = ${state};</script><script>`);
   }
 
   async function loadMcpFrame(target, widgetState = {}) {
@@ -695,7 +695,7 @@
   }
 
   function sendPanelMessage(type, extra = {}) {
-    frame?.contentWindow?.postMessage({ source: "jira-codex-panel-host", type, ...extra }, "*");
+    frame?.contentWindow?.postMessage({ source: "jira-workbench-host", type, ...extra }, "*");
   }
 
   function sendPanelContext() {
@@ -764,7 +764,7 @@
 
   async function onPanelMessage(event) {
     const message = event.data;
-    if (frame && event.source === frame.contentWindow && message?.source === "jira-codex-panel-poc") {
+    if (frame && event.source === frame.contentWindow && message?.source === "jira-workbench") {
       if (message.type === "close" || message.type === "desktop-action-complete") closePanel();
       if (message.type === "ready") {
         sendPanelContext();
@@ -775,7 +775,7 @@
       if (message.type === "open-svn-workbench" && message.issueKey) void openSvnWorkbench(message.issueKey);
       return;
     }
-    if (!svnFrame || event.source !== svnFrame.contentWindow || message?.source !== "jira-codex-local-ui") return;
+    if (!svnFrame || event.source !== svnFrame.contentWindow || message?.source !== "jira-workbench-local-ui") return;
     const sourceWindow = event.source;
     const sourceFrame = svnFrame;
     if (message.jsonrpc === "2.0" && message.id !== undefined && message.method) {
@@ -868,12 +868,12 @@
     document.getElementById(STYLE_ID)?.remove();
     for (const pending of bridgeRequests.values()) {
       clearTimeout(pending.timer);
-      pending.reject(new Error("Jira Codex 桌面宿主已卸载。"));
+      pending.reject(new Error("Jira 工作台桌面宿主已卸载。"));
     }
     bridgeRequests.clear();
-    delete window.__jiraCodexResolveHostFetch;
-    delete window.__jiraCodexHostFetch;
-    delete window.__jiraCodexPoc;
+    delete window.__jiraWorkbenchResolveHostFetch;
+    delete window.__jiraWorkbenchHostFetch;
+    delete window.__jiraWorkbenchPoc;
   }
 
   document.addEventListener("click", onNativeNavigation, true);
@@ -886,7 +886,7 @@
     void pollDesktopCommand();
     void refreshConversationFloat();
   }, 700);
-  window.__jiraCodexPoc = { version: VERSION, revision: INJECTION_REVISION, ensure, open: openPanel, close: closePanel, state, destroy };
+  window.__jiraWorkbenchPoc = { version: VERSION, revision: INJECTION_REVISION, ensure, open: openPanel, close: closePanel, state, destroy };
   ensure();
   void refreshDesktopProjects();
   void migrateLegacyState();

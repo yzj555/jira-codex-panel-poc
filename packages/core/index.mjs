@@ -13,7 +13,7 @@ import { createTaskBoardLoader } from "./lib/task-board-loader.mjs";
 import { createJiraTaskBoardMcpHttpHandler } from "./mcp/jira-task-board-mcp.mjs";
 
 function userDataRoot() {
-  return join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "jira-codex-panel-poc");
+  return join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "jira-workbench");
 }
 
 /**

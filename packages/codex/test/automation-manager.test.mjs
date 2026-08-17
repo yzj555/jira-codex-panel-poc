@@ -7,7 +7,7 @@ import { createAutomationManager, buildWecomAnalysisMessage } from "../lib/autom
 import { createCodexSessionReader, parseCodexTaskCompletion } from "../lib/codex-session-reader.mjs";
 
 test("new automation jobs use App Server turn results before the legacy rollout fallback", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-appserver-automation-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-appserver-automation-"));
   try {
     const calls = [];
     const manager = createAutomationManager({
@@ -63,7 +63,7 @@ test("Codex 会话日志只读取真实 task_complete 事件", () => {
 });
 
 test("自动分析完成后读取结果并推送企业微信机器人", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-automation-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-automation-"));
   const sessionsRoot = join(directory, "sessions");
   const sessionDirectory = join(sessionsRoot, "2026", "08", "04");
   const threadId = "019fcaa1-7ac6-7031-bcc5-3f85a3143ca4";

@@ -1,12 +1,12 @@
 {
-  "name": "jira-codex-assistant",
+  "name": "jira-workbench-assistant",
   "version": "0.1.0+codex.20260814095916",
   "description": "\u5728 Codex \u4e2d\u5904\u7406\u4e2a\u4eba Jira\u3001\u5173\u8054 App Server \u4f1a\u8bdd\uff0c\u5e76\u901a\u8fc7\u4eba\u5de5\u786e\u8ba4\u5ba1\u6838\u548c\u63d0\u4ea4 SVN \u6539\u52a8\u3002",
   "author": {
-    "name": "Jira Codex Assistant"
+    "name": "Jira Workbench"
   },
-  "homepage": "https://github.com/yzj555/jira-codex-panel-poc",
-  "repository": "https://github.com/yzj555/jira-codex-panel-poc",
+  "homepage": "https://github.com/yzj555/jira-workbench",
+  "repository": "https://github.com/yzj555/jira-workbench",
   "keywords": [
     "jira",
     "tasks",
@@ -15,10 +15,10 @@
     "workflow"
   ],
   "interface": {
-    "displayName": "Jira Codex \u52a9\u624b",
+    "displayName": "Jira \u5de5\u4f5c\u53f0",
     "shortDescription": "Jira\u3001\u4f1a\u8bdd\u5173\u8054\u4e0e SVN \u5ba1\u6838\u5de5\u4f5c\u53f0",
     "longDescription": "\u901a\u8fc7\u672c\u673a MCP \u670d\u52a1\u590d\u7528\u5df2\u914d\u7f6e\u7684 Jira PAT\uff0c\u4f7f\u7528 MCP Apps \u5de5\u4f5c\u53f0\u5c55\u793a\u5f85\u529e\u3001\u5904\u7406\u5386\u53f2\u3001JXL Sheets \u548c\u4efb\u52a1\u8be6\u60c5\uff1b\u901a\u8fc7\u5b98\u65b9 App Server \u5217\u51fa\u73b0\u6709 Codex \u4f1a\u8bdd\u5e76\u7ef4\u62a4\u672c\u5730\u5173\u8054\uff1b\u5728\u4e0d\u53ef\u53d8\u5feb\u7167\u3001\u4eba\u5de5\u5ba1\u6838\u548c\u4e00\u6b21\u6027\u786e\u8ba4\u540e\u6267\u884c\u663e\u5f0f\u8def\u5f84 SVN \u63d0\u4ea4\u3002Jira \u72b6\u6001\u6d41\u8f6c\u548c SVN \u63d0\u4ea4\u90fd\u4f1a\u5728\u670d\u52a1\u7aef\u91cd\u65b0\u6821\u9a8c\u3002",
-    "developerName": "Jira Codex Assistant",
+    "developerName": "Jira Workbench",
     "category": "Productivity",
     "capabilities": [
       "Read",

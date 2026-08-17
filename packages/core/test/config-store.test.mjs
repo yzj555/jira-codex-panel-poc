@@ -18,7 +18,7 @@ import {
 } from "../public/prompt-builder.js";
 
 test("配置固定为 Data Center，文件只保存受保护 Token，公开配置不返回 Token", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-config-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-config-"));
   const configFile = join(directory, "config.json");
   const protect = async (value) => Buffer.from([...value].reverse().join(""), "utf8").toString("base64");
   const unprotect = async (value) => [...Buffer.from(value, "base64").toString("utf8")].reverse().join("");
@@ -106,7 +106,7 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
 });
 
 test("数据同步配置使用安全默认值并只接受支持的频率", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-sync-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-sync-"));
   const configFile = join(directory, "config.json");
   const protect = async (value) => Buffer.from(value, "utf8").toString("base64");
   const unprotect = async (value) => Buffer.from(value, "base64").toString("utf8");
@@ -144,7 +144,7 @@ test("数据同步配置使用安全默认值并只接受支持的频率", async
 });
 
 test("旧版默认 JQL 自动迁移到 CT 仪表盘筛选器，自定义 JQL 不受影响", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-migration-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-migration-"));
   const configFile = join(directory, "config.json");
   const protect = async (value) => Buffer.from(value, "utf8").toString("base64");
   const unprotect = async (value) => Buffer.from(value, "base64").toString("utf8");
@@ -203,7 +203,7 @@ test("旧版默认 JQL 自动迁移到 CT 仪表盘筛选器，自定义 JQL 不
 });
 
 test("需求与 Bug 模板、技能独立保存，系统默认正文不固化到配置文件", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-templates-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-templates-"));
   const configFile = join(directory, "config.json");
   const protect = async (value) => Buffer.from(value, "utf8").toString("base64");
   const unprotect = async (value) => Buffer.from(value, "base64").toString("utf8");
@@ -246,7 +246,7 @@ test("需求与 Bug 模板、技能独立保存，系统默认正文不固化到
 });
 
 test("旧版内置消息模板迁移为新的需求与 Bug 系统默认模板", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-template-migration-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-template-migration-"));
   const configFile = join(directory, "config.json");
   const protect = async (value) => Buffer.from(value, "utf8").toString("base64");
   const unprotect = async (value) => Buffer.from(value, "base64").toString("utf8");
@@ -285,7 +285,7 @@ test("旧版内置消息模板迁移为新的需求与 Bug 系统默认模板", 
 });
 
 test("新配置不携带旧项目、旧 Filter、站点协同字段或外部 Bug Skill 默认值", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-clean-defaults-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-clean-defaults-"));
   const configFile = join(directory, "config.json");
   const store = createConfigStore({
     configFile,

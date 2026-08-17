@@ -297,8 +297,8 @@ export class CodexAppServerClient extends EventEmitter {
     requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     startTimeoutMs = DEFAULT_START_TIMEOUT_MS,
     clientInfo = {
-      name: "jira_codex_panel",
-      title: "Jira Codex Panel",
+      name: "jira_workbench",
+      title: "Jira Workbench",
       version: "0.1.0"
     }
   } = {}) {
@@ -689,7 +689,7 @@ export class CodexAppServerClient extends EventEmitter {
           approvalPolicy: options.approvalPolicy,
           sandbox: sandboxCandidates[index],
           personality: options.personality,
-          serviceName: options.serviceName || "jira_codex_panel"
+          serviceName: options.serviceName || "jira_workbench"
         }), { timeoutMs: options.timeoutMs || this.requestTimeoutMs });
       } catch (error) {
         lastError = error;
@@ -782,7 +782,7 @@ export class CodexAppServerClient extends EventEmitter {
       model,
       approvalPolicy: "never",
       sandbox: "read-only",
-      serviceName: "jira_codex_panel",
+      serviceName: "jira_workbench",
       timeoutMs
     });
     const threadId = String(started?.thread?.id || "").trim();

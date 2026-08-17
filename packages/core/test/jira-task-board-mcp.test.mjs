@@ -152,7 +152,7 @@ function updates() {
     source: "release",
     sourceLabel: "GitHub Release",
     installable: true,
-    url: "https://github.com/yzj555/jira-codex-panel-poc/releases/tag/v0.32.0",
+    url: "https://github.com/yzj555/jira-workbench/releases/tag/v0.32.0",
     checkedAt: "2026-08-13T00:00:00.000Z",
     error: ""
   };
@@ -336,7 +336,7 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   assert.match(resource.contents[0].text, /setWidgetState/);
   assert.match(resource.contents[0].text, /SVN 审核与提交/);
   assert.match(resource.contents[0].text, /v0\.31\.1/);
-  assert.doesNotMatch(resource.contents[0].text, /__JIRA_CODEX_VERSION__/);
+  assert.doesNotMatch(resource.contents[0].text, /__JIRA_WORKBENCH_VERSION__/);
 });
 
 test("本机 /mcp 可通过 Streamable HTTP 调用完整工作台", async () => {

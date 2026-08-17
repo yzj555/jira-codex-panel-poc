@@ -23,11 +23,11 @@ test("优先使用 GitHub Release 判断新版本", async () => {
       return new Response(JSON.stringify({
         tag_name: "v0.32.0",
         name: "0.32.0",
-        html_url: "https://github.com/yzj555/jira-codex-panel-poc/releases/tag/v0.32.0",
+        html_url: "https://github.com/yzj555/jira-workbench/releases/tag/v0.32.0",
         published_at: "2026-08-13T00:00:00Z",
         assets: [
-          { id: 1, name: "update-manifest.json", size: 300, browser_download_url: "https://github.com/yzj555/jira-codex-panel-poc/releases/download/v0.32.0/update-manifest.json" },
-          { id: 2, name: "jira-codex-assistant-0.32.0-win-x64.zip", size: 1000, browser_download_url: "https://github.com/yzj555/jira-codex-panel-poc/releases/download/v0.32.0/jira-codex-assistant-0.32.0-win-x64.zip" }
+          { id: 1, name: "update-manifest.json", size: 300, browser_download_url: "https://github.com/yzj555/jira-workbench/releases/download/v0.32.0/update-manifest.json" },
+          { id: 2, name: "jira-workbench-assistant-0.32.0-win-x64.zip", size: 1000, browser_download_url: "https://github.com/yzj555/jira-workbench/releases/download/v0.32.0/jira-workbench-assistant-0.32.0-win-x64.zip" }
         ]
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
@@ -79,10 +79,10 @@ test("GitHub API 限流时使用公开 Release 更新清单继续提供安装", 
       }
       return new Response(JSON.stringify({
         schemaVersion: 1,
-        productId: "jira-codex-panel",
+        productId: "jira-workbench",
         version: "0.31.3",
         asset: {
-          name: "jira-codex-assistant-0.31.3-win-x64.zip",
+          name: "jira-workbench-assistant-0.31.3-win-x64.zip",
           size: 123,
           sha256: "a".repeat(64)
         }

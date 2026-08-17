@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$productId = 'jira-codex-panel'
+$productId = 'jira-workbench'
 $updateSchemaVersion = 1
 $panelPort = 47823
 $cdpPort = 47824
@@ -208,7 +208,7 @@ function Assert-ManifestAndPackage {
   }
   $version = [string]$manifest.version
   if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Update manifest version is invalid.' }
-  $expectedAssetName = "jira-codex-assistant-$version-win-x64.zip"
+  $expectedAssetName = "jira-workbench-assistant-$version-win-x64.zip"
   if ([string]$manifest.asset.name -ne $expectedAssetName) { throw 'Update package name is invalid for the manifest version.' }
   if ([string]$manifest.asset.name -ne [System.IO.Path]::GetFileName($PackagePath)) {
     throw 'Update package name does not match the manifest.'
@@ -315,7 +315,7 @@ try {
   if (-not $RestartCodex -or -not $codexRestarted) {
     Write-UpdateState -State 'restart_required' -Message "v$script:targetVersion is installed and verified. Save your work and restart Codex manually." -RestartRequired $true -Phase 'restart_required' -OperationProgress 97 -Extra @{ backupPath = $script:backupRoot }
   } else {
-    Write-UpdateState -State 'completed' -Message "Jira Codex Assistant was updated successfully to v$script:targetVersion." -RestartRequired $false -Phase 'completed' -OperationProgress 100 -Extra @{ backupPath = $script:backupRoot }
+    Write-UpdateState -State 'completed' -Message "Jira Workbench was updated successfully to v$script:targetVersion." -RestartRequired $false -Phase 'completed' -OperationProgress 100 -Extra @{ backupPath = $script:backupRoot }
   }
   Write-UpdateLog "Update completed: v$script:previousVersion -> v$script:targetVersion"
 } catch {

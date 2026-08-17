@@ -770,7 +770,7 @@ ${conversationContext?.markdown || "（未能从原任务提取对话上下文�
 
 function buildReviewManifest(review, conversationContext) {
   return `${JSON.stringify({
-    format: "jira-codex-svn-review-v3",
+    format: "jira-workbench-svn-review-v3",
     snapshotVersion: review.snapshotVersion || 3,
     reviewId: review.id,
     snapshotHash: review.snapshotHash,
@@ -2361,7 +2361,7 @@ export function createSvnReviewManager({
     await persistReviews();
     let temporaryDirectory = "";
     try {
-      temporaryDirectory = await mkdtemp(join(tmpdir(), "jira-codex-svn-"));
+      temporaryDirectory = await mkdtemp(join(tmpdir(), "jira-workbench-svn-"));
       const messageFile = join(temporaryDirectory, "commit-message.txt");
       await writeFile(messageFile, `${review.message}\n`, { encoding: "utf8", mode: 0o600 });
       const startedAt = new Date(now()).toISOString();

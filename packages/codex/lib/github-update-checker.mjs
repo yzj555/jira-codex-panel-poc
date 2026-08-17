@@ -1,4 +1,4 @@
-const DEFAULT_REPOSITORY = "yzj555/jira-codex-panel-poc";
+const DEFAULT_REPOSITORY = "yzj555/jira-workbench";
 const DEFAULT_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
 const DEFAULT_FAILURE_CACHE_TTL_MS = 10 * 60 * 1_000;
 const DEFAULT_TIMEOUT_MS = 8_000;
@@ -61,7 +61,7 @@ function normalizeReleaseAssets(value) {
 
 function releaseInstallability(assets, version) {
   const manifest = assets.find((asset) => asset.name === "update-manifest.json");
-  const archive = assets.find((asset) => asset.name.toLowerCase() === `jira-codex-assistant-${version}-win-x64.zip`.toLowerCase());
+  const archive = assets.find((asset) => asset.name.toLowerCase() === `jira-workbench-assistant-${version}-win-x64.zip`.toLowerCase());
   if (!manifest) return { installable: false, installabilityReason: "RELEASE_MANIFEST_MISSING" };
   if (!archive) return { installable: false, installabilityReason: "RELEASE_ARCHIVE_MISSING" };
   return { installable: true, installabilityReason: "" };
@@ -92,7 +92,7 @@ export function createGitHubUpdateChecker({
       method: "GET",
       headers: {
         accept: "application/vnd.github+json, application/json",
-        "user-agent": `jira-codex-panel/${normalizedCurrentVersion}`
+        "user-agent": `jira-workbench/${normalizedCurrentVersion}`
       },
       signal: AbortSignal.timeout(timeoutMs)
     });

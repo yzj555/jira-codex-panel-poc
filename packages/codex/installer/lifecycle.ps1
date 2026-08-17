@@ -2,12 +2,12 @@
 param(
   [ValidateSet('Auto', 'Install', 'Update', 'Repair', 'Uninstall', 'Purge', 'Status', 'Menu')]
   [string]$Action = 'Auto',
-  [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Programs\JiraCodexPanel'),
+  [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Programs\JiraWorkbench'),
   [bool]$StartAtLogon = $false,
   [bool]$DesktopShortcut = $true,
   [bool]$LaunchAfterInstall = $true,
   [bool]$InstallCodexCli = $true,
-  [string]$UninstallRegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JiraCodexAssistant',
+  [string]$UninstallRegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JiraWorkbenchAssistant',
   [string]$StartMenuDirectory = '',
   [string]$DesktopDirectory = '',
   [string]$StartupDirectory = '',
@@ -68,12 +68,12 @@ function Get-CodexPluginRegistrationStatus {
   $pluginSelector = if ($InstalledState.codexPluginSelector) {
     [string]$InstalledState.codexPluginSelector
   } else {
-    'jira-codex-assistant@jira-codex-local'
+    'jira-workbench-assistant@jira-workbench-local'
   }
   $marketplaceName = if ($InstalledState.codexPluginMarketplace) {
     [string]$InstalledState.codexPluginMarketplace
   } else {
-    'jira-codex-local'
+    'jira-workbench-local'
   }
   $result = [ordered]@{
     probeAvailable = $false
@@ -241,10 +241,10 @@ function Show-LifecycleMenu {
   while ($true) {
     $state = Read-InstallState
     Clear-Host
-    Write-Host 'Jira Codex 助手维护工具' -ForegroundColor Cyan
+    Write-Host 'Jira 工作台维护工具' -ForegroundColor Cyan
     Write-Host $(if ($state) { "当前版本：$($state.version)" } else { '当前状态：未安装' })
     Write-Host ''
-    Write-Host $(if ($state) { '1. 修复当前安装' } else { '1. 安装 Jira Codex 助手' })
+    Write-Host $(if ($state) { '1. 修复当前安装' } else { '1. 安装 Jira 工作台' })
     Write-Host '2. 普通卸载（保留个人数据）'
     Write-Host '3. 完全清除（删除个人数据）'
     Write-Host '4. 查看安装状态'

@@ -28,7 +28,7 @@ export function createEmbeddedPanelDocument({
     .replace(/^\s*import\s+\{[\s\S]*?\}\s+from\s+["']\/prompt-builder\.js["'];\s*/m, "")
     .replace(/^\s*import\s+\{[\s\S]*?\}\s+from\s+["']\/issue-views\.js["'];\s*/m, "");
   const bridgeBootstrap = `
-window.__JIRA_CODEX_EMBEDDED__ = true;
+window.__JIRA_WORKBENCH_EMBEDDED__ = true;
 const PANEL_BASE_URL = ${JSON.stringify(panelUrl)};
 
 window.fetch = async (input, init = {}) => {
@@ -42,7 +42,7 @@ window.fetch = async (input, init = {}) => {
     body = await sourceRequest.clone().text();
   }
   if (body != null && typeof body !== "string") body = String(body);
-  const payload = await window.parent.__jiraCodexHostFetch({
+  const payload = await window.parent.__jiraWorkbenchHostFetch({
     url: new URL(inputUrl, PANEL_BASE_URL).href,
     method,
     headers: Object.fromEntries(headers.entries()),
@@ -58,7 +58,7 @@ window.fetch = async (input, init = {}) => {
   });
 };
 
-window.__jiraCodexAssetUrl = async (url) => {
+window.__jiraWorkbenchAssetUrl = async (url) => {
   const response = await window.fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error("HTTP " + response.status);
   const blob = await response.blob();

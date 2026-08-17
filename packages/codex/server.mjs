@@ -60,15 +60,15 @@ const coreMcpUiFile = fileURLToPath(import.meta.resolve("@jira-workbench/core/mc
 const configStore = createConfigStore();
 const updateChecker = createGitHubUpdateChecker({
   currentVersion: VERSION,
-  repository: process.env.JIRA_WORKBENCH_UPDATE_REPOSITORY || "yzj555/jira-codex-panel-poc",
+  repository: process.env.JIRA_WORKBENCH_UPDATE_REPOSITORY || "yzj555/jira-workbench",
   releaseUrl: process.env.JIRA_WORKBENCH_UPDATE_RELEASE_URL || undefined,
   packageUrl: process.env.JIRA_WORKBENCH_UPDATE_PACKAGE_URL || undefined,
   repositoryUrl: process.env.JIRA_WORKBENCH_UPDATE_REPOSITORY_URL || undefined
 });
 const codexAppServer = createCodexAppServerClient({
   clientInfo: {
-    name: "jira_codex_panel",
-    title: "Jira Codex Panel",
+    name: "jira_workbench",
+    title: "Jira Workbench",
     version: VERSION
   }
 });
@@ -470,7 +470,7 @@ const mcpOptions = {
   version: VERSION
 };
 const handleMcp = createJiraTaskBoardMcpHttpHandler((request) => {
-  const requestedClientId = String(request.headers["x-jira-codex-desktop-client"] || "").trim();
+  const requestedClientId = String(request.headers["x-jira-workbench-desktop-client"] || "").trim();
   const liveClients = desktopCommands.activeClients();
   const targetClientId = requestedClientId || (liveClients.length === 1 ? liveClients[0] : "");
   const requireDesktopTarget = () => {
@@ -711,7 +711,7 @@ async function handleApi(request, response, url) {
     /^\/api\/codex\/issues\/([A-Za-z][A-Za-z0-9_]*-\d+)\/open$/
   );
   if (request.method === "POST" && openIssueConversationMatch) {
-    const targetClientId = String(request.headers["x-jira-codex-desktop-client"] || "").trim();
+    const targetClientId = String(request.headers["x-jira-workbench-desktop-client"] || "").trim();
     if (!targetClientId) {
       throw new ConfigurationError("缺少当前 Codex 窗口标识。", {
         code: "DESKTOP_CLIENT_ID_REQUIRED",
@@ -751,7 +751,7 @@ async function handleApi(request, response, url) {
         statusCode: 400
       });
     }
-    const targetClientId = String(request.headers["x-jira-codex-desktop-client"] || "").trim();
+    const targetClientId = String(request.headers["x-jira-workbench-desktop-client"] || "").trim();
     if (!targetClientId) {
       throw new ConfigurationError("缺少当前 Codex 窗口标识。", {
         code: "DESKTOP_CLIENT_ID_REQUIRED",

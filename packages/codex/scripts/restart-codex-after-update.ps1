@@ -63,13 +63,13 @@ function Get-CodexMainProcesses {
 }
 
 function Initialize-CodexWindowCloser {
-  if ('JiraCodexWindowCloser' -as [type]) { return }
+  if ('JiraWorkbenchWindowCloser' -as [type]) { return }
   Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-public static class JiraCodexWindowCloser {
+public static class JiraWorkbenchWindowCloser {
     private const uint WM_CLOSE = 0x0010;
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -120,7 +120,7 @@ function Stop-CodexForRestart([int]$GracefulTimeoutSeconds = 12, [int]$ForcedTim
 
   Initialize-CodexWindowCloser
   $processIds = @($processes | ForEach-Object { [int]$_.ProcessId })
-  $windowCount = [JiraCodexWindowCloser]::RequestClose([int[]]$processIds)
+  $windowCount = [JiraWorkbenchWindowCloser]::RequestClose([int[]]$processIds)
   Write-RestartLog "Requested a normal close for $windowCount visible Codex window(s)."
   foreach ($processInfo in $processes) {
     $process = Get-Process -Id $processInfo.ProcessId -ErrorAction SilentlyContinue

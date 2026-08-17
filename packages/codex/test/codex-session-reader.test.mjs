@@ -129,7 +129,7 @@ test("当前会话审查必须观察到匹配的请求消息和真实 turnId", (
 });
 
 test("可按绑定会话、审核 ID 与快照哈希找回审查 turn", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-session-review-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-session-review-"));
   try {
     const dayDirectory = join(directory, "2026", "08", "05");
     await mkdir(dayDirectory, { recursive: true });

@@ -27,7 +27,7 @@ test("Jira 附件文件名会被限制在当前用户缓存目录中", () => {
 });
 
 test("Jira 附件会真实落盘，并按不可变附件 ID 复用缓存", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-attachment-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-attachment-"));
   try {
     const first = await materializeAttachment({
       cacheRoot: directory,

@@ -35,7 +35,7 @@ import {
 } from "@jira-workbench/core/mcp/jira-task-board-mcp.mjs";
 
 const endpoint = new URL(process.env.JIRA_WORKBENCH_MCP_URL || "http://127.0.0.1:47823/mcp");
-const client = new Client({ name: "jira-codex-plugin-probe", version: "2.0.0" });
+const client = new Client({ name: "jira-workbench-plugin-probe", version: "2.0.0" });
 const expectedTools = [
   AUTOMATION_SET_MONITOR_TOOL,
   AUTOMATION_STATUS_TOOL,

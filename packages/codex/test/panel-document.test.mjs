@@ -17,9 +17,9 @@ test("内嵌完整面板移除外部资源，并安装受限 fetch 与资源桥�
   assert.doesNotMatch(document, /src="\/app\.js"/);
   assert.doesNotMatch(document, /import\s+\{/);
   assert.doesNotMatch(document, /export const/);
-  assert.match(document, /window\.__JIRA_CODEX_EMBEDDED__ = true/);
-  assert.match(document, /window\.parent\.__jiraCodexHostFetch/);
-  assert.match(document, /window\.__jiraCodexAssetUrl/);
+  assert.match(document, /window\.__JIRA_WORKBENCH_EMBEDDED__ = true/);
+  assert.match(document, /window\.parent\.__jiraWorkbenchHostFetch/);
+  assert.match(document, /window\.__jiraWorkbenchAssetUrl/);
   assert.match(document, /body \{ color: red; \}/);
   assert.match(document, /const value = 42/);
   assert.match(document, /const helper = 8/);
@@ -109,13 +109,13 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.match(ui, /jira_set_bug_monitor_enabled/);
   assert.match(ui, /jira_get_update_status/);
   assert.match(ui, /id="version-status"/);
-  assert.match(ui, /__JIRA_CODEX_VERSION__/);
+  assert.match(ui, /__JIRA_WORKBENCH_VERSION__/);
   assert.match(ui, /ui\/initialize/);
   assert.match(ui, /tools\/call/);
   assert.match(ui, /ui\/open-link/);
   assert.match(ui, /LOCAL_TRANSPORT/);
   assert.match(ui, /new URL\("\/mcp", window\.location\.origin\)/);
-  assert.match(ui, /jira-codex-local-ui/);
+  assert.match(ui, /jira-workbench-local-ui/);
   assert.doesNotThrow(() => new Function(ui.match(/<script>([\s\S]*?)<\/script>/)?.[1] || ""));
 });
 
@@ -225,16 +225,16 @@ test("桌面注入以完整 public 工作台为主 UI，官方 MCP Apps 仍作�
     readFile(new URL("../lib/codex-navigation.mjs", import.meta.url), "utf8"),
     readFile(new URL("../lib/codex-application-commands.mjs", import.meta.url), "utf8"),
     readFile(new URL("../injector.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../plugins/jira-codex-assistant/.codex-plugin/plugin.json", import.meta.url), "utf8"),
+    readFile(new URL("../plugins/jira-workbench-assistant/.codex-plugin/plugin.json", import.meta.url), "utf8"),
     readFile(new URL("../../core/mcp/ui/task-board.html", import.meta.url), "utf8")
   ]);
   const stripExports = (source) => source.replace(/\bexport\s+(?=(?:const|function|class|async\s+function)\b)/g, "");
   const compiled = client
-    .replace("/*__JIRA_CODEX_NAVIGATION_HELPERS__*/", stripExports(navigation))
-    .replace("/*__JIRA_CODEX_APPLICATION_COMMANDS__*/", stripExports(commands));
+    .replace("/*__JIRA_WORKBENCH_NAVIGATION_HELPERS__*/", stripExports(navigation))
+    .replace("/*__JIRA_WORKBENCH_APPLICATION_COMMANDS__*/", stripExports(commands));
   assert.doesNotThrow(() => new Function(compiled));
   assert.match(client, /mode: "minimal-desktop-host"/);
-  assert.match(client, /jira-codex-conversation-float/);
+  assert.match(client, /jira-workbench-conversation-float/);
   assert.doesNotMatch(client, /data-open-thread/);
   assert.doesNotMatch(client, /openConversation\(binding\.threadId\)/);
   assert.match(client, /PANEL_DOCUMENT/);
@@ -242,7 +242,7 @@ test("桌面注入以完整 public 工作台为主 UI，官方 MCP Apps 仍作�
   assert.match(client, /#\$\{PAGE_ID\} \{ position: absolute/);
   assert.match(client, /function findPageMount\(/);
   assert.match(client, /surface\.setAttribute\(HOST/);
-  assert.doesNotMatch(client, /codex:\/\/plugins\/jira-codex-assistant/);
+  assert.doesNotMatch(client, /codex:\/\/plugins\/jira-workbench-assistant/);
   assert.match(client, /\/api\/desktop\/commands\/next/);
   assert.match(client, /command\.type === "open-thread"/);
   assert.match(client, /command\.type === "create-analysis"/);
@@ -261,8 +261,8 @@ test("桌面注入以完整 public 工作台为主 UI，官方 MCP Apps 仍作�
   assert.match(injector, /readFile\(corePromptBuilderPath, "utf8"\)/);
   assert.match(injector, /readFile\(coreIssueViewsPath, "utf8"\)/);
   assert.match(injector, /const panelDocument = createEmbeddedPanelDocument/);
-  assert.match(injector, /__JIRA_CODEX_POC_PANEL_DOCUMENT__/);
-  assert.ok((injector.match(/window\.__JIRA_CODEX_BRIDGE_TOKEN__\s*=/g) || []).length >= 2,
+  assert.match(injector, /__JIRA_WORKBENCH_POC_PANEL_DOCUMENT__/);
+  assert.ok((injector.match(/window\.__JIRA_WORKBENCH_BRIDGE_TOKEN__\s*=/g) || []).length >= 2,
     "injector restart must refresh the live page bridge token even when the UI revision is current");
   assert.match(injector, /new Set\(\["GET", "POST", "PUT", "DELETE"\]\)/);
   assert.match(pluginManifest, /"mcpServers"\s*:\s*"\.\/\.mcp\.json"/);

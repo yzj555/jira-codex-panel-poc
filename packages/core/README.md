@@ -30,7 +30,7 @@ node bin/serve.mjs        # 默认 127.0.0.1:47823
 - `POST /mcp` — MCP 端点（streamable-http）
 - `GET /mcp-app.html` — 工作台 UI 预览
 
-组装逻辑收敛在 `index.mjs` 的 `createCoreService`。数据文件默认复用 `%LOCALAPPDATA%\jira-codex-panel-poc\`（与 Codex 适配层共享同一份数据），可用 `JIRA_CODEX_CONFIG_FILE` / `JIRA_CODEX_BINDINGS_FILE` 等环境变量覆盖。
+组装逻辑收敛在 `index.mjs` 的 `createCoreService`。数据文件默认复用 `%LOCALAPPDATA%\jira-workbench\`（与 Codex 适配层共享同一份数据），可用 `JIRA_WORKBENCH_CONFIG_FILE` / `JIRA_WORKBENCH_BINDINGS_FILE` 等环境变量覆盖。
 
 独立服务暴露 19 个工具：8 个 Jira 只读/流转工具 + 11 个 SVN 审核工具，不暴露任何宿主专属能力（会话列表、桌面操作、自动 Bug 分析、GitHub 更新）。
 
@@ -112,7 +112,7 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 | 内容 | 默认位置 |
 | --- | --- |
-| 用户配置 | `%LOCALAPPDATA%\jira-codex-panel-poc\config.json` |
-| 会话绑定 | `%LOCALAPPDATA%\jira-codex-panel-poc\issue-bindings.json` |
-| Jira 附件缓存 | `%LOCALAPPDATA%\jira-codex-panel-poc\attachments` |
-| SVN 基线与审核状态 | `%LOCALAPPDATA%\jira-codex-panel-poc\svn-baselines.json`、`svn-reviews.json` |
+| 用户配置 | `%LOCALAPPDATA%\jira-workbench\config.json` |
+| 会话绑定 | `%LOCALAPPDATA%\jira-workbench\issue-bindings.json` |
+| Jira 附件缓存 | `%LOCALAPPDATA%\jira-workbench\attachments` |
+| SVN 基线与审核状态 | `%LOCALAPPDATA%\jira-workbench\svn-baselines.json`、`svn-reviews.json` |

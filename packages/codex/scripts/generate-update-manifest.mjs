@@ -9,14 +9,14 @@ const outputDirectory = resolve(process.argv[3] || dirname(archivePath));
 if (!process.argv[2]) throw new Error("Usage: node scripts/generate-update-manifest.mjs <archive.zip> [output-directory]");
 
 const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-const expectedArchiveName = `jira-codex-assistant-${packageJson.version}-win-x64.zip`;
+const expectedArchiveName = `jira-workbench-assistant-${packageJson.version}-win-x64.zip`;
 if (basename(archivePath).toLowerCase() !== expectedArchiveName.toLowerCase()) {
   throw new Error(`Release archive must be named ${expectedArchiveName}.`);
 }
 const archive = await readFile(archivePath);
 const manifest = {
   schemaVersion: 1,
-  productId: "jira-codex-panel",
+  productId: "jira-workbench",
   version: packageJson.version,
   channel: "stable",
   restartRequired: true,

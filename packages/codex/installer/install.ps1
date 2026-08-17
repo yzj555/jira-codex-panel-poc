@@ -1,28 +1,28 @@
 ﻿[CmdletBinding(SupportsShouldProcess = $true)]
 param(
-  [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Programs\JiraCodexPanel'),
+  [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Programs\JiraWorkbench'),
   [ValidateSet('Auto', 'Install', 'Update', 'Repair')]
   [string]$Operation = 'Auto',
   [bool]$StartAtLogon = $false,
   [bool]$DesktopShortcut = $true,
   [bool]$LaunchAfterInstall = $true,
   [bool]$InstallCodexCli = $true,
-  [string]$UninstallRegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JiraCodexAssistant',
+  [string]$UninstallRegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JiraWorkbenchAssistant',
   [string]$StartMenuDirectory = '',
   [string]$DesktopDirectory = '',
   [string]$StartupDirectory = ''
 )
 
 $ErrorActionPreference = 'Stop'
-$productId = 'jira-codex-panel'
-$productName = 'Jira Codex 助手'
+$productId = 'jira-workbench'
+$productName = 'Jira 工作台'
 $stateSchemaVersion = 2
 $uninstallRegistryPath = $UninstallRegistryPath
 # 脚本位于 packages/codex/installer/，安装源（workspace 根）为其上三级。
 $sourceRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-$userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc'
-$pluginMarketplaceName = 'jira-codex-local'
-$pluginSelector = "jira-codex-assistant@$pluginMarketplaceName"
+$userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-workbench'
+$pluginMarketplaceName = 'jira-workbench-local'
+$pluginSelector = "jira-workbench-assistant@$pluginMarketplaceName"
 
 function Get-FullPath([string]$Path) {
   [System.IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($Path))
@@ -159,7 +159,7 @@ function Register-ProductUninstallEntry {
   $values = [ordered]@{
     DisplayName = $DisplayName
     DisplayVersion = $Version
-    Publisher = 'Jira Codex Assistant'
+    Publisher = 'Jira Workbench'
     InstallLocation = $ApplicationRoot
     DisplayIcon = $IconPath
     UninstallString = $uninstallCommand
@@ -382,9 +382,9 @@ $startMenuShortcut = Join-Path $StartMenuDirectory 'Codex.lnk'
 $desktopShortcutPath = Join-Path $DesktopDirectory 'Codex.lnk'
 $legacyStartMenuShortcut = Join-Path $StartMenuDirectory 'Codex（Jira 任务）.lnk'
 $legacyDesktopShortcut = Join-Path $DesktopDirectory 'Codex（Jira 任务）.lnk'
-$startupShortcut = Join-Path $StartupDirectory 'Jira Codex Panel Bootstrap.lnk'
-$maintenanceShortcut = Join-Path $StartMenuDirectory '维护 Jira Codex 助手.lnk'
-$legacyUninstallShortcut = Join-Path $StartMenuDirectory '卸载 Jira Codex 任务面板.lnk'
+$startupShortcut = Join-Path $StartupDirectory 'Jira Workbench Bootstrap.lnk'
+$maintenanceShortcut = Join-Path $StartMenuDirectory '维护 Jira 工作台.lnk'
+$legacyUninstallShortcut = Join-Path $StartMenuDirectory '卸载 Jira 工作台.lnk'
 $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $iconPath = Join-Path $codexPackage.InstallLocation 'app\ChatGPT.exe'
 if (-not (Test-Path -LiteralPath $iconPath)) { $iconPath = $powerShellPath }
@@ -500,13 +500,13 @@ $launcherArguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Window
 $backgroundArguments = "$launcherArguments -Background"
 $maintenanceArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$lifecyclePath`" -Action Menu -InstallRoot `"$InstallRoot`" -UninstallRegistryPath `"$uninstallRegistryPath`""
 
-New-Shortcut -Path $startMenuShortcut -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动 Jira Codex 助手' -IconLocation $iconPath
-New-Shortcut -Path $maintenanceShortcut -TargetPath $powerShellPath -Arguments $maintenanceArguments -WorkingDirectory $InstallRoot -Description '修复或卸载 Jira Codex 助手' -IconLocation $iconPath -WindowStyle 1
+New-Shortcut -Path $startMenuShortcut -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动 Jira 工作台' -IconLocation $iconPath
+New-Shortcut -Path $maintenanceShortcut -TargetPath $powerShellPath -Arguments $maintenanceArguments -WorkingDirectory $InstallRoot -Description '修复或卸载 Jira 工作台' -IconLocation $iconPath -WindowStyle 1
 Remove-LegacyLifecycleShortcut -Path $legacyUninstallShortcut -ExpectedRoot $InstallRoot
 Remove-ManagedShortcut -Path $legacyStartMenuShortcut -ExpectedRoot $InstallRoot
 
 if ($DesktopShortcut) {
-  New-Shortcut -Path $desktopShortcutPath -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动 Jira Codex 助手' -IconLocation $iconPath
+  New-Shortcut -Path $desktopShortcutPath -TargetPath $powerShellPath -Arguments $launcherArguments -WorkingDirectory $InstallRoot -Description '启动 Jira 工作台' -IconLocation $iconPath
 } elseif (Test-Path -LiteralPath $desktopShortcutPath) {
   Remove-ManagedShortcut -Path $desktopShortcutPath -ExpectedRoot $InstallRoot
 }

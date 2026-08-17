@@ -123,8 +123,8 @@ const DEFAULT_TEMPLATE_SKILLS = Object.freeze({
   bug: null
 });
 const MAX_TEXT_PREVIEW_CHARACTERS = 500_000;
-const LAST_JXL_SHEET_STORAGE_KEY = "jira-codex-panel:last-jxl-sheet:v1";
-const ASSOCIATION_DRAFT_STORAGE_KEY = "jira-codex-panel:association-drafts:v1";
+const LAST_JXL_SHEET_STORAGE_KEY = "jira-workbench:last-jxl-sheet:v1";
+const ASSOCIATION_DRAFT_STORAGE_KEY = "jira-workbench:association-drafts:v1";
 const ASSOCIATION_WAIT_TIMEOUT_MS = 65_000;
 const SHEET_COLUMNS = [
   { key: "issue", label: "Issue", filter: "text", placeholder: "筛选 Key" },
@@ -560,7 +560,7 @@ async function restartToCompleteUpdate() {
 
 function postHostMessage(type, payload = {}) {
   if (window.parent === window) return;
-  window.parent.postMessage({ source: "jira-codex-panel-poc", type, ...payload }, "*");
+  window.parent.postMessage({ source: "jira-workbench", type, ...payload }, "*");
 }
 
 function normalizeThreadList(payload) {
@@ -1357,7 +1357,7 @@ function createAttachmentCard(attachment) {
   const card = element("a", "attachment-card");
   const previewKind = attachmentPreviewKind(attachment);
   const locallyOpenable = !previewKind && attachmentCanOpenLocally(attachment);
-  card.href = window.__JIRA_CODEX_EMBEDDED__ || locallyOpenable ? "#" : attachment.downloadUrl;
+  card.href = window.__JIRA_WORKBENCH_EMBEDDED__ || locallyOpenable ? "#" : attachment.downloadUrl;
   card.title = previewKind ? `预览 ${attachment.filename}` : `下载 ${attachment.filename}`;
   card.setAttribute("aria-label", card.title);
   if (previewKind) card.classList.add("previewable");
@@ -1372,7 +1372,7 @@ function createAttachmentCard(attachment) {
       await handleLocalAttachment(card, attachment, action);
       return;
     }
-    if (!window.__JIRA_CODEX_EMBEDDED__) return;
+    if (!window.__JIRA_WORKBENCH_EMBEDDED__) return;
     event.preventDefault();
     if (card.getAttribute("aria-busy") === "true") return;
     card.setAttribute("aria-busy", "true");
@@ -1384,7 +1384,7 @@ function createAttachmentCard(attachment) {
       card.removeAttribute("aria-busy");
     }
   });
-  if (!previewKind && !locallyOpenable && !window.__JIRA_CODEX_EMBEDDED__) card.download = attachment.filename;
+  if (!previewKind && !locallyOpenable && !window.__JIRA_WORKBENCH_EMBEDDED__) card.download = attachment.filename;
 
   const preview = element("span", "attachment-preview");
   if (attachment.thumbnailUrl) {
@@ -1397,8 +1397,8 @@ function createAttachmentCard(attachment) {
     };
     image.addEventListener("error", showFallback, { once: true });
     preview.append(image);
-    if (window.__JIRA_CODEX_EMBEDDED__ && window.__jiraCodexAssetUrl) {
-      window.__jiraCodexAssetUrl(attachment.thumbnailUrl)
+    if (window.__JIRA_WORKBENCH_EMBEDDED__ && window.__jiraWorkbenchAssetUrl) {
+      window.__jiraWorkbenchAssetUrl(attachment.thumbnailUrl)
         .then((url) => { if (image.isConnected) image.src = url; })
         .catch(showFallback);
     } else {
@@ -3686,7 +3686,7 @@ async function openIssueFromHost(issueKey) {
 window.addEventListener("message", (event) => {
   if (event.source !== window.parent) return;
   const message = event.data;
-  if (!message || message.source !== "jira-codex-panel-host") return;
+  if (!message || message.source !== "jira-workbench-host") return;
   if (message.type === "theme") applyHostTheme(message);
   if (message.type === "panel-activated") {
     refreshOnPanelReturn();

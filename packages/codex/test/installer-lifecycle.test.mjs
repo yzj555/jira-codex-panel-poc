@@ -46,9 +46,9 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.match(install, /function Remove-ObsoleteManifestComponents/);
   assert.match(install, /未找到 Codex CLI，无法注册核心 Codex Plugin/);
   assert.match(install, /未能核验核心 Plugin\/Marketplace 注册/);
-  assert.match(install, /Windows\\CurrentVersion\\Uninstall\\JiraCodexAssistant/);
-  assert.match(install, /维护 Jira Codex 助手\.lnk/);
-  assert.match(install, /-Description '修复或卸载 Jira Codex 助手' -IconLocation \$iconPath -WindowStyle 1/);
+  assert.match(install, /Windows\\CurrentVersion\\Uninstall\\JiraWorkbenchAssistant/);
+  assert.match(install, /维护 Jira 工作台\.lnk/);
+  assert.match(install, /-Description '修复或卸载 Jira 工作台' -IconLocation \$iconPath -WindowStyle 1/);
   assert.match(uninstall, /install-state\.json/);
   assert.match(uninstall, /Remove-Item -LiteralPath \$uninstallRegistryPath/);
   assert.match(uninstall, /plugin remove \$pluginSelector/);
@@ -71,7 +71,7 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.match(launcher, /File\]::ReadAllText\(\$updateStatePath, \[System\.Text\.Encoding\]::UTF8\)/);
   assert.match(launcher, /File\]::WriteAllText\(\$temporary, \$json, \$utf8NoBom\)/);
   assert.match(restartHelper, /Stop-CodexForRestart/);
-  assert.match(restartHelper, /JiraCodexWindowCloser/);
+  assert.match(restartHelper, /JiraWorkbenchWindowCloser/);
   assert.match(restartHelper, /RequestClose/);
   assert.match(restartHelper, /Stop-Process -Id \(\[int\]\$processInfo\.ProcessId\) -Force/);
   assert.match(restartHelper, /only[\s\S]*after the graceful window-close deadline/);
@@ -81,8 +81,8 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.match(restartHelper, /File\]::ReadAllText\(\$StatePath, \[System\.Text\.Encoding\]::UTF8\)/);
   assert.match(restartHelper, /File\]::WriteAllText\(\$temporary, \$json, \$utf8NoBom\)/);
   assert.doesNotMatch(updater, /Stop-Process[^\r\n]*ChatGPT/i);
-  assert.equal(manifest.productId, "jira-codex-panel");
-  assert.equal(manifest.displayName, "Jira Codex 助手");
+  assert.equal(manifest.productId, "jira-workbench");
+  assert.equal(manifest.displayName, "Jira 工作台");
   assert.equal(manifest.components.some((component) => component.id === "release-updater"
     && component.required && component.path === "packages/codex/installer/update-bootstrap.ps1"), true);
   assert.equal(manifest.components.some((component) => component.id === "release-updater-host"
@@ -96,7 +96,7 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.equal(manifest.components.some((component) => (
     component.id === "official-plugin"
     && component.required
-    && component.path === "packages/codex/plugins/jira-codex-assistant"
+    && component.path === "packages/codex/plugins/jira-workbench-assistant"
   )), true);
   assert.equal(manifest.components.some((component) => component.id === "plugin-marketplace" && component.required), true);
   assert.equal(manifest.components.some((component) => (
@@ -143,11 +143,11 @@ test("lifecycle status works without an installed product", {
 test("lifecycle status detects missing installed components from the live filesystem", {
   skip: process.platform !== "win32"
 }, async () => {
-  const installRoot = await mkdtemp(join(tmpdir(), "jira-codex-lifecycle-status-"));
+  const installRoot = await mkdtemp(join(tmpdir(), "jira-workbench-lifecycle-status-"));
   try {
     await mkdir(join(installRoot, "packages", "codex", "installer"), { recursive: true });
     await writeFile(join(installRoot, "packages", "codex", "installer", "product-manifest.json"), JSON.stringify({
-      productId: "jira-codex-panel",
+      productId: "jira-workbench",
       components: [
         { id: "local-service", required: true, path: "packages/codex/server.mjs" },
         { id: "panel-ui", required: true, path: "packages/codex/public" },
@@ -155,10 +155,10 @@ test("lifecycle status detects missing installed components from the live filesy
       ]
     }), "utf8");
     await writeFile(join(installRoot, "install-state.json"), JSON.stringify({
-      productId: "jira-codex-panel",
+      productId: "jira-workbench",
       version: "0.27.0",
       shortcuts: [],
-      uninstallRegistryPath: "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JiraCodexAssistantStatusTest"
+      uninstallRegistryPath: "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JiraWorkbenchAssistantStatusTest"
     }), "utf8");
     await writeFile(join(installRoot, "packages", "codex", "server.mjs"), "", "utf8");
 
@@ -185,14 +185,14 @@ test("lifecycle status detects missing installed components from the live filesy
 test("uninstall preserves program files when Codex registration cleanup cannot be verified", {
   skip: process.platform !== "win32"
 }, async () => {
-  const installRoot = await mkdtemp(join(tmpdir(), "jira-codex-uninstall-plugin-guard-"));
+  const installRoot = await mkdtemp(join(tmpdir(), "jira-workbench-uninstall-plugin-guard-"));
   try {
     const fakeCodex = join(installRoot, "fake-codex.cmd");
     const pluginJson = JSON.stringify({
-      installed: [{ pluginId: "jira-codex-assistant@jira-codex-local", installed: true, enabled: true }]
+      installed: [{ pluginId: "jira-workbench-assistant@jira-workbench-local", installed: true, enabled: true }]
     });
     const marketplaceJson = JSON.stringify({
-      marketplaces: [{ name: "jira-codex-local", root: installRoot }]
+      marketplaces: [{ name: "jira-workbench-local", root: installRoot }]
     });
     await writeFile(fakeCodex, [
       "@echo off",
@@ -201,12 +201,12 @@ test("uninstall preserves program files when Codex registration cleanup cannot b
       "exit /b 0"
     ].join("\r\n"), "utf8");
     await writeFile(join(installRoot, "install-state.json"), JSON.stringify({
-      productId: "jira-codex-panel",
+      productId: "jira-workbench",
       userDataRoot: join(installRoot, "user-data-not-owned"),
       shortcuts: [],
       codexAppServerCommand: fakeCodex,
-      codexPluginSelector: "jira-codex-assistant@jira-codex-local",
-      codexPluginMarketplace: "jira-codex-local",
+      codexPluginSelector: "jira-workbench-assistant@jira-workbench-local",
+      codexPluginMarketplace: "jira-workbench-local",
       codexPluginRegistered: true
     }), "utf8");
 
@@ -218,7 +218,7 @@ test("uninstall preserves program files when Codex registration cleanup cannot b
       "-Force"
     ], { encoding: "utf8", windowsHide: true, stdio: "pipe" }));
     const preservedState = JSON.parse(await readFile(join(installRoot, "install-state.json"), "utf8"));
-    assert.equal(preservedState.productId, "jira-codex-panel");
+    assert.equal(preservedState.productId, "jira-workbench");
   } finally {
     await rm(installRoot, { recursive: true, force: true });
   }
@@ -227,28 +227,28 @@ test("uninstall preserves program files when Codex registration cleanup cannot b
 test("lifecycle status verifies live Codex plugin and marketplace registration", {
   skip: process.platform !== "win32"
 }, async () => {
-  const installRoot = await mkdtemp(join(tmpdir(), "jira-codex-lifecycle-plugin-status-"));
+  const installRoot = await mkdtemp(join(tmpdir(), "jira-workbench-lifecycle-plugin-status-"));
   try {
     const manifest = {
-      productId: "jira-codex-panel",
+      productId: "jira-workbench",
       components: [
-        { id: "official-plugin", required: true, path: "packages/codex/plugins/jira-codex-assistant" },
+        { id: "official-plugin", required: true, path: "packages/codex/plugins/jira-workbench-assistant" },
         { id: "plugin-marketplace", required: true, path: "packages/codex/.agents/plugins/marketplace.json" }
       ]
     };
     const fakeCodex = join(installRoot, "fake-codex.cmd");
     const pluginJson = JSON.stringify({
       installed: [{
-        pluginId: "jira-codex-assistant@jira-codex-local",
+        pluginId: "jira-workbench-assistant@jira-workbench-local",
         installed: true,
         enabled: true
       }]
     });
     const marketplaceJson = JSON.stringify({
-      marketplaces: [{ name: "jira-codex-local", root: join(installRoot, "packages", "codex") }]
+      marketplaces: [{ name: "jira-workbench-local", root: join(installRoot, "packages", "codex") }]
     });
     await mkdir(join(installRoot, "packages", "codex", "installer"), { recursive: true });
-    await mkdir(join(installRoot, "packages", "codex", "plugins", "jira-codex-assistant"), { recursive: true });
+    await mkdir(join(installRoot, "packages", "codex", "plugins", "jira-workbench-assistant"), { recursive: true });
     await mkdir(join(installRoot, "packages", "codex", ".agents", "plugins"), { recursive: true });
     await writeFile(join(installRoot, "packages", "codex", "installer", "product-manifest.json"), JSON.stringify(manifest), "utf8");
     await writeFile(join(installRoot, "packages", "codex", ".agents", "plugins", "marketplace.json"), "{}", "utf8");
@@ -259,13 +259,13 @@ test("lifecycle status verifies live Codex plugin and marketplace registration",
       "exit /b 1"
     ].join("\r\n"), "utf8");
     await writeFile(join(installRoot, "install-state.json"), JSON.stringify({
-      productId: "jira-codex-panel",
+      productId: "jira-workbench",
       version: "0.27.0",
       shortcuts: [],
       codexAppServerCommand: fakeCodex,
-      codexPluginSelector: "jira-codex-assistant@jira-codex-local",
-      codexPluginMarketplace: "jira-codex-local",
-      uninstallRegistryPath: "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JiraCodexAssistantPluginStatusTest"
+      codexPluginSelector: "jira-workbench-assistant@jira-workbench-local",
+      codexPluginMarketplace: "jira-workbench-local",
+      uninstallRegistryPath: "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\JiraWorkbenchAssistantPluginStatusTest"
     }), "utf8");
 
     const output = execFileSync("powershell.exe", [

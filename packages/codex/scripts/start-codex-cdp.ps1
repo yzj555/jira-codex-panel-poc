@@ -39,7 +39,7 @@ if ($runningCodex.Count -gt 0) {
     }
     throw "Codex was started with remote debugging, but CDP port $CdpPort did not become ready."
   }
-  throw 'Codex is already running without the Jira panel launch parameters. Exit Codex completely, then use the Jira Codex shortcut.'
+  throw 'Codex is already running without the Jira workbench launch parameters. Exit Codex completely, then use the Jira Workbench shortcut.'
 }
 
 $package = Get-AppxPackage -Name 'OpenAI.Codex'

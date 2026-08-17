@@ -13,7 +13,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { compareVersions, normalizeVersion } from "./github-update-checker.mjs";
 
-const PRODUCT_ID = "jira-codex-panel";
+const PRODUCT_ID = "jira-workbench";
 const UPDATER_VERSION = "1.0.0";
 const UPDATE_STATE_VERSION = 1;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
@@ -170,13 +170,13 @@ function validateManifest(value, expectedVersion) {
   const size = Math.max(0, Number(asset.size || 0));
   const minimumUpdaterVersion = normalizeVersion(manifest.minimumUpdaterVersion || "1.0.0");
   if (Number(manifest.schemaVersion) !== 1 || manifest.productId !== PRODUCT_ID) {
-    throw new UpdateManagerError("更新清单与 Jira Codex 助手不匹配。", { code: "UPDATE_MANIFEST_PRODUCT_MISMATCH" });
+    throw new UpdateManagerError("更新清单与 Jira 工作台不匹配。", { code: "UPDATE_MANIFEST_PRODUCT_MISMATCH" });
   }
   if (!version || version !== expectedVersion) {
     throw new UpdateManagerError("更新清单版本与 GitHub Release 不一致。", { code: "UPDATE_MANIFEST_VERSION_MISMATCH" });
   }
   if (!assetName || assetName !== basename(assetName)
-    || assetName.toLowerCase() !== `jira-codex-assistant-${version}-win-x64.zip`.toLowerCase()) {
+    || assetName.toLowerCase() !== `jira-workbench-assistant-${version}-win-x64.zip`.toLowerCase()) {
     throw new UpdateManagerError("更新清单中的安装包名称无效。", { code: "UPDATE_MANIFEST_ASSET_INVALID" });
   }
   if (!/^[a-f0-9]{64}$/.test(sha256)) {
@@ -418,7 +418,7 @@ export function createUpdateManager({
     timer.unref?.();
     try {
       const manifestResponse = await fetchImpl(manifestAsset.url, {
-        headers: { accept: "application/json", "user-agent": `jira-codex-panel/${normalizedCurrentVersion}` },
+        headers: { accept: "application/json", "user-agent": `jira-workbench/${normalizedCurrentVersion}` },
         signal: downloadController.signal
       });
       const manifest = validateManifest(await responseJson(manifestResponse), latestVersion);
@@ -435,7 +435,7 @@ export function createUpdateManager({
       const manifestPath = join(versionDirectory, "update-manifest.json");
       await rm(partialPath, { force: true });
       const response = await fetchImpl(archiveAsset.url, {
-        headers: { accept: "application/octet-stream", "user-agent": `jira-codex-panel/${normalizedCurrentVersion}` },
+        headers: { accept: "application/octet-stream", "user-agent": `jira-workbench/${normalizedCurrentVersion}` },
         signal: downloadController.signal
       });
       if (!response.ok || !response.body) {

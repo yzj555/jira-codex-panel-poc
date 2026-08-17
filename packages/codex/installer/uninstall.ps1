@@ -1,14 +1,14 @@
 ﻿[CmdletBinding(SupportsShouldProcess = $true)]
 param(
-  [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Programs\JiraCodexPanel'),
-  [string]$UninstallRegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JiraCodexAssistant',
+  [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Programs\JiraWorkbench'),
+  [string]$UninstallRegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\JiraWorkbenchAssistant',
   [switch]$PurgeUserData,
   [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
-$productId = 'jira-codex-panel'
-$productName = 'Jira Codex 助手'
+$productId = 'jira-workbench'
+$productName = 'Jira 工作台'
 $uninstallRegistryPath = $UninstallRegistryPath
 
 function Get-FullPath([string]$Path) {
@@ -143,12 +143,12 @@ Stop-TrackedProcess -PidFile (Join-Path $runtimeDirectory 'server.pid') -Expecte
 $pluginSelector = if ($metadata.codexPluginSelector) {
   [string]$metadata.codexPluginSelector
 } else {
-  'jira-codex-assistant@jira-codex-local'
+  'jira-workbench-assistant@jira-workbench-local'
 }
 $pluginMarketplaceName = if ($metadata.codexPluginMarketplace) {
   [string]$metadata.codexPluginMarketplace
 } else {
-  'jira-codex-local'
+  'jira-workbench-local'
 }
 $codexCommandPath = if ($metadata.codexAppServerCommand -and (Test-Path -LiteralPath ([string]$metadata.codexAppServerCommand))) {
   [string]$metadata.codexAppServerCommand
@@ -182,12 +182,12 @@ if (Test-Path -LiteralPath $uninstallRegistryPath) {
   Remove-Item -LiteralPath $uninstallRegistryPath -Recurse -Force
 }
 
-$userDataRoot = if ($metadata.userDataRoot) { [string]$metadata.userDataRoot } else { Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc' }
+$userDataRoot = if ($metadata.userDataRoot) { [string]$metadata.userDataRoot } else { Join-Path $env:LOCALAPPDATA 'jira-workbench' }
 Set-Location $env:TEMP
 Remove-Item -LiteralPath $InstallRoot -Recurse -Force
 
 if ($PurgeUserData -and (Test-Path -LiteralPath $userDataRoot)) {
-  $expectedUserDataRoot = Get-FullPath (Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc')
+  $expectedUserDataRoot = Get-FullPath (Join-Path $env:LOCALAPPDATA 'jira-workbench')
   if ((Get-FullPath $userDataRoot) -ne $expectedUserDataRoot) {
     throw "用户数据目录不符合预期，已拒绝删除：$userDataRoot"
   }

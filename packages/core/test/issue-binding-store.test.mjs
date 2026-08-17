@@ -48,7 +48,7 @@ test("path-only project scope keeps its stable id without turning it into a Code
 });
 
 test("issue bindings migrate from renderer storage and persist runtime ownership", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-bindings-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-bindings-"));
   const file = join(directory, "issue-bindings.json");
   try {
     const store = createIssueBindingStore({ file });
@@ -108,7 +108,7 @@ test("issue bindings migrate from renderer storage and persist runtime ownership
 });
 
 test("binding mutations use revision compare-and-swap to reject stale updates", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-binding-cas-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-binding-cas-"));
   const file = join(directory, "issue-bindings.json");
   try {
     const store = createIssueBindingStore({ file });
@@ -136,7 +136,7 @@ test("binding mutations use revision compare-and-swap to reject stale updates", 
 });
 
 test("bindIfAbsent atomically preserves an existing automated binding", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-binding-if-absent-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-binding-if-absent-"));
   const file = join(directory, "issue-bindings.json");
   try {
     const store = createIssueBindingStore({ file });

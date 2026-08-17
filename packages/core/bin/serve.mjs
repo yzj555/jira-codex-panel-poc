@@ -38,7 +38,7 @@ const server = createServer(async (request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mcp-app.html") {
-    const uiHtml = (await readFile(uiHtmlFile, "utf8")).replaceAll("__JIRA_CODEX_VERSION__", core.version);
+    const uiHtml = (await readFile(uiHtmlFile, "utf8")).replaceAll("__JIRA_WORKBENCH_VERSION__", core.version);
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     return response.end(uiHtml);
   }

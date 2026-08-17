@@ -8,7 +8,7 @@ import test from "node:test";
 import { createUpdateManager } from "../lib/update-manager.mjs";
 
 function releaseUpdate(version, bytes) {
-  const archiveName = `jira-codex-assistant-${version}-win-x64.zip`;
+  const archiveName = `jira-workbench-assistant-${version}-win-x64.zip`;
   return {
     enabled: true,
     checked: true,
@@ -37,7 +37,7 @@ async function fixture({ corruptHash = false, blockers = [], acknowledgeUpdater 
   await mkdir(join(installRoot, "scripts"), { recursive: true });
   await mkdir(userDataRoot, { recursive: true });
   await writeFile(join(installRoot, "install-state.json"), `\uFEFF${JSON.stringify({
-    productId: "jira-codex-panel",
+    productId: "jira-workbench",
     installRoot: resolve(installRoot),
     version: "0.31.2"
   })}`, "utf8");
@@ -49,7 +49,7 @@ async function fixture({ corruptHash = false, blockers = [], acknowledgeUpdater 
   const update = releaseUpdate(version, archive);
   const manifest = {
     schemaVersion: 1,
-    productId: "jira-codex-panel",
+    productId: "jira-workbench",
     version,
     restartRequired: true,
     asset: {

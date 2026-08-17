@@ -12,17 +12,17 @@ Codex Desktop 适配层：把宿主无关的 `@jira-workbench/core` 接入 Windo
 | Skill、会话读取/命名、turn、中断、结构化审查结果 | 官方 App Server 协议 |
 | 侧栏入口、会话浮窗、桌面跳转、当前窗口 App Server 适配 | 最小 CDP 注入层；公开协议暂无等价 Desktop API |
 
-Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属于同一个"Jira Codex 助手"，统一生命周期入口负责安装、覆盖升级、修复、状态检查和卸载。
+Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属于同一个"Jira 工作台"，统一生命周期入口负责安装、覆盖升级、修复、状态检查和卸载。
 
 ## 官方 Plugin 工作台
 
-- Plugin 清单：`plugins/jira-codex-assistant/.codex-plugin/plugin.json`。
+- Plugin 清单：`plugins/jira-workbench-assistant/.codex-plugin/plugin.json`。
 - 本地 Marketplace：`.agents/plugins/marketplace.json`。
 - MCP 地址：`http://127.0.0.1:47823/mcp`，使用 Streamable HTTP。
 - 只读工具：任务首页/历史、Issue 详情、JXL Sheets、可用状态流转、App Server 会话列表、SVN 状态/差异/审核结果和提交回执核对。
 - 本地写工具：会话关联、解除关联、创建/取消/确认/放弃审核草稿；不修改 Jira、Codex 对话正文或 SVN 工作副本。
 - 外部写工具：执行 Jira 状态流转与 SVN commit；与只读工具分开声明权限、安全注解和人工确认边界。
-- UI Resource：`ui://jira-codex-assistant/workbench-v3.html`，使用 MCP Apps 的 `_meta.ui.resourceUri`、`ui/*` bridge、`tools/call`、私有组件状态和空外联 CSP。
+- UI Resource：`ui://jira-workbench-assistant/workbench-v3.html`，使用 MCP Apps 的 `_meta.ui.resourceUri`、`ui/*` bridge、`tools/call`、私有组件状态和空外联 CSP。
 
 这些工具复用本地服务已经保存的 Jira 地址、PAT、协同处理人字段、面板查询配置和服务端会话绑定；Plugin 本身不保存 Token。即使宿主不渲染 UI，工具仍返回结构化结果和简短回退说明。
 
@@ -68,12 +68,12 @@ Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属�
 
 双击 `packages\codex\install.cmd`，或在 PowerShell 执行 `& .\packages\codex\installer\lifecycle.ps1 -Action Auto`。安装器会：
 
-- 将运行文件复制到 `%LOCALAPPDATA%\Programs\JiraCodexPanel`。
+- 将运行文件复制到 `%LOCALAPPDATA%\Programs\JiraWorkbench`。
 - 创建桌面和开始菜单"Codex"快捷方式，为 Codex 配置本机 CDP 端口和隔离用户目录。
 - 检测并默认安装官方 npm Codex CLI，保存独立 App Server 命令路径；不会尝试直接执行 Store 包内部受保护的 `codex.exe`。
 - 启动仅监听回环地址的面板服务和注入器。
-- 默认不创建登录自启；写入 `install-state.json` 组件清单，并在 Windows"已安装的应用"中登记一个"Jira Codex 助手"。
-- 创建开始菜单"维护 Jira Codex 助手"入口，统一提供修复、普通卸载和完全清除。
+- 默认不创建登录自启；写入 `install-state.json` 组件清单，并在 Windows"已安装的应用"中登记一个"Jira 工作台"。
+- 创建开始菜单"维护 Jira 工作台"入口，统一提供修复、普通卸载和完全清除。
 
 安装器默认执行一次 `npm install -g @openai/codex@latest`（已有独立 CLI 时不会重复安装）。该 CLI 只作为本地 App Server 控制面使用，不替换 Microsoft Store 桌面应用；缺少它会使会话、Skill、后台 turn 和审查等 App Server 能力不可用，但不会让本地 Jira 配置或只读服务丢失。不安装可传 `-InstallCodexCli:$false`。
 
@@ -84,12 +84,12 @@ Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属�
 修复当前安装：
 
 ~~~powershell
-& "$env:LOCALAPPDATA\Programs\JiraCodexPanel\packages\codex\installer\lifecycle.ps1" -Action Repair
+& "$env:LOCALAPPDATA\Programs\JiraWorkbench\packages\codex\installer\lifecycle.ps1" -Action Repair
 ~~~
 
 ### 卸载
 
-从 Windows"已安装的应用"中的"Jira Codex 助手"卸载，或打开开始菜单"维护 Jira Codex 助手"。普通卸载删除所有程序组件、快捷方式和注册项，但保留 PAT、绑定与个人配置。彻底删除用户数据用 `-Action Purge`。卸载不会删除已创建的 Codex 对话，也不会卸载全局 `@openai/codex` CLI。
+从 Windows"已安装的应用"中的"Jira 工作台"卸载，或打开开始菜单"维护 Jira 工作台"。普通卸载删除所有程序组件、快捷方式和注册项，但保留 PAT、绑定与个人配置。彻底删除用户数据用 `-Action Purge`。卸载不会删除已创建的 Codex 对话，也不会卸载全局 `@openai/codex` CLI。
 
 ## 发布 GitHub Release
 
@@ -123,9 +123,9 @@ npm run capture              # 截图 → packages/codex/artifacts/windows-codex
 开发验证 Plugin：
 
 ~~~powershell
-python "$env:USERPROFILE\.codex\skills\.system\plugin-creator\scripts\validate_plugin.py" .\plugins\jira-codex-assistant
+python "$env:USERPROFILE\.codex\skills\.system\plugin-creator\scripts\validate_plugin.py" .\plugins\jira-workbench-assistant
 codex plugin marketplace add .
-codex plugin add jira-codex-assistant@jira-codex-local
+codex plugin add jira-workbench-assistant@jira-workbench-local
 ~~~
 
 安装或更新 Plugin 后，需要新建 Codex 对话，才能稳定加载新的工具与 UI 资源。
@@ -159,7 +159,7 @@ codex plugin add jira-codex-assistant@jira-codex-local
 
 ### 侧栏没有"Jira 任务"
 
-确认使用安装器创建的"Codex"快捷方式，而不是 Microsoft Store 原始入口。可检查面板健康状态 `http://127.0.0.1:47823/api/health`、Codex CDP 状态 `http://127.0.0.1:47824/json/version`、启动日志 `%LOCALAPPDATA%\Programs\JiraCodexPanel\packages\codex\.runtime`。
+确认使用安装器创建的"Codex"快捷方式，而不是 Microsoft Store 原始入口。可检查面板健康状态 `http://127.0.0.1:47823/api/health`、Codex CDP 状态 `http://127.0.0.1:47824/json/version`、启动日志 `%LOCALAPPDATA%\Programs\JiraWorkbench\packages\codex\.runtime`。
 
 ### 启动后出现两个 Codex
 

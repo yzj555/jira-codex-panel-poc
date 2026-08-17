@@ -15,8 +15,8 @@ $package = Get-Content -Raw -LiteralPath (Join-Path $root 'package.json') | Conv
 $version = [string]$package.version
 if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'package.json version is not valid SemVer.' }
 
-$stage = Join-Path ([System.IO.Path]::GetTempPath()) ("jira-codex-release-{0}" -f ([Guid]::NewGuid().ToString('N')))
-$archive = Join-Path $OutputDirectory "jira-codex-assistant-$version-win-x64.zip"
+$stage = Join-Path ([System.IO.Path]::GetTempPath()) ("jira-workbench-release-{0}" -f ([Guid]::NewGuid().ToString('N')))
+$archive = Join-Path $OutputDirectory "jira-workbench-assistant-$version-win-x64.zip"
 
 function Copy-ReleaseTree {
   param(
@@ -58,7 +58,7 @@ try {
     'packages\codex\scripts\restart-codex-after-update.ps1',
     'packages\codex\lib\update-manager.mjs',
     'packages\core\mcp\ui\task-board.html',
-    'packages\codex\plugins\jira-codex-assistant\.codex-plugin\plugin.json',
+    'packages\codex\plugins\jira-workbench-assistant\.codex-plugin\plugin.json',
     'packages\codex\.agents\plugins\marketplace.json',
     'packages\codex\server.mjs',
     'packages\codex\injector.mjs',

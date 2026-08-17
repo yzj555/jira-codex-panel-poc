@@ -740,7 +740,7 @@ test("自动日志核对失败后允许人工确认已提交并登记 revision",
 });
 
 test("旧版因 CRLF 差异误判并放弃的成功提交会从完整回执恢复", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-commit-line-ending-recovery-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-commit-line-ending-recovery-"));
   try {
     const stateFile = join(directory, "svn-reviews.json");
     const harness = createHarness({
@@ -869,7 +869,7 @@ test("双击差异只对当前项目文件调用 TortoiseSVN 启动器", async (
 });
 
 test("当前会话审查状态在服务重启后恢复并继续轮询", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-review-state-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-review-state-"));
   try {
     let currentTime = Date.parse("2026-08-05T05:00:00.000Z");
     const stateFile = join(directory, "svn-reviews.json");
@@ -908,7 +908,7 @@ test("当前会话审查状态在服务重启后恢复并继续轮询", async ()
 });
 
 test("服务在 svn commit 期间重启时恢复为待核对状态而不是允许直接重提", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-commit-recovery-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-commit-recovery-"));
   try {
     const stateFile = join(directory, "svn-reviews.json");
     const harness = createHarness({ reviewStateFile: stateFile });
@@ -935,7 +935,7 @@ test("服务在 svn commit 期间重启时恢复为待核对状态而不是允�
 });
 
 test("缺少状态文件时可从审核附件和 Codex 日志恢复旧审核", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-review-recovery-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-review-recovery-"));
   try {
     const artifacts = join(directory, "artifacts");
     const creator = createHarness({ reviewArtifactsRoot: artifacts });
@@ -969,7 +969,7 @@ test("缺少状态文件时可从审核附件和 Codex 日志恢复旧审核", a
 });
 
 test("当前会话审查使用原任务需求、SVN 原生 diff 与快照清单三个附件", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-review-artifacts-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-review-artifacts-"));
   try {
     const harness = createHarness({ reviewArtifactsRoot: directory });
     const created = await harness.manager.createReview({
@@ -995,7 +995,7 @@ test("当前会话审查使用原任务需求、SVN 原生 diff 与快照清单�
 });
 
 test("新审核附件的会话上下文来自官方 App Server thread/read", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-official-context-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-official-context-"));
   try {
     const harness = createHarness({
       reviewArtifactsRoot: directory,
@@ -1235,7 +1235,7 @@ test("未纳管文件不会被误报为遗漏的可提交文件", async () => {
 });
 
 test("二进制内容变化即使 SVN diff 文本不变也会使审核失效", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-svn-fingerprint-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-svn-fingerprint-"));
   try {
     await mkdir(join(directory, "src"));
     const file = join(directory, "src", "player.go");

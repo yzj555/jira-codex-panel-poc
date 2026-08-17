@@ -12,7 +12,7 @@ const args = new Set(process.argv.slice(2));
 const watch = !args.has("--once");
 const cdpPort = Number(process.env.CODEX_CDP_PORT || 47824);
 const panelUrl = process.env.JIRA_WORKBENCH_PANEL_URL || "http://127.0.0.1:47823/";
-const bridgeBindingName = "__jiraCodexNodeRequest";
+const bridgeBindingName = "__jiraWorkbenchNodeRequest";
 const bridgeToken = randomUUID();
 const bridgeProtocolVersion = "2";
 const [
@@ -43,14 +43,14 @@ const applicationCommandHelpers = applicationCommandsSource.replace(
   ""
 );
 const clientWithNavigation = clientSource.replace(
-  "/*__JIRA_CODEX_NAVIGATION_HELPERS__*/",
+  "/*__JIRA_WORKBENCH_NAVIGATION_HELPERS__*/",
   navigationHelpers
 );
 if (clientWithNavigation === clientSource) {
   throw new Error("Injector client is missing the Codex navigation helper marker.");
 }
 const clientWithApplicationCommands = clientWithNavigation.replace(
-  "/*__JIRA_CODEX_APPLICATION_COMMANDS__*/",
+  "/*__JIRA_WORKBENCH_APPLICATION_COMMANDS__*/",
   applicationCommandHelpers
 );
 if (clientWithApplicationCommands === clientWithNavigation) {
@@ -72,11 +72,11 @@ const injectionRevision = createHash("sha256")
   .digest("hex")
   .slice(0, 16);
 const source = [
-  `window.__JIRA_CODEX_POC_INJECTION_REVISION__ = ${JSON.stringify(injectionRevision)};`,
-  `window.__JIRA_CODEX_POC_PANEL_URL__ = ${JSON.stringify(panelUrl)};`,
-  `window.__JIRA_CODEX_POC_PANEL_DOCUMENT__ = ${JSON.stringify(panelDocument)};`,
-  `window.__JIRA_CODEX_BRIDGE_BINDING__ = ${JSON.stringify(bridgeBindingName)};`,
-  `window.__JIRA_CODEX_BRIDGE_TOKEN__ = ${JSON.stringify(bridgeToken)};`,
+  `window.__JIRA_WORKBENCH_POC_INJECTION_REVISION__ = ${JSON.stringify(injectionRevision)};`,
+  `window.__JIRA_WORKBENCH_POC_PANEL_URL__ = ${JSON.stringify(panelUrl)};`,
+  `window.__JIRA_WORKBENCH_POC_PANEL_DOCUMENT__ = ${JSON.stringify(panelDocument)};`,
+  `window.__JIRA_WORKBENCH_BRIDGE_BINDING__ = ${JSON.stringify(bridgeBindingName)};`,
+  `window.__JIRA_WORKBENCH_BRIDGE_TOKEN__ = ${JSON.stringify(bridgeToken)};`,
   compiledClientSource
 ].join("\n");
 const registeredTargets = new Set();
@@ -88,7 +88,7 @@ const maxBridgeResponseBytes = 50 * 1024 * 1024;
 
 async function sendBridgeResult(cdp, payload) {
   await cdp.send("Runtime.evaluate", {
-    expression: `window.__jiraCodexResolveHostFetch?.(${JSON.stringify(payload)})`,
+    expression: `window.__jiraWorkbenchResolveHostFetch?.(${JSON.stringify(payload)})`,
     returnByValue: false
   });
 }
@@ -118,9 +118,9 @@ async function handleBridgeRequest(cdp, event) {
     if (contentType) headers.set("content-type", String(contentType));
     const accept = request.headers?.accept || request.headers?.Accept;
     if (accept) headers.set("accept", String(accept));
-    const desktopClientId = String(request.headers?.["x-jira-codex-desktop-client"] || "").trim();
+    const desktopClientId = String(request.headers?.["x-jira-workbench-desktop-client"] || "").trim();
     if (desktopClientId && /^[A-Za-z0-9._:-]{1,160}$/.test(desktopClientId)) {
-      headers.set("x-jira-codex-desktop-client", desktopClientId);
+      headers.set("x-jira-workbench-desktop-client", desktopClientId);
     }
     const response = await fetch(url, {
       method,
@@ -193,11 +193,11 @@ async function injectTarget(target) {
         // The injector process owns the bridge token. Refresh transport globals on
         // every pass even when the UI revision is already current, otherwise a
         // service restart leaves the live page sending the retired token forever.
-        window.__JIRA_CODEX_POC_PANEL_URL__ = ${JSON.stringify(panelUrl)};
-        window.__JIRA_CODEX_BRIDGE_BINDING__ = ${JSON.stringify(bridgeBindingName)};
-        window.__JIRA_CODEX_BRIDGE_TOKEN__ = ${JSON.stringify(bridgeToken)};
-        const host = window.__jiraCodexPoc;
-        if (window.__JIRA_CODEX_POC_INJECTION_REVISION__ !== ${JSON.stringify(injectionRevision)}
+        window.__JIRA_WORKBENCH_POC_PANEL_URL__ = ${JSON.stringify(panelUrl)};
+        window.__JIRA_WORKBENCH_BRIDGE_BINDING__ = ${JSON.stringify(bridgeBindingName)};
+        window.__JIRA_WORKBENCH_BRIDGE_TOKEN__ = ${JSON.stringify(bridgeToken)};
+        const host = window.__jiraWorkbenchPoc;
+        if (window.__JIRA_WORKBENCH_POC_INJECTION_REVISION__ !== ${JSON.stringify(injectionRevision)}
           || host?.revision !== ${JSON.stringify(injectionRevision)}) return { upToDate: false };
         host.ensure?.();
         return { upToDate: true, state: host.state?.() || null };

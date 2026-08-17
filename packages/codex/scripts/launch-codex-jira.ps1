@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $runtimeDirectory = Join-Path $projectRoot '.runtime'
-$userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-codex-panel-poc'
+$userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-workbench'
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $installMetadataPath = @(
   (Join-Path $projectRoot 'install-state.json'),
@@ -68,7 +68,7 @@ function Get-CodexMainProcesses {
 function Show-Message {
   param(
     [string]$Text,
-    [string]$Title = 'Jira Codex 任务面板',
+    [string]$Title = 'Jira 工作台',
     [System.Windows.Forms.MessageBoxButtons]$Buttons = [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]$Icon = [System.Windows.Forms.MessageBoxIcon]::Information
   )
@@ -95,12 +95,12 @@ function Stop-CodexGracefully {
 }
 
 function Activate-CodexWindow {
-  if (-not ('JiraCodexWindowActivator' -as [type])) {
+  if (-not ('JiraWorkbenchWindowActivator' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 
-public static class JiraCodexWindowActivator {
+public static class JiraWorkbenchWindowActivator {
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -118,8 +118,8 @@ public static class JiraCodexWindowActivator {
     foreach ($candidate in $candidates) {
       $process = Get-Process -Id $candidate.ProcessId -ErrorAction SilentlyContinue
       if ($process -and $process.MainWindowHandle -ne [IntPtr]::Zero) {
-        $null = [JiraCodexWindowActivator]::ShowWindowAsync($process.MainWindowHandle, 9)
-        $null = [JiraCodexWindowActivator]::SetForegroundWindow($process.MainWindowHandle)
+        $null = [JiraWorkbenchWindowActivator]::ShowWindowAsync($process.MainWindowHandle, 9)
+        $null = [JiraWorkbenchWindowActivator]::SetForegroundWindow($process.MainWindowHandle)
         return
       }
     }
@@ -144,7 +144,7 @@ function Complete-PendingUpdateAfterRestart {
     $next.currentVersion = $installedVersion
     $next.phase = 'completed'
     $next.operationProgress = 100
-    $next.message = "Jira Codex Assistant was updated successfully to v$installedVersion."
+    $next.message = "Jira Workbench was updated successfully to v$installedVersion."
     $next.error = ''
     $next.restartRequired = $false
     $next.updatedAt = (Get-Date).ToString('o')
@@ -210,7 +210,7 @@ try {
   $errorMessage = $_.Exception.Message
   Write-LauncherStatus -State 'error' -Message $errorMessage -ExitCode 1
   if (-not $Background) {
-    $null = Show-Message -Text "Jira Codex 任务面板启动失败：`r`n`r`n$errorMessage`r`n`r`n日志目录：$runtimeDirectory" -Icon Error
+    $null = Show-Message -Text "Jira 工作台启动失败：`r`n`r`n$errorMessage`r`n`r`n日志目录：$runtimeDirectory" -Icon Error
   }
   exit 1
 }

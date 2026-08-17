@@ -63,7 +63,7 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
   skip: process.platform !== "win32",
   timeout: 20_000
 }, async () => {
-  const directory = await mkdtemp(join(tmpdir(), "jira-codex-integration-"));
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-integration-"));
   const configFile = join(directory, "config.json");
   const requests = [];
   let mockPort;
@@ -418,7 +418,7 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
 
     const unboundOpenResponse = await fetch(`${baseUrl}/api/codex/issues/REAL-9/open`, {
       method: "POST",
-      headers: { "x-jira-codex-desktop-client": "integration-desktop" }
+      headers: { "x-jira-workbench-desktop-client": "integration-desktop" }
     });
     const unboundOpenPayload = await unboundOpenResponse.json();
     assert.equal(unboundOpenResponse.status, 409);
@@ -437,7 +437,7 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-jira-codex-desktop-client": "integration-desktop"
+        "x-jira-workbench-desktop-client": "integration-desktop"
       },
       body: JSON.stringify({
         supplementalDescription: "集成补充上下文",
@@ -478,7 +478,7 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-jira-codex-desktop-client": "integration-desktop"
+        "x-jira-workbench-desktop-client": "integration-desktop"
       },
       body: JSON.stringify({ expectedRevision: mutatedBindings.revision })
     });
@@ -493,7 +493,7 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-jira-codex-desktop-client": "integration-desktop"
+        "x-jira-workbench-desktop-client": "integration-desktop"
       },
       body: JSON.stringify({
         supplementalDescription: "集成补充上下文",
@@ -545,7 +545,7 @@ test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
 
     const openResponsePromise = fetch(`${baseUrl}/api/codex/issues/REAL-9/open`, {
       method: "POST",
-      headers: { "x-jira-codex-desktop-client": "integration-desktop" }
+      headers: { "x-jira-workbench-desktop-client": "integration-desktop" }
     });
     const openCommand = await waitForDesktopCommand(baseUrl);
     assert.equal(openCommand.type, "open-thread");

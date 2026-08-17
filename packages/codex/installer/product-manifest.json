@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "productId": "jira-codex-panel",
-  "displayName": "Jira Codex 助手",
-  "publisher": "Jira Codex Assistant",
+  "productId": "jira-workbench",
+  "displayName": "Jira 工作台",
+  "publisher": "Jira Workbench",
   "components": [
     {
       "id": "workspace-root",
@@ -152,7 +152,7 @@
     {
       "id": "official-plugin",
       "required": true,
-      "path": "packages/codex/plugins/jira-codex-assistant"
+      "path": "packages/codex/plugins/jira-workbench-assistant"
     },
     {
       "id": "plugin-marketplace",
