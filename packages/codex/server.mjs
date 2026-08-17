@@ -470,7 +470,8 @@ const mcpOptions = {
       return { update: await getUpdateStatus(), installation: await updateManager.restart() };
     }
   },
-  version: VERSION
+  version: VERSION,
+  serverName: "jira-workbench-assistant"
 };
 const handleMcp = createJiraTaskBoardMcpHttpHandler((request) => {
   const requestedClientId = String(request.headers["x-jira-workbench-desktop-client"] || "").trim();

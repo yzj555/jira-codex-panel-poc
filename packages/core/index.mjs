@@ -12,6 +12,21 @@ import { createNullReviewAuditProvider } from "./lib/null-review-audit-provider.
 import { createTaskBoardLoader } from "./lib/task-board-loader.mjs";
 import { createJiraTaskBoardMcpHttpHandler } from "./mcp/jira-task-board-mcp.mjs";
 
+// 适配层通过包的公开入口 import 这些子模块；re-export 保持入口作为唯一稳定 API 面。
+export * from "./config-store.mjs";
+export * from "./jira-client.mjs";
+export * from "./jxl-client.mjs";
+export { createIssueBindingStore, IssueBindingStoreError, normalizeBindingWorkspace } from "./lib/issue-binding-store.mjs";
+export { createJiraWorkbenchService } from "./lib/jira-workbench-service.mjs";
+export { buildSvnCommitMessage, createSvnReviewManager, SvnReviewError } from "./lib/svn-review-manager.mjs";
+export { createSvnWorkbenchService } from "./lib/svn-workbench-service.mjs";
+export { createNullReviewAuditProvider } from "./lib/null-review-audit-provider.mjs";
+export { createTaskBoardLoader } from "./lib/task-board-loader.mjs";
+export { findCachedAttachment, materializeAttachment, openLocalAttachment } from "./lib/attachment-cache.mjs";
+export { buildIssueDetailSnapshot, createJiraTaskBoardMcpServer, createJiraTaskBoardMcpHttpHandler } from "./mcp/jira-task-board-mcp.mjs";
+export { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
+export { attachmentCanOpenLocally } from "./public/issue-views.js";
+
 function userDataRoot() {
   return join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "jira-workbench");
 }
@@ -28,7 +43,7 @@ export function createCoreService({
   reviewStateFile = process.env.JIRA_WORKBENCH_SVN_REVIEWS_FILE || join(userDataRoot(), "svn-reviews.json"),
   reviewArtifactsRoot = process.env.JIRA_WORKBENCH_SVN_REVIEW_ARTIFACTS_DIR
     || join(userDataRoot(), "attachments", "svn-reviews"),
-  version = "0.31.8"
+  version = "0.32.3"
 } = {}) {
   const configStore = createConfigStore({ configFile });
   const jira = createJiraClient();

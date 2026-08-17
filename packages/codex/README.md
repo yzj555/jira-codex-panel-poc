@@ -95,7 +95,7 @@ Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属�
 
 维护者先把版本改动合入 `main`，然后在本目录执行 `npm run version:set -- <版本>`，确认根 `package.json`、锁文件、各 workspace 包的 `package.json`、`server.mjs`、`inject/client.js` 和仓库根 README 已同步。仓库根 `npm test` 与本目录 `npm run release:verify -- v<版本>` 通过后，提交并推送 `main`，再创建并推送同名 tag。
 
-tag 会触发 `.github/workflows/release.yml`：在 Windows runner 重跑全量测试、为 Release 包刷新 Plugin cachebuster、生成 ZIP / `update-manifest.json` / `SHA256SUMS.txt`，并为 ZIP 生成 artifact attestation。流水线只创建 Draft Release；维护者必须在 GitHub 检查版本、变更说明、三个资产和 attestation 后人工点击 Publish。
+tag 会触发 `.github/workflows/release.yml`：在 Windows runner 重跑全量测试、为 Release 包刷新 Plugin cachebuster、生成 ZIP / `update-manifest.json` / `SHA256SUMS.txt`，并为 ZIP 生成 artifact attestation。流水线创建并直接发布 GitHub Release（若已存在同名 Draft Release 则上传资产并改为发布）；维护者应在发布后核对版本、变更说明、三个资产和 attestation。
 
 ## 开发运行
 

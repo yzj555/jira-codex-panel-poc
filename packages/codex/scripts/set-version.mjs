@@ -23,10 +23,12 @@ for (const relative of [
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-// server.mjs 与 inject/client.js 在 codex 壳，README 在仓库根。
+// server.mjs 与 inject/client.js 在 codex 壳，core 独立服务的版本标记在 core 包，README 在仓库根。
 for (const [relative, pattern, replacement] of [
   ["packages/codex/server.mjs", /const VERSION = "[^"]+";/, `const VERSION = "${version}";`],
   ["packages/codex/inject/client.js", /const VERSION = "[^"]+";/, `const VERSION = "${version}";`],
+  ["packages/core/bin/serve.mjs", /const VERSION = "[^"]+";/, `const VERSION = "${version}";`],
+  ["packages/core/index.mjs", /  version = "[^"]+"/, `  version = "${version}"`],
   ["README.md", /> 当前版本：`[^`]+`/, `> 当前版本：\`${version}\``]
 ]) {
   const path = join(root, relative);
@@ -34,4 +36,25 @@ for (const [relative, pattern, replacement] of [
   if (!pattern.test(source)) throw new Error(`${relative} 中没有找到版本标记。`);
   await writeFile(path, source.replace(pattern, replacement), "utf8");
 }
+
+// Plugin cachebuster 随版本同步到仓库：本地安装（install.ps1 用仓库清单）时
+// Codex 能识别到新版本并重新加载 Plugin，而不是沿用上次安装的缓存。
+// 只替换 version 字段，保持清单其余内容（含中文 \u 转义）原样不变。
+const pluginManifestPath = join(
+  root,
+  "packages/codex/plugins/jira-workbench-assistant/.codex-plugin/plugin.json"
+);
+const pluginSource = await readFile(pluginManifestPath, "utf8");
+const cachebusterPattern = /("version"\s*:\s*")([^"]*)(\+(?:codex\.[0-9A-Za-z.-]+)?)(")/;
+if (!cachebusterPattern.test(pluginSource)) {
+  throw new Error(`${pluginManifestPath} 中没有找到可同步的 Plugin version 字段。`);
+}
+await writeFile(
+  pluginManifestPath,
+  pluginSource.replace(cachebusterPattern, (_, prefix, base, _suffix, suffix) => (
+    `${prefix}${base}+codex.v${version}${suffix}`
+  )),
+  "utf8"
+);
+
 console.log(version);

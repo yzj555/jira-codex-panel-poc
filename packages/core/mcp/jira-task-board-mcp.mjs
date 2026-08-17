@@ -332,13 +332,14 @@ export function createJiraTaskBoardMcpServer({
   desktop,
   loadIssues,
   confirmations = createActionConfirmationStore(),
-  version = "0.1.0"
+  version = "0.1.0",
+  serverName = "jira-workbench"
 } = {}) {
   const service = workbench || (typeof loadIssues === "function" ? { listTasks: loadIssues } : null);
   if (!service?.listTasks) throw new TypeError("workbench.listTasks 必须是函数。");
 
   const server = new McpServer(
-    { name: "jira-workbench-assistant", version },
+    { name: serverName, version },
     { instructions: "通过工具查看当前用户的 Jira 待办、历史、JXL Sheets、任务详情、Codex 会话绑定与 SVN 审核状态。只读工具不会修改外部状态；Jira 状态流转、本地绑定写入和 SVN 提交必须经过用户在交互面板中的明确确认，并由服务端复检。SVN 提交只能使用已审核的显式路径与一次性确认。UI 已展示完整结构化结果，除非用户明确要求，否则不要重复输出长列表。" }
   );
 

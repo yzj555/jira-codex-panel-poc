@@ -7,6 +7,16 @@
   "bin": {
     "jira-workbench-core": "bin/serve.mjs"
   },
+  "exports": {
+    ".": "./index.mjs",
+    "./config-store.mjs": "./config-store.mjs",
+    "./jira-client.mjs": "./jira-client.mjs",
+    "./jxl-client.mjs": "./jxl-client.mjs",
+    "./lib/*.mjs": "./lib/*.mjs",
+    "./mcp/*.mjs": "./mcp/*.mjs",
+    "./public/*.js": "./public/*.js",
+    "./mcp/ui/*.html": "./mcp/ui/*.html"
+  },
   "scripts": {
     "serve": "node bin/serve.mjs"
   },

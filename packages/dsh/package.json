@@ -8,5 +8,13 @@
     "bundle": {
       "patch": "cordis.patch.yml"
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-mcp-client": ">=0.0.1-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-mcp-client": {
+      "optional": true
+    }
   }
 }

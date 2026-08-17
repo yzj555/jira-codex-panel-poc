@@ -14,6 +14,8 @@ if (tagVersion !== version) throw new Error(`Release tag v${tagVersion} 与 pack
 const checks = [
   ["packages/codex/server.mjs", `const VERSION = "${version}";`],
   ["packages/codex/inject/client.js", `const VERSION = "${version}";`],
+  ["packages/core/bin/serve.mjs", `const VERSION = "${version}";`],
+  ["packages/core/index.mjs", `  version = "${version}"`],
   ["README.md", `> 当前版本：\`${version}\``]
 ];
 for (const [relative, marker] of checks) {
