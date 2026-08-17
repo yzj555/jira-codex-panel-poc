@@ -68,10 +68,13 @@ test("one lifecycle entry owns install, repair and uninstall", async () => {
   assert.match(updater, /if \(-not \$RestartCodex -or -not \$codexRestarted\)/);
   assert.match(updater, /function Start-LocalServiceOnly/);
   assert.match(updater, /Health verification only needs the local service/);
+  assert.match(updater, /HasExited/);
   assert.match(launcher, /Complete-PendingUpdateAfterRestart/);
   assert.match(launcher, /\$next\.state = 'completed'/);
   assert.match(launcher, /File\]::ReadAllText\(\$updateStatePath, \[System\.Text\.Encoding\]::UTF8\)/);
   assert.match(launcher, /File\]::WriteAllText\(\$temporary, \$json, \$utf8NoBom\)/);
+  assert.match(launcher, /Add-Type -AssemblyName System\.Windows\.Forms[\s\S]*function Show-Message/);
+  assert.match(launcher, /HasExited/);
   assert.match(restartHelper, /Stop-CodexForRestart/);
   assert.match(restartHelper, /JiraWorkbenchWindowCloser/);
   assert.match(restartHelper, /RequestClose/);

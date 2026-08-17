@@ -593,7 +593,8 @@ try {
   $cdpReady = $true
 } catch {}
 $ordinaryCodexRunning = -not $cdpReady -and [bool](Get-CimInstance Win32_Process -Filter "Name = 'ChatGPT.exe'" -ErrorAction SilentlyContinue | Where-Object {
-  -not $_.CommandLine -or $_.CommandLine -notmatch '(?:^|\s)--type='
+  (-not $_.CommandLine -or $_.CommandLine -notmatch '(?:^|\s)--type=') -and
+  (-not (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).HasExited)
 } | Select-Object -First 1)
 
 Write-Host ''

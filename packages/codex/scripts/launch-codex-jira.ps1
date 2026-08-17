@@ -7,6 +7,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Load System.Windows.Forms before any function whose parameter type references it.
+Add-Type -AssemblyName System.Windows.Forms
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $runtimeDirectory = Join-Path $projectRoot '.runtime'
 $userDataRoot = Join-Path $env:LOCALAPPDATA 'jira-workbench'
@@ -61,7 +63,8 @@ function Test-CdpEndpoint {
 
 function Get-CodexMainProcesses {
   @(Get-CimInstance Win32_Process -Filter "Name = 'ChatGPT.exe'" -ErrorAction SilentlyContinue | Where-Object {
-    -not $_.CommandLine -or $_.CommandLine -notmatch '(?:^|\s)--type='
+    (-not $_.CommandLine -or $_.CommandLine -notmatch '(?:^|\s)--type=') -and
+    (-not (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue).HasExited)
   })
 }
 
