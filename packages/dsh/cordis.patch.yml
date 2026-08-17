@@ -1,0 +1,21 @@
+# jira-codex-panel-dsh bundle patch: 第一版为零代码 mcp-client 配置。
+#
+# 本 patch 叠加在 dsh-base 之上，挂载一个 @deepseek-ai/dsh-mcp-client 行，
+# 通过 streamable-http 连接到宿主无关的 core 独立服务（packages/core/bin/serve.mjs）。
+# 模型侧工具名为 mcp__jira-codex__<rawName>，覆盖 8 个 Jira 只读/流转工具与
+# 11 个 SVN 审核工具（无 Codex 会话、桌面操作、自动 Bug 分析或 GitHub 更新）。
+#
+# 使用前提：先启动 core 独立服务（node packages/core/bin/serve.mjs，默认
+# 127.0.0.1:47823），再用 dsh --profile 挂载本 bundle。URL 可用下面的环境变量
+# 覆盖；core 服务端口默认与 Codex 壳一致（47823），两者不能同时占用。
+
+- insert:
+    - id: mcp-jira-codex
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: jira-codex
+        transport: streamable-http
+        url: !!js process.env.JIRA_CODEX_CORE_URL || 'http://127.0.0.1:47823/mcp'
+        failOnStartupError: false
+        reconnect:
+          enabled: true
