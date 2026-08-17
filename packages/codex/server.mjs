@@ -226,7 +226,7 @@ const bugMonitor = createBugMonitorService({
 
 const updateManager = createUpdateManager({
   currentVersion: VERSION,
-  installRoot: dirname(root),
+  installRoot: dirname(dirname(root)),
   updaterSource: join(root, "installer", "update-bootstrap.ps1"),
   updaterLauncherSource: join(root, "scripts", "update-launcher.mjs"),
   restartSource: join(root, "scripts", "restart-codex-after-update.ps1"),
