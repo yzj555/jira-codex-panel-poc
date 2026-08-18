@@ -42,6 +42,6 @@ Jira 状态流转的「复核 → 执行」确认走 `dshApprovalProvider`：若
 | C 进程内 host 插件 | ✅ |
 | D dshCredentialSecretStore（Token 走 `ctx.credentials`） | ✅ |
 | E approvalProvider 两阶段化（确认走 `ctx.approval`） | ✅ |
-| F dshSessionAuditProvider（SVN 审查读 DSH Session） | 待做 |
+| F sessionAuditProvider 中立化（`dshSessionAuditProvider` 推迟） | ✅ 中立化 |
 
 核心契约（三个可注入 provider 的边界、红线与迁移顺序）见 [`DESIGN.md`](DESIGN.md)。

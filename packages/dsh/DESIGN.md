@@ -99,9 +99,9 @@ approvalProvider = {
 
 ### 5.3 `sessionAuditProvider` — 会话审查数据源
 
-core 的 `createSvnReviewManager` 已接受 `turnReader` / `sessionReader` 注入（§3.2），无需改契约签名，只需把返回形状中立化。B 阶段要做的是：去掉 `local:` 前缀、去掉 Codex turn 的 `items` / `fileChange` 专属结构，换成中性「会话审查」形状。
+core 的 `createSvnReviewManager` 已接受 `turnReader` / `sessionReader` 注入（§3.2），无需改契约签名，只需把返回形状中立化。中立化做的是：去掉 `local:` 前缀、去掉 Codex turn 的 `items` / `fileChange` 专属结构，换成中性「会话审查」形状。
 
-目标形状草案（精确字段在 F 阶段定稿）：
+目标形状（F 阶段定稿）：
 
 ```
 sessionAuditProvider = {
@@ -116,11 +116,11 @@ sessionAuditProvider = {
 }
 ```
 
-- Codex 实现：现有 `codex-session-reader` / `codex-runtime-gateway`，把 Codex 会话映射成中性形状。
-- DSH 实现：`dshSessionAuditProvider`，把 `Session.events`（turn/start、tool 调用结果、touched files）映射成中性形状。
+- Codex 实现：`codex-session-reader`（读 `.jsonl`，已中性）+ `codex-neutral-turn-reader`（F 阶段新增，把 App Server `thread/read` 原始形状映射成中性形状，`local:` 剥离在此下放）。
+- DSH 实现：`dshSessionAuditProvider`，把 `Session.events`（turn/start、tool 调用结果、touched files）映射成中性形状。**推迟**：DSH 侧 SVN 审查当前走人工审核（`createCoreService` 用 null provider，`codexReviewEnabled` 缺省 false），「DSH agent 跑审查」需要 subagent 编排，尚无 Consumer——按「require a current owner and need」不提前写映射。
 - 缺省：`createNullReviewAuditProvider`（现状，全返回空，SVN 审核降级人工）。
 
-红线：中性形状里 `threadId` 不带 `local:` 前缀（剥离逻辑下放到 Codex 适配层）；`fileChanges` 的 path 是绝对路径（DSH 侧自行 resolve 相对路径）。
+红线：中性形状里 `threadId` 不带 `local:` 前缀（剥离逻辑下放到 Codex 适配层，core 只保留「比较两边 threadId 时归一化」的防御）；`fileChanges` 的 path 是绝对路径（DSH 侧自行 resolve 相对路径）。
 
 ## 6. 关键差异与约束
 
@@ -139,7 +139,7 @@ core 用 `zod/v4`（`import * as z from "zod/v4"`），DSH 用 `@deepseek-ai/sch
 3. **C（DSH 进程内 host）**：`packages/dsh` 写纯 JS function plugin（`plugin.mjs`，`name: jira-workbench`、`inject: ['tools']`），`apply` 里组装 core 服务、遍历 `buildToolDefinitions` 用 `ctx.tools.register` 注册，工具名无 `mcp__` 前缀。✅ 已实现（220 测试全绿，含 3 个 plugin 测试）。**部署接线待验证**：`@jira-workbench/core` 与 `jira-workbench-dsh` 需安装到 DSH 可解析位置（`$DSH_HOME/profiles/<name>/node_modules` 或 `bareModuleBaseUrl`）。
 4. **D（dshCredentialSecretStore）**：`packages/dsh/lib/dsh-credential-secret-store.mjs` 提供 `createDshCredentialSecretStore(credentials)`，`protect` 调 `ctx.credentials.set(ref, value)` 存真值、返回引用名；`unprotect` 每次 `ctx.credentials.resolve(ref)`。`config-store.mjs` 的 `protect/unprotect` 增加第二个 key 参数（`"token"` / `"wecomWebhook"`），DPAPI 忽略、credential-ref 用它派生引用名；`createCoreService` 透传 `secretStore`。✅ 已实现（226 测试全绿）。
 5. **E（approvalProvider 两阶段化）**：Jira 流转确认抽象为 `approvalProvider`（`issue`/`consume`/`revoke`，决策点 2 方案 B），core 独立服务缺省 `createLocalApprovalProvider`（= 现有 `createActionConfirmationStore`，行为零变化）；DSH 实现 `dshApprovalProvider` 在 `issue` 里 `await ctx.approval.request(...)`（通过 ALS 传 agent），`consume` 只校验本地 grant。SVN commit 确认已内建服务层，不动。✅ 已实现（231 测试全绿）。
-6. **F（dshSessionAuditProvider）**：SVN 审查读 DSH Session，替代人工降级。
+6. **F（sessionAuditProvider 中立化）**：core 的 `svn-review-manager` 改为消费中性形状（`turns[].messages` / `turns[].fileChanges`，去掉 `items` / `fileChange` / `userMessage` / `agentMessage` 解析，入参 `local:` strip 下放到适配层）；Codex 适配层新增 `codex-neutral-turn-reader` 把 App Server `thread/read` 原始形状映射成中性形状。✅ 中立化已完成（234 测试全绿）。**`dshSessionAuditProvider` 推迟**：DSH 侧 SVN 审查当前走人工审核（null provider），「DSH agent 跑审查」需要 subagent 编排，尚无 Consumer。
 
 ## 8. 已决策项
 

@@ -919,7 +919,7 @@ export function createSvnReviewManager({
 
   async function readOfficialThread(threadId, includeTurns = false) {
     if (typeof turnReader?.readThread !== "function") return null;
-    const normalizedThreadId = String(threadId || "").trim().replace(/^local:/i, "");
+    const normalizedThreadId = String(threadId || "").trim();
     if (!normalizedThreadId) return null;
     try {
       return threadFromReadResult(await turnReader.readThread(normalizedThreadId, { includeTurns }));
@@ -928,21 +928,13 @@ export function createSvnReviewManager({
     }
   }
 
-  function itemText(item) {
-    if (typeof item?.text === "string") return item.text.trim();
-    const content = Array.isArray(item?.content) ? item.content : [];
-    return content.map((entry) => typeof entry === "string" ? entry : String(entry?.text || "").trim())
-      .filter(Boolean).join("\n").trim();
-  }
-
   async function readOfficialConversationContext(threadId) {
     const thread = await readOfficialThread(threadId, true);
     const messages = [];
     for (const turn of Array.isArray(thread?.turns) ? thread.turns : []) {
-      for (const item of Array.isArray(turn?.items) ? turn.items : []) {
-        const role = item?.type === "userMessage" ? "用户" : item?.type === "agentMessage" ? "Codex" : "";
-        const text = role ? itemText(item) : "";
-        if (text) messages.push({ role, text });
+      for (const message of Array.isArray(turn?.messages) ? turn.messages : []) {
+        const text = String(message?.text || "").trim();
+        if (text) messages.push({ role: String(message?.role || ""), text });
       }
     }
     if (!messages.length) return null;
@@ -972,26 +964,22 @@ export function createSvnReviewManager({
         ? numericObservedAt * (numericObservedAt < 10_000_000_000 ? 1_000 : 1)
         : Date.parse(String(rawObservedAt));
       if (after && Number.isFinite(observedAt) && observedAt < after) continue;
-      for (const item of Array.isArray(turn?.items) ? turn.items : []) {
-        if (!["fileChange", "file_change"].includes(String(item?.type || ""))) continue;
-        const changes = Array.isArray(item?.changes) ? item.changes : [item];
-        for (const change of changes) {
-          const path = String(change?.path || change?.filePath || "").trim();
-          if (!path || (!isAbsolute(path) && !cwd)) continue;
-          const absolutePath = resolve(isAbsolute(path) ? path : resolve(cwd, path));
-          paths.set(absolutePath.toLowerCase(), {
-            path: absolutePath,
-            observedAt: Number.isFinite(observedAt) ? new Date(observedAt).toISOString() : "",
-            source: "app-server-file-change"
-          });
-        }
+      for (const change of Array.isArray(turn?.fileChanges) ? turn.fileChanges : []) {
+        const path = String(change?.path || change?.filePath || "").trim();
+        if (!path || (!isAbsolute(path) && !cwd)) continue;
+        const absolutePath = resolve(isAbsolute(path) ? path : resolve(cwd, path));
+        paths.set(absolutePath.toLowerCase(), {
+          path: absolutePath,
+          observedAt: Number.isFinite(observedAt) ? new Date(observedAt).toISOString() : "",
+          source: "app-server-file-change"
+        });
       }
     }
     return Array.from(paths.values());
   }
 
   async function readTrackedReviewTurn(threadId, options = {}) {
-    const normalizedThreadId = String(threadId || "").trim().replace(/^local:/i, "");
+    const normalizedThreadId = String(threadId || "").trim();
     const turnId = String(options.turnId || "").trim();
     if (options.trackingMode === "app-server"
       && normalizedThreadId

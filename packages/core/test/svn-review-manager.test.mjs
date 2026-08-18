@@ -295,13 +295,10 @@ test("新 SVN 业务使用服务端绑定工作区，并只采信 App Server 的
       id: "thread-official",
       cwd: workingCopyRoot,
       turns: [{
-        id: "turn-1",
+        turnId: "turn-1",
         startedAt: "2026-08-12T08:00:00.000Z",
-        items: [{
-          id: "change-1",
-          type: "fileChange",
-          changes: [{ path: "src/player.go", kind: "update" }]
-        }]
+        messages: [],
+        fileChanges: [{ path: "src/player.go", kind: "update", observedAt: "2026-08-12T08:00:00.000Z" }]
       }]
     }
   };
@@ -1006,11 +1003,14 @@ test("新审核附件的会话上下文来自官方 App Server thread/read", asy
             id: "thread-official-context",
             cwd: workingCopyRoot,
             turns: [{
-              id: "turn-context",
-              items: [
-                { type: "userMessage", content: [{ type: "text", text: "官方需求上下文" }] },
-                { type: "agentMessage", text: "官方分析结论" }
-              ]
+              turnId: "turn-context",
+              startedAt: "2026-08-12T08:00:00.000Z",
+              completedAt: "2026-08-12T08:05:00.000Z",
+              messages: [
+                { role: "用户", text: "官方需求上下文" },
+                { role: "Codex", text: "官方分析结论" }
+              ],
+              fileChanges: []
             }]
           }
         })

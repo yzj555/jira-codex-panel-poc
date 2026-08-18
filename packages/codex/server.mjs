@@ -28,6 +28,7 @@ import {
   createCodexAppServerClient
 } from "./lib/codex-app-server-client.mjs";
 import { createCodexRuntimeGateway } from "./lib/codex-runtime-gateway.mjs";
+import { createNeutralTurnReader } from "./lib/codex-neutral-turn-reader.mjs";
 import {
   CodexConversationServiceError,
   createCodexConversationService
@@ -73,6 +74,10 @@ const codexAppServer = createCodexAppServerClient({
   }
 });
 const codexRuntime = createCodexRuntimeGateway({ appServer: codexAppServer });
+// 中性 turnReader：把 App Server 原始形状（items/fileChange）映射成宿主无关的
+// 中性形状（messages/fileChanges），只给 svn-review-manager 用。codexRuntime 本身
+// 仍以原始形状服务前端 UI 与 automation。
+const neutralTurnReader = createNeutralTurnReader(codexRuntime);
 const attachmentCacheRoot = join(dirname(configStore.configFile), "attachments");
 const issueBindings = createIssueBindingStore({
   file: process.env.JIRA_WORKBENCH_BINDINGS_FILE
@@ -96,7 +101,7 @@ const automation = createAutomationManager({
   sessionReader
 });
 const svnReviews = createSvnReviewManager({
-  turnReader: codexRuntime,
+  turnReader: neutralTurnReader,
   sessionReader,
   baselineFile: process.env.JIRA_WORKBENCH_SVN_BASELINES_FILE
     || join(dirname(configStore.configFile), "svn-baselines.json"),
