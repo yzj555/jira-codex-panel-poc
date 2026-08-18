@@ -31,7 +31,10 @@ const OPEN_JSON_OUTPUT_SCHEMA = {};
 function toToolDefinition(definition) {
   // core 工具面的 inputSchema 是 plain object（zod field map），不是 zod schema
   // 实例；z.toJSONSchema 需要 z.object 包装。
-  const parameters = z.toJSONSchema(z.object(definition.inputSchema));
+  // zod v4 的 toJSONSchema 输出根对象带 non-enumerable 的 `~standard` 品牌属性，
+  // DSH 的 snapshotJsonValue 会因此拒绝（非 plain JSON）。JSON round-trip 深拷贝
+  // 去掉该标记，得到 DSH 认可的干净 plain object。
+  const parameters = JSON.parse(JSON.stringify(z.toJSONSchema(z.object(definition.inputSchema))));
   return {
     name: definition.name,
     description: definition.description,

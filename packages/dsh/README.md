@@ -11,9 +11,13 @@ DeepSeek Harness 适配层：把宿主无关的 Jira/JXL/SVN 业务核（`@jira-
 
 ### 接入步骤
 
-1. 把 `@jira-workbench/core` 与 `jira-workbench-dsh` 安装到 DSH 能解析的位置（`$DSH_HOME/profiles/<name>/node_modules`，或通过 `bareModuleBaseUrl` 锚定到本仓库的 `node_modules`）。
+1. 把 `@jira-workbench/core` 与 `jira-workbench-dsh` 接入 DSH 能解析的位置。已验证的方式：在 `$DSH_HOME/profiles/node_modules` 建两个 junction 指向本仓库的 `packages/core` 与 `packages/dsh`（或通过 `bareModuleBaseUrl` 锚定）。
 
-2. 用 DSH 挂载本 bundle 启动会话。DSH 侧模型可调用的 19 个工具为 8 个 Jira 只读/流转工具 + 11 个 SVN 审核工具。
+2. 新建（或扩展）一个 profile，其 `dsh.profile.bundles` 追加 `jira-workbench-dsh`，例如 `["@deepseek-ai/dsh-base", "jira-workbench-dsh"]`。
+
+3. 用 DSH 挂载该 profile 启动。DSH 侧模型可调用的 19 个工具为 8 个 Jira 只读/流转工具 + 11 个 SVN 审核工具。
+
+已通过真实 DSH 集成验证：boot 后 `ctx.tools.schemas()` 列出全部 19 个 jira/svn 工具（8 Jira + 11 SVN，无缺失无多余）。
 
 ### 工具面
 

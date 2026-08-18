@@ -91,6 +91,23 @@ test("工具 definitions 不带 mcp__ 前缀，且 inputSchema 转成合法 JSON
   assert.deepEqual(getIssue.parameters.required, ["issueKey"]);
 });
 
+test("parameters 是干净 plain object（无 zod ~standard 非枚举属性，DSH snapshotJsonValue 兼容）", async () => {
+  const { ctx, registered } = mockCtx();
+  await apply(ctx, { version: "0.32.3" });
+
+  for (const tool of registered) {
+    // DSH 的 snapshotJsonValue 拒绝带 non-enumerable 属性的对象；zod v4 的
+    // toJSONSchema 输出根对象带 `~standard` 品牌标记，必须被 JSON round-trip 剥掉。
+    // 这里断言：所有 own key 都是 enumerable string（即 plain JSON 对象）。
+    const keys = Reflect.ownKeys(tool.parameters);
+    for (const key of keys) {
+      assert.equal(typeof key, "string");
+      assert.equal(Object.prototype.propertyIsEnumerable.call(tool.parameters, key), true);
+    }
+    assert.equal(keys.includes("~standard"), false);
+  }
+});
+
 test("disposer 移除全部已注册工具", async () => {
   const { ctx, registered, effects } = mockCtx();
   await apply(ctx, { version: "0.32.3" });
