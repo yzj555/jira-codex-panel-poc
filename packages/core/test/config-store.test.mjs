@@ -306,3 +306,25 @@ test("新配置不携带旧项目、旧 Filter、站点协同字段或外部 Bug
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("secretStore 接口：mode/credentialStorage 反映到公开配置，provider 形态可注入", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-secretstore-"));
+  const configFile = join(directory, "config.json");
+  const secretStore = {
+    mode: "credential-ref",
+    credentialStorage: "DSH credentials 引用",
+    protect: async (value) => `ref:${value}`,
+    unprotect: async (value) => String(value).replace(/^ref:/, "")
+  };
+  const store = createConfigStore({ configFile, secretStore });
+  try {
+    await store.save(await store.prepare({ baseUrl: "http://jira.example:8080", token: "secret-token" }));
+    const publicConfig = await store.getPublic();
+    assert.equal(publicConfig.credentialStorage, "DSH credentials 引用");
+    const loaded = await store.load();
+    assert.equal(loaded.token, "secret-token");
+  } finally {
+    await store.clear();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

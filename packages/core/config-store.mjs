@@ -624,7 +624,15 @@ $plain = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Securi
   return runPowerShell(script, ciphertext);
 }
 
-function publicConfiguration(record) {
+// 缺省密钥存储：Windows DPAPI（当前用户）。config.json 里存 base64 密文。
+export const dpapiSecretStore = {
+  mode: "dpapi",
+  credentialStorage: "Windows DPAPI（当前用户）",
+  protect: protectWithDpapi,
+  unprotect: unprotectWithDpapi
+};
+
+function publicConfiguration(record, credentialStorage = "Windows DPAPI（当前用户）") {
   const rawJql = String(record?.jql || "").trim();
   const storedJql = isManagedLegacyJql(rawJql) ? "" : rawJql;
   const boardSources = normalizeBoardSources(record?.boardSources, {}, rawJql);
@@ -653,15 +661,32 @@ function publicConfiguration(record) {
     bugMonitorEnabled: Boolean(record?.bugMonitorEnabled),
     monitorGeneration: Math.max(0, Number(record?.monitorGeneration || 0)),
     wecomConfigured: Boolean(record?.wecomWebhookProtected),
-    credentialStorage: "Windows DPAPI（当前用户）"
+    credentialStorage
   };
 }
 
 export function createConfigStore({
   configFile = process.env.JIRA_WORKBENCH_CONFIG_FILE || defaultConfigFile(),
-  protect = protectWithDpapi,
-  unprotect = unprotectWithDpapi
+  secretStore = dpapiSecretStore,
+  protect,
+  unprotect
 } = {}) {
+  // 兼容旧的裸 protect/unprotect 参数：包成 secretStore。
+  if (secretStore === dpapiSecretStore && (typeof protect === "function" || typeof unprotect === "function")) {
+    secretStore = {
+      mode: "custom",
+      credentialStorage: "自定义密钥存储",
+      protect: protect || dpapiSecretStore.protect,
+      unprotect: unprotect || dpapiSecretStore.unprotect
+    };
+  }
+  const resolveProtect = secretStore?.protect;
+  const resolveUnprotect = secretStore?.unprotect;
+  if (typeof resolveProtect !== "function" || typeof resolveUnprotect !== "function") {
+    throw new TypeError("secretStore 必须提供 protect 与 unprotect 函数。");
+  }
+  const credentialStorage = String(secretStore?.credentialStorage || secretStore?.mode || "").trim()
+    || "Windows DPAPI（当前用户）";
   async function readRecord() {
     try {
       return JSON.parse(await readFile(configFile, "utf8"));
@@ -677,14 +702,14 @@ export function createConfigStore({
   async function load() {
     const record = await readRecord();
     if (!record?.tokenProtected) {
-      return { ...publicConfiguration(record), token: "" };
+      return { ...publicConfiguration(record, credentialStorage), token: "" };
     }
     try {
       return {
-        ...publicConfiguration(record),
-        token: await unprotect(record.tokenProtected),
+        ...publicConfiguration(record, credentialStorage),
+        token: await resolveUnprotect(record.tokenProtected),
         wecomWebhook: record.wecomWebhookProtected
-          ? await unprotect(record.wecomWebhookProtected)
+          ? await resolveUnprotect(record.wecomWebhookProtected)
           : ""
       };
     } catch {
@@ -704,9 +729,9 @@ export function createConfigStore({
     let tokenProtected;
     let wecomWebhookProtected = "";
     try {
-      tokenProtected = await protect(normalized.token);
+      tokenProtected = await resolveProtect(normalized.token);
       if (normalized.wecomWebhook) {
-        wecomWebhookProtected = await protect(normalized.wecomWebhook);
+        wecomWebhookProtected = await resolveProtect(normalized.wecomWebhook);
       }
     } catch {
       throw new ConfigurationError("Jira Token 或企业微信 Webhook 无法写入 Windows DPAPI。", {
@@ -736,7 +761,7 @@ export function createConfigStore({
     };
     await mkdir(dirname(configFile), { recursive: true });
     await writeFile(configFile, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    return publicConfiguration(record);
+    return publicConfiguration(record, credentialStorage);
   }
 
   async function clear() {
@@ -744,7 +769,7 @@ export function createConfigStore({
   }
 
   async function getPublic() {
-    return publicConfiguration(await readRecord());
+    return publicConfiguration(await readRecord(), credentialStorage);
   }
 
   async function setBugMonitorEnabled(enabled) {
@@ -768,7 +793,7 @@ export function createConfigStore({
     };
     await mkdir(dirname(configFile), { recursive: true });
     await writeFile(configFile, `${JSON.stringify(nextRecord, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    return publicConfiguration(nextRecord);
+    return publicConfiguration(nextRecord, credentialStorage);
   }
 
   return { configFile, load, prepare, save, clear, getPublic, setBugMonitorEnabled };

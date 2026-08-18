@@ -134,10 +134,10 @@ core 用 `zod/v4`（`import * as z from "zod/v4"`），DSH 用 `@deepseek-ai/sch
 ## 7. 迁移里程碑（每步可独立验证、可独立提交）
 
 1. **A（工具面解耦）**：把 19 个工具从 `McpServer.registerTool` 抽成 host-agnostic 结构（`名称 → { title, description, inputSchema, handler }`）；Codex 侧遍历回 MCP server。215 测试锁住行为零回归。**无新功能，纯重构。**
-2. **B（secretStore / approvalProvider 接口引入）**：先给 Codex 实现 = 现状缺省（DPAPI、本地令牌），接口空转等价于现状。sessionAuditProvider 的中立化（去 `local:` 前缀、去 `items`/`fileChange`）也在此步。
+2. **B（secretStore 接口引入）**：`secretStore` 接口（`{ mode, credentialStorage, protect, unprotect }`），Codex 实现 = `dpapiSecretStore`（现状缺省），`createConfigStore` 兼容旧的裸 `protect`/`unprotect` 参数。approvalProvider（E）与 sessionAuditProvider 中立化（F）都推迟到各自 Consumer 落地的阶段，避免「改接口形状却没有第二个 Consumer 验证」。
 3. **C（DSH 进程内 host）**：`packages/dsh` 写 function plugin，`inject` DSH 服务，`apply` 里组装 core，工具注册到 `ctx.tools`。验证点：工具名不再有 `mcp__jira-workbench__` 前缀，DSH 侧能列出 19 个工具。
 4. **D（dshCredentialSecretStore）**：Token 走 `ctx.credentials`。
-5. **E（dshApprovalProvider）**：确认走 `ctx.approval`，含 core 确认路径单阶段化（决策 2 方案 ii）。
+5. **E（approvalProvider + 单阶段化）**：core 确认路径单阶段化（决策 2 方案 ii），引入 `approvalProvider` 接口，Codex 侧把单阶段包装回两阶段，DSH 侧映射 `ctx.approval`。
 6. **F（dshSessionAuditProvider）**：SVN 审查读 DSH Session，替代人工降级。
 
 ## 8. 已决策项
