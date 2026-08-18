@@ -9,11 +9,25 @@
 // 第二阶段 dshCredentialSecretStore 用）。core 通过 ESM import 直接加载，
 // 不 import 任何 DSH 的 TypeScript 包。
 
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod/v4";
 import { createCoreService } from "@jira-workbench/core/index.mjs";
 import { buildToolDefinitions } from "@jira-workbench/core/tools.mjs";
 import { createDshCredentialSecretStore } from "./lib/dsh-credential-secret-store.mjs";
 import { createDshApprovalProvider, runWithAgent } from "./lib/dsh-approval-provider.mjs";
+
+// DSH 侧的独立配置目录：DSH home 下，与 Codex 的 LOCALAPPDATA/jira-workbench
+// 分离（DESIGN.md 决策 1：同一份 config.json 只能一种 secretStore，DSH 走
+// credential-ref，必须独立文件）。plugin.mjs 是纯 JS，不 import DSH 的 TS 包，
+// 因此 DSH home 用 DSH_HOME 环境变量或 ~/.dsh 解析。
+export function dshConfigFile(env = process.env, osHome = homedir()) {
+  const home = env.DSH_HOME && String(env.DSH_HOME).trim()
+    ? env.DSH_HOME
+    : join(osHome, ".dsh");
+  return env.JIRA_WORKBENCH_CONFIG_FILE
+    || join(home, "jira-workbench", "config.json");
+}
 
 export const name = "jira-workbench";
 
@@ -76,8 +90,11 @@ export async function apply(ctx, config = {}) {
     ? createDshApprovalProvider(approval)
     : undefined;
 
-  // 组装 core 服务（无 Codex 宿主能力，SVN 审查降级人工）。
+  // 组装 core 服务（无 Codex 宿主能力，SVN 审查降级人工）。DSH 走独立
+  // config 文件：baseUrl/看板配置存 DSH home 下，token 经 credential-ref 存
+  // DSH credentials（见 dshConfigFile 与 createDshCredentialSecretStore）。
   const core = createCoreService({
+    configFile: dshConfigFile(),
     version: config.version || "0.32.3",
     ...(secretStore ? { secretStore } : {}),
     ...(approvalProvider ? { approvalProvider } : {})

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { apply, inject, name } from "../plugin.mjs";
+import { join } from "node:path";
+import { apply, inject, name, dshConfigFile } from "../plugin.mjs";
 
 // 最小 ctx mock：只提供 apply 用到的 get("tools") 与 effect。
 function mockCtx({ credentials } = {}) {
@@ -136,4 +137,22 @@ test("有 credentials 服务时插件正常激活并注册 19 个工具（creden
   await apply(ctx, { version: "0.32.3" });
 
   assert.equal(registered.length, 19);
+});
+
+test("dshConfigFile 解析 DSH home 独立配置路径", () => {
+  // DSH_HOME 优先
+  assert.equal(
+    dshConfigFile({ DSH_HOME: "C:/Users/me/.dsh" }, "/home/me"),
+    join("C:/Users/me/.dsh", "jira-workbench", "config.json")
+  );
+  // 无 DSH_HOME 时 fallback ~/.dsh
+  assert.equal(
+    dshConfigFile({}, "/home/me"),
+    join("/home/me", ".dsh", "jira-workbench", "config.json")
+  );
+  // JIRA_WORKBENCH_CONFIG_FILE 覆盖最高优先级
+  assert.equal(
+    dshConfigFile({ DSH_HOME: "C:/Users/me/.dsh", JIRA_WORKBENCH_CONFIG_FILE: "D:/override/config.json" }, "/home/me"),
+    "D:/override/config.json"
+  );
 });

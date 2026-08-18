@@ -27,13 +27,15 @@ SVN 审核使用空审查审计 provider 降级为人工审核：保留机械检
 
 ### 配置
 
-| 环境变量 | 默认值 | 说明 |
+| 环境变量 | DSH 默认值 | 说明 |
 |---|---|---|
-| `JIRA_WORKBENCH_CONFIG_FILE` | `%LOCALAPPDATA%\jira-workbench\config.json` | Jira 配置与 SVN 状态文件路径（与 Codex 适配层共享同一套数据） |
+| `JIRA_WORKBENCH_CONFIG_FILE` | `$DSH_HOME/jira-workbench/config.json`（无 `DSH_HOME` 时 `~/.dsh/jira-workbench/config.json`） | DSH 侧的 Jira 配置与 SVN 状态文件路径，**与 Codex 的 `%LOCALAPPDATA%\jira-workbench\config.json` 分离** |
 
-Token 存储模式是**部署级**配置：同一份 config.json 必须始终用同一个 secretStore 实现（见 [`DESIGN.md`](DESIGN.md) 决策 1）。
+Token 存储模式是**部署级**配置：同一份 config.json 必须始终用同一个 secretStore 实现（见 [`DESIGN.md`](DESIGN.md) 决策 1）。DSH 侧默认走独立 config 文件 + credential-ref，不读 Codex 的 DPAPI config.json。
 
-插件激活时若 DSH 进程提供了 `ctx.credentials`（DSH 的 credential-reference 能力），Token 与企业微信 Webhook 走 `dshCredentialSecretStore`：config.json 里只存引用名（`JIRA_WORKBENCH_TOKEN` / `JIRA_WORKBENCH_WECOM_WEBHOOK`），真值由 DSH 的 credentials provider 管理，每次操作 resolve（token 轮换下次操作生效）。若无 `ctx.credentials`，回退 core 的 DPAPI 缺省。
+插件激活时若 DSH 进程提供了 `ctx.credentials`（DSH 的 credential-reference 能力），Token 与企业微信 Webhook 走 `dshCredentialSecretStore`：config.json 里只存引用名（`JIRA_WORKBENCH_TOKEN` / `JIRA_WORKBENCH_WECOM_WEBHOOK`），真值由 DSH 的 credentials provider 管理（`$DSH_HOME/.credentials.yaml`），每次操作 resolve（token 轮换下次操作生效）。若无 `ctx.credentials`，回退 core 的 DPAPI 缺省。
+
+首次接入需做一次性迁移：把 Token 明文写入 `$DSH_HOME/.credentials.yaml` 的 `JIRA_WORKBENCH_TOKEN` 键，并让 DSH 侧 config.json 的 `tokenProtected` 字段等于引用名 `"JIRA_WORKBENCH_TOKEN"`（其余字段 baseUrl/boardSources 从 Codex config 复制）。
 
 Jira 状态流转的「复核 → 执行」确认走 `dshApprovalProvider`：若 DSH 进程提供 `ctx.approval`，`jira_prepare_transition` 复核时先经 DSH 审批栈（`ctx.approval.request`）放行，才签发一次性 grant，`jira_execute_transition` 消费 grant 才真写 Jira；无 `ctx.approval` 则回退 core 的本地一次性 grant。SVN 提交的两阶段确认已内建在 SVN 服务层，不重复审批。
 
