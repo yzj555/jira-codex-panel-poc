@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { apply, inject, name, dshConfigFile } from "../plugin.mjs";
 
-// 最小 ctx mock：只提供 apply 用到的 get("tools") 与 effect。
+// 最小 ctx mock：只提供 apply 用到的 get("tools")、effect、inject（可选服务注入）。
 function mockCtx({ credentials } = {}) {
   const registered = [];
   const effects = [];
@@ -26,6 +26,15 @@ function mockCtx({ credentials } = {}) {
       const disposer = fn();
       effects.push({ label, disposer });
       return disposer;
+    },
+    // Cordis 的可选注入：服务存在时调用 fn，缺失时跳过（返回 no-op disposer）。
+    inject(services, fn) {
+      const names = Array.isArray(services) ? services : [services];
+      if (names.some((name) => ctx.get(name) === undefined)) return () => {};
+      const disposer = fn(ctx);
+      return () => {
+        if (typeof disposer === "function") disposer();
+      };
     }
   };
   return { ctx, registered, effects };

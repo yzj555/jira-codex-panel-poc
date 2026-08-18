@@ -9,13 +9,31 @@
 // 第二阶段 dshCredentialSecretStore 用）。core 通过 ESM import 直接加载，
 // 不 import 任何 DSH 的 TypeScript 包。
 
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import sm from "schemastery";
 import { z } from "zod/v4";
 import { createCoreService } from "@jira-workbench/core/index.mjs";
 import { buildToolDefinitions } from "@jira-workbench/core/tools.mjs";
 import { createDshCredentialSecretStore } from "./lib/dsh-credential-secret-store.mjs";
 import { createDshApprovalProvider, runWithAgent } from "./lib/dsh-approval-provider.mjs";
+
+// DSH settings schema 用 schemastery（DSH 的 ctx.settings.register 要求 schema 是
+// 可调用 + 有 toJSON 的校验函数，zod 不满足）。上游 schemastery@3.18 与 DSH
+// vendored 的 @deepseek-ai/schemastery@3.18 同源，API 兼容。
+const smz = sm;
+
+// DSH settings namespace（可视配置：baseUrl 等非 secret；token 走 credential-ref
+// 不进 settings）。命名空间须匹配 ^[a-z][a-z0-9-]*$。
+const SETTINGS_NAMESPACE = "jira-workbench";
+const CREDENTIAL_REF_TOKEN = "JIRA_WORKBENCH_TOKEN";
+
+// DSH 侧看板 HTML 文件路径（core 的 mcp/ui/task-board.html，已由 core exports 暴露）。
+const taskBoardHtmlPath = fileURLToPath(
+  import.meta.resolve("@jira-workbench/core/mcp/ui/task-board.html")
+);
 
 // DSH 侧的独立配置目录：DSH home 下，与 Codex 的 LOCALAPPDATA/jira-workbench
 // 分离（DESIGN.md 决策 1：同一份 config.json 只能一种 secretStore，DSH 走
@@ -125,4 +143,76 @@ export async function apply(ctx, config = {}) {
       for (const dispose of disposers) dispose();
     };
   }, "jira-workbench.tools");
+
+  // 操作面板：挂 /jira-task-board（HTML）与 /mcp（MCP 端点）两个 webServer 路由。
+  // 看板在 ?transport=http 模式下 fetch 根路径 /mcp，走 core.handleMcp（StreamableHTTP）。
+  // webServer 是可选服务（headless 等 profile 没有），用 ctx.inject 而非 inject 数组。
+  ctx.inject(["webServer"], (httpCtx) => {
+    const serveBoardHtml = (request, response) => {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        response.writeHead(405, { "content-type": "text/plain; charset=utf-8" });
+        response.end("Method Not Allowed");
+        return;
+      }
+      void readFile(taskBoardHtmlPath, "utf8")
+        .then((html) => {
+          const body = html.replaceAll("__JIRA_WORKBENCH_VERSION__", core.version);
+          response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+          response.end(request.method === "HEAD" ? undefined : body);
+        })
+        .catch((error) => {
+          response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+          response.end(`看板加载失败：${String(error?.message || error)}`);
+        });
+    };
+    const disposeBoard = httpCtx.webServer.register({
+      kind: "exact",
+      path: "/jira-task-board",
+      handler: serveBoardHtml
+    });
+    const disposeMcp = httpCtx.webServer.register({
+      kind: "exact",
+      path: "/mcp",
+      handler: core.handleMcp
+    });
+    return () => {
+      disposeBoard();
+      disposeMcp();
+    };
+  });
+
+  // 配置面板：注册 DSH settings namespace（baseUrl 等可视配置）。
+  // settings 是可选服务，缺失时配置面板不可用但工具照常跑。
+  ctx.inject(["settings"], (settingsCtx) => {
+    const settings = settingsCtx.settings;
+    const schema = smz.object({
+      baseUrl: smz.string().default("")
+    });
+    const scope = settings.register(SETTINGS_NAMESPACE, schema);
+
+    // 回填：settings 里没有 baseUrl 时，从 config.json 同步进来（首次挂载时
+    // 让用户看到已配置的值）。
+    void core.configStore.load().then((loaded) => {
+      const current = scope.get();
+      if (!current.baseUrl && loaded.baseUrl) {
+        void scope.update({ baseUrl: loaded.baseUrl });
+      }
+    }).catch(() => {
+      // config.json 缺失或未配置时静默：settings 保持空，用户首次填写。
+    });
+
+    // 用户在 settings 卡片改 baseUrl 后，增量写回 config.json（不碰 token）。
+    const unwatch = scope.watch((next, prev) => {
+      if (next.baseUrl && next.baseUrl !== prev.baseUrl) {
+        void core.configStore.updateBaseUrl(next.baseUrl).catch(() => {
+          // 写回失败不打断 settings 提交；下次读 config.json 时以 settings 为准。
+        });
+      }
+    });
+
+    return () => {
+      unwatch();
+      // settings.register 已通过 fiber effect 注册 disposer，这里无需手动移除。
+    };
+  });
 }

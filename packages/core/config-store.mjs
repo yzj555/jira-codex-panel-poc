@@ -798,5 +798,21 @@ export function createConfigStore({
     return publicConfiguration(nextRecord, credentialStorage);
   }
 
-  return { configFile, load, prepare, save, clear, getPublic, setBugMonitorEnabled };
+  // 只更新 baseUrl（可视配置，DSH settings 面板用）：不碰 tokenProtected，避免
+  // 触发 token 重新 protect。token 走独立通道（credential-ref 的 credentials.set）。
+  async function updateBaseUrl(baseUrl) {
+    const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+    const record = await readRecord();
+    const nextRecord = {
+      ...(record || {}),
+      version: Math.max(5, Number(record?.version || 1)),
+      baseUrl: normalizedBaseUrl,
+      updatedAt: new Date().toISOString()
+    };
+    await mkdir(dirname(configFile), { recursive: true });
+    await writeFile(configFile, `${JSON.stringify(nextRecord, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    return publicConfiguration(nextRecord, credentialStorage);
+  }
+
+  return { configFile, load, prepare, save, clear, getPublic, setBugMonitorEnabled, updateBaseUrl };
 }
