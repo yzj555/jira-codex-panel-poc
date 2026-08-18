@@ -3,17 +3,22 @@
   "version": "0.32.3",
   "private": true,
   "type": "module",
-  "description": "DeepSeek Harness adapter: consumes the shared Jira/SVN core through dsh-mcp-client.",
+  "main": "plugin.mjs",
+  "exports": {
+    ".": "./plugin.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "description": "DeepSeek Harness adapter: hosts the Jira/SVN core in-process as a Cordis function plugin.",
   "dsh": {
     "bundle": {
       "patch": "cordis.patch.yml"
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-mcp-client": ">=0.0.1-rc.1"
+    "@jira-workbench/core": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-mcp-client": {
+    "@jira-workbench/core": {
       "optional": true
     }
   }

@@ -9,6 +9,8 @@
   },
   "exports": {
     ".": "./index.mjs",
+    "./index.mjs": "./index.mjs",
+    "./tools.mjs": "./tools.mjs",
     "./config-store.mjs": "./config-store.mjs",
     "./jira-client.mjs": "./jira-client.mjs",
     "./jxl-client.mjs": "./jxl-client.mjs",
