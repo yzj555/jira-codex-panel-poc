@@ -136,7 +136,7 @@ core 用 `zod/v4`（`import * as z from "zod/v4"`），DSH 用 `@deepseek-ai/sch
 1. **A（工具面解耦）**：把 19 个工具从 `McpServer.registerTool` 抽成 host-agnostic 结构（`名称 → { title, description, inputSchema, handler }`）；Codex 侧遍历回 MCP server。215 测试锁住行为零回归。**无新功能，纯重构。**
 2. **B（secretStore 接口引入）**：`secretStore` 接口（`{ mode, credentialStorage, protect, unprotect }`），Codex 实现 = `dpapiSecretStore`（现状缺省），`createConfigStore` 兼容旧的裸 `protect`/`unprotect` 参数。approvalProvider（E）与 sessionAuditProvider 中立化（F）都推迟到各自 Consumer 落地的阶段，避免「改接口形状却没有第二个 Consumer 验证」。
 3. **C（DSH 进程内 host）**：`packages/dsh` 写纯 JS function plugin（`plugin.mjs`，`name: jira-workbench`、`inject: ['tools']`），`apply` 里组装 core 服务、遍历 `buildToolDefinitions` 用 `ctx.tools.register` 注册，工具名无 `mcp__` 前缀。✅ 已实现（220 测试全绿，含 3 个 plugin 测试）。**部署接线待验证**：`@jira-workbench/core` 与 `jira-workbench-dsh` 需安装到 DSH 可解析位置（`$DSH_HOME/profiles/<name>/node_modules` 或 `bareModuleBaseUrl`）。
-4. **D（dshCredentialSecretStore）**：Token 走 `ctx.credentials`。
+4. **D（dshCredentialSecretStore）**：`packages/dsh/lib/dsh-credential-secret-store.mjs` 提供 `createDshCredentialSecretStore(credentials)`，`protect` 调 `ctx.credentials.set(ref, value)` 存真值、返回引用名；`unprotect` 每次 `ctx.credentials.resolve(ref)`。`config-store.mjs` 的 `protect/unprotect` 增加第二个 key 参数（`"token"` / `"wecomWebhook"`），DPAPI 忽略、credential-ref 用它派生引用名；`createCoreService` 透传 `secretStore`。✅ 已实现（226 测试全绿）。
 5. **E（approvalProvider + 单阶段化）**：core 确认路径单阶段化（决策 2 方案 ii），引入 `approvalProvider` 接口，Codex 侧把单阶段包装回两阶段，DSH 侧映射 `ctx.approval`。
 6. **F（dshSessionAuditProvider）**：SVN 审查读 DSH Session，替代人工降级。
 

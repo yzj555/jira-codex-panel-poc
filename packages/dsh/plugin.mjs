@@ -12,6 +12,7 @@
 import { z } from "zod/v4";
 import { createCoreService } from "@jira-workbench/core/index.mjs";
 import { buildToolDefinitions } from "@jira-workbench/core/tools.mjs";
+import { createDshCredentialSecretStore } from "./lib/dsh-credential-secret-store.mjs";
 
 export const name = "jira-workbench";
 
@@ -55,9 +56,18 @@ function toToolDefinition(definition) {
 }
 
 export async function apply(ctx, config = {}) {
+  // Token 存储：有 DSH credentials 服务就用 credential-ref 模式，否则回退
+  // core 的 DPAPI 缺省。credentials 是可选服务（用 ctx.get 而非 inject，缺失
+  // 时不阻塞插件激活）。
+  const credentials = ctx.get("credentials");
+  const secretStore = credentials
+    ? createDshCredentialSecretStore(credentials)
+    : undefined;
+
   // 组装 core 服务（无 Codex 宿主能力，SVN 审查降级人工）。
   const core = createCoreService({
-    version: config.version || "0.32.3"
+    version: config.version || "0.32.3",
+    ...(secretStore ? { secretStore } : {})
   });
 
   // 只注册 core 独立服务暴露的那部分工具：8 个 Jira + 11 个 SVN。

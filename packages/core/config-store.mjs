@@ -625,6 +625,8 @@ $plain = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Securi
 }
 
 // 缺省密钥存储：Windows DPAPI（当前用户）。config.json 里存 base64 密文。
+// protect/unprotect 的第二个参数是 secret 键名（"token" / "wecomWebhook"）：
+// DPAPI 不需要区分 secret，直接忽略；credential-ref 模式用它派生引用名。
 export const dpapiSecretStore = {
   mode: "dpapi",
   credentialStorage: "Windows DPAPI（当前用户）",
@@ -707,9 +709,9 @@ export function createConfigStore({
     try {
       return {
         ...publicConfiguration(record, credentialStorage),
-        token: await resolveUnprotect(record.tokenProtected),
+        token: await resolveUnprotect(record.tokenProtected, "token"),
         wecomWebhook: record.wecomWebhookProtected
-          ? await resolveUnprotect(record.wecomWebhookProtected)
+          ? await resolveUnprotect(record.wecomWebhookProtected, "wecomWebhook")
           : ""
       };
     } catch {
@@ -729,9 +731,9 @@ export function createConfigStore({
     let tokenProtected;
     let wecomWebhookProtected = "";
     try {
-      tokenProtected = await resolveProtect(normalized.token);
+      tokenProtected = await resolveProtect(normalized.token, "token");
       if (normalized.wecomWebhook) {
-        wecomWebhookProtected = await resolveProtect(normalized.wecomWebhook);
+        wecomWebhookProtected = await resolveProtect(normalized.wecomWebhook, "wecomWebhook");
       }
     } catch {
       throw new ConfigurationError("Jira Token 或企业微信 Webhook 无法写入 Windows DPAPI。", {

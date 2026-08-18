@@ -49,9 +49,10 @@ export function createCoreService({
   reviewStateFile = process.env.JIRA_WORKBENCH_SVN_REVIEWS_FILE || join(userDataRoot(), "svn-reviews.json"),
   reviewArtifactsRoot = process.env.JIRA_WORKBENCH_SVN_REVIEW_ARTIFACTS_DIR
     || join(userDataRoot(), "attachments", "svn-reviews"),
+  secretStore,
   version = "0.32.3"
 } = {}) {
-  const configStore = createConfigStore({ configFile });
+  const configStore = createConfigStore({ configFile, ...(secretStore ? { secretStore } : {}) });
   const jira = createJiraClient();
   const jxl = createJxlClient();
   const issueBindings = createIssueBindingStore({ file: bindingsFile });

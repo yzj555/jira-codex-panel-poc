@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { apply, inject, name } from "../plugin.mjs";
 
 // 最小 ctx mock：只提供 apply 用到的 get("tools") 与 effect。
-function mockCtx() {
+function mockCtx({ credentials } = {}) {
   const registered = [];
   const effects = [];
   const tools = {
@@ -18,6 +18,7 @@ function mockCtx() {
   const ctx = {
     get(serviceName) {
       if (serviceName === "tools") return tools;
+      if (serviceName === "credentials") return credentials;
       return undefined;
     },
     effect(fn, label) {
@@ -101,4 +102,21 @@ test("disposer 移除全部已注册工具", async () => {
   // 触发 disposer
   effects[0].disposer();
   assert.equal(registered.length, 0);
+});
+
+test("有 credentials 服务时插件正常激活并注册 19 个工具（credential-ref 分支）", async () => {
+  const credentials = {
+    async resolve(ref) {
+      return { value: "stored-value", source: "file" };
+    },
+    async set(_ref, _value) {},
+    async describe(_ref) {
+      return { configured: true, writable: true };
+    },
+    async unset(_ref) {}
+  };
+  const { ctx, registered } = mockCtx({ credentials });
+  await apply(ctx, { version: "0.32.3" });
+
+  assert.equal(registered.length, 19);
 });
