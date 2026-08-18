@@ -24,6 +24,12 @@ export { createNullReviewAuditProvider } from "./lib/null-review-audit-provider.
 export { createTaskBoardLoader } from "./lib/task-board-loader.mjs";
 export { findCachedAttachment, materializeAttachment, openLocalAttachment } from "./lib/attachment-cache.mjs";
 export { buildIssueDetailSnapshot, createJiraTaskBoardMcpServer, createJiraTaskBoardMcpHttpHandler } from "./mcp/jira-task-board-mcp.mjs";
+export {
+  buildToolDefinitions,
+  buildTaskBoardSnapshot,
+  buildSheetsSnapshot,
+  buildSheetIssuesSnapshot
+} from "./tools.mjs";
 export { buildIssuePrompt, isBugIssue } from "./public/prompt-builder.js";
 export { attachmentCanOpenLocally } from "./public/issue-views.js";
 

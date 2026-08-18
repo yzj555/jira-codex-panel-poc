@@ -36,3 +36,5 @@ SVN 审核使用空审查审计 provider 降级为人工审核：保留机械检
 - 宿主内服务（`ctx.agents` / Slot UI）替代独立 HTTP 进程；
 - 通过 `ctx.credentials` 注入 Jira Token，接入 DSH 的审批/确认栈；
 - SVN 审查接入 DSH 的 agent-loop 作为真实审查 provider。
+
+第二版的核心契约（三个可注入 provider 的边界、红线与迁移里程碑）见 [`DESIGN.md`](DESIGN.md)。
