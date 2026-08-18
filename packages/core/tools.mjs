@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { createActionConfirmationStore } from "./lib/action-confirmation-store.mjs";
+import { createLocalApprovalProvider } from "./lib/approval-provider.mjs";
 
 export const JIRA_TASK_BOARD_TOOL = "jira_list_my_tasks";
 export const JIRA_ISSUE_DETAIL_TOOL = "jira_get_issue";
@@ -325,7 +325,7 @@ export function buildToolDefinitions({
   automation,
   updates,
   desktop,
-  confirmations = createActionConfirmationStore()
+  approvalProvider = createLocalApprovalProvider()
 } = {}) {
   const definitions = [];
   function define(name, options, handler) {
@@ -636,7 +636,7 @@ export function buildToolDefinitions({
           error.statusCode = 400;
           throw error;
         }
-        const grant = confirmations.issue("jira-transition", {
+        const grant = await approvalProvider.issue("jira-transition", {
           issueKey: String(latest.key || issueKey).toUpperCase(),
           transitionId,
           expectedTargetStatus
@@ -664,7 +664,7 @@ export function buildToolDefinitions({
         _meta: uiMeta("正在提交 Jira 状态流转…", "Jira 状态流转已提交")
       },
       async ({ confirmationId }) => {
-        const grant = confirmations.consume(confirmationId, "jira-transition");
+        const grant = await approvalProvider.consume(confirmationId, "jira-transition");
         const result = await service.executeTransition(grant.issueKey, grant.transitionId);
         const issueResult = typeof service.getIssue === "function"
           ? await service.getIssue(grant.issueKey)

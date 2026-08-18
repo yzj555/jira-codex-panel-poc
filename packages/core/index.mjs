@@ -17,6 +17,7 @@ export * from "./config-store.mjs";
 export * from "./jira-client.mjs";
 export * from "./jxl-client.mjs";
 export { createIssueBindingStore, IssueBindingStoreError, normalizeBindingWorkspace } from "./lib/issue-binding-store.mjs";
+export { createLocalApprovalProvider, ActionConfirmationError } from "./lib/approval-provider.mjs";
 export { createJiraWorkbenchService } from "./lib/jira-workbench-service.mjs";
 export { buildSvnCommitMessage, createSvnReviewManager, SvnReviewError } from "./lib/svn-review-manager.mjs";
 export { createSvnWorkbenchService } from "./lib/svn-workbench-service.mjs";
@@ -50,6 +51,7 @@ export function createCoreService({
   reviewArtifactsRoot = process.env.JIRA_WORKBENCH_SVN_REVIEW_ARTIFACTS_DIR
     || join(userDataRoot(), "attachments", "svn-reviews"),
   secretStore,
+  approvalProvider,
   version = "0.32.3"
 } = {}) {
   const configStore = createConfigStore({ configFile, ...(secretStore ? { secretStore } : {}) });
@@ -89,7 +91,8 @@ export function createCoreService({
   const handleMcp = createJiraTaskBoardMcpHttpHandler({
     workbench: jiraWorkbench,
     svn: svnWorkbench,
-    version
+    version,
+    ...(approvalProvider ? { approvalProvider } : {})
   });
 
   return {

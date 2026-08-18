@@ -13,6 +13,7 @@ import { z } from "zod/v4";
 import { createCoreService } from "@jira-workbench/core/index.mjs";
 import { buildToolDefinitions } from "@jira-workbench/core/tools.mjs";
 import { createDshCredentialSecretStore } from "./lib/dsh-credential-secret-store.mjs";
+import { createDshApprovalProvider, runWithAgent } from "./lib/dsh-approval-provider.mjs";
 
 export const name = "jira-workbench";
 
@@ -46,8 +47,9 @@ function toToolDefinition(definition) {
         return text ? [{ type: "text", text }] : [];
       }
     },
-    async execute(args) {
-      const result = await definition.handler(args);
+    async execute(args, exec) {
+      // 把 DSH 的 exec.agent 存入 ALS，供 dshApprovalProvider.issue 读取。
+      const result = await runWithAgent(exec?.agent, () => definition.handler(args));
       // canonical value = core handler 的返回（structuredContent + content 都保留，
       // render 只取 content 文本；structuredContent 通过 canonical value 传递）。
       return result ?? {};
@@ -64,10 +66,18 @@ export async function apply(ctx, config = {}) {
     ? createDshCredentialSecretStore(credentials)
     : undefined;
 
+  // 审批：有 DSH approval 服务就用宿主审批栈，否则回退 core 的本地一次性
+  // grant（独立服务缺省）。approval 也是可选服务。
+  const approval = ctx.get("approval");
+  const approvalProvider = approval
+    ? createDshApprovalProvider(approval)
+    : undefined;
+
   // 组装 core 服务（无 Codex 宿主能力，SVN 审查降级人工）。
   const core = createCoreService({
     version: config.version || "0.32.3",
-    ...(secretStore ? { secretStore } : {})
+    ...(secretStore ? { secretStore } : {}),
+    ...(approvalProvider ? { approvalProvider } : {})
   });
 
   // 只注册 core 独立服务暴露的那部分工具：8 个 Jira + 11 个 SVN。
@@ -75,7 +85,8 @@ export async function apply(ctx, config = {}) {
   // buildToolDefinitions 的条件注册会自然跳过它们。
   const definitions = buildToolDefinitions({
     service: core.jiraWorkbench,
-    svn: core.svnWorkbench
+    svn: core.svnWorkbench,
+    ...(approvalProvider ? { approvalProvider } : {})
   });
 
   const tools = ctx.get("tools");

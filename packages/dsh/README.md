@@ -31,6 +31,8 @@ Token 存储模式是**部署级**配置：同一份 config.json 必须始终用
 
 插件激活时若 DSH 进程提供了 `ctx.credentials`（DSH 的 credential-reference 能力），Token 与企业微信 Webhook 走 `dshCredentialSecretStore`：config.json 里只存引用名（`JIRA_WORKBENCH_TOKEN` / `JIRA_WORKBENCH_WECOM_WEBHOOK`），真值由 DSH 的 credentials provider 管理，每次操作 resolve（token 轮换下次操作生效）。若无 `ctx.credentials`，回退 core 的 DPAPI 缺省。
 
+Jira 状态流转的「复核 → 执行」确认走 `dshApprovalProvider`：若 DSH 进程提供 `ctx.approval`，`jira_prepare_transition` 复核时先经 DSH 审批栈（`ctx.approval.request`）放行，才签发一次性 grant，`jira_execute_transition` 消费 grant 才真写 Jira；无 `ctx.approval` 则回退 core 的本地一次性 grant。SVN 提交的两阶段确认已内建在 SVN 服务层，不重复审批。
+
 ## 里程碑
 
 | 里程碑 | 状态 |
@@ -39,7 +41,7 @@ Token 存储模式是**部署级**配置：同一份 config.json 必须始终用
 | B secretStore 接口 | ✅ |
 | C 进程内 host 插件 | ✅ |
 | D dshCredentialSecretStore（Token 走 `ctx.credentials`） | ✅ |
-| E approvalProvider + 单阶段化（确认走 `ctx.approval`） | 待做 |
+| E approvalProvider 两阶段化（确认走 `ctx.approval`） | ✅ |
 | F dshSessionAuditProvider（SVN 审查读 DSH Session） | 待做 |
 
 核心契约（三个可注入 provider 的边界、红线与迁移顺序）见 [`DESIGN.md`](DESIGN.md)。

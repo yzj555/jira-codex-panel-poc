@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createActionConfirmationStore } from "../lib/action-confirmation-store.mjs";
+import { createLocalApprovalProvider } from "../lib/approval-provider.mjs";
 import {
   buildToolDefinitions,
   JIRA_TASK_BOARD_TOOL,
@@ -91,7 +91,7 @@ export function createJiraTaskBoardMcpServer({
   updates,
   desktop,
   loadIssues,
-  confirmations = createActionConfirmationStore(),
+  approvalProvider = createLocalApprovalProvider(),
   version = "0.1.0",
   serverName = "jira-workbench"
 } = {}) {
@@ -133,7 +133,7 @@ export function createJiraTaskBoardMcpServer({
     automation,
     updates,
     desktop,
-    confirmations
+    approvalProvider
   })) {
     server.registerTool(
       definition.name,
@@ -185,13 +185,14 @@ async function readRequestBody(request, maxBytes = 1024 * 1024) {
 
 export function createJiraTaskBoardMcpHttpHandler(options = {}) {
   const resolveOptions = typeof options === "function" ? options : () => options;
-  const confirmations = (typeof options === "function" ? null : options.confirmations) || createActionConfirmationStore();
+  const approvalProvider = (typeof options === "function" ? null : options.approvalProvider || options.confirmations)
+    || createLocalApprovalProvider();
   return async function handleJiraTaskBoardMcp(request, response) {
     if (!loopbackRequest(request)) return jsonRpcError(response, 403, "Jira MCP 仅允许本机访问。");
     if (request.method !== "POST") return jsonRpcError(response, 405, "此无状态 MCP 端点仅接受 POST。");
 
     const requestOptions = resolveOptions(request) || {};
-    const server = createJiraTaskBoardMcpServer({ ...requestOptions, confirmations });
+    const server = createJiraTaskBoardMcpServer({ ...requestOptions, approvalProvider });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true

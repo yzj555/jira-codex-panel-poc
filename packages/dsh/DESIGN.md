@@ -77,24 +77,25 @@ secretStore = {
 
 ### 5.2 `approvalProvider` — 敏感操作确认
 
-core 现在有两处「两阶段确认」：Jira 流转走 MCP 层的 `createActionConfirmationStore`（`issue` → 返回 `confirmationId` → `consume`），SVN commit 走 `svn-review-manager` 内部 `confirmations` Map（`confirmReview` 生成 token → `commitReview` 校验）。两者本质相同：先签发一次性凭据，用户确认后 consume 执行。
+core 现有两处「两阶段确认」：Jira 流转在 MCP 工具层走 `createActionConfirmationStore`（`issue` → 返回 `confirmationId` → `consume`），SVN commit 在 `svn-review-manager` 内部 `confirmations` Map（`confirmReview` 生成 token → `commitReview` 校验）——后者已内建在服务层，无需抽象。
 
-DSH 的 `ctx.approval.request()` 是**单阶段**：直接问 → `allowed-once` / `rejected`。两种折中：
+**已定稿（决策点 2，方案 B）**：`approvalProvider` 采用**两阶段 `issue`/`consume`**（形状同现有 `createActionConfirmationStore`），而非单阶段 `request`。理由：
 
-- **方案 i（不动 core 确认路径）**：DSH 实现里 `issue` 时同步 `await ctx.approval.request(...)`，通过则生成短期 grant 存内存，`consume` 只校验。缺点：`issue` 与 `consume` 间隔两次 tool 调用，grant 要跨调用存活，且审批时刻偏早（prepare 阶段，用户尚未看到 execute 最终参数）。
-- **方案 ii（core 确认抽象单阶段化）**：core 把确认抽象改为单阶段 `request({ action, payload, reason }) → { granted, deniedReason? }`，DSH 直接映射；Codex 侧在 MCP Apps UI 把单阶段再包装回两阶段。缺点：动 `jira-workbench-service` / `svn-workbench-service` 的确认路径，工作量大于 i。
-
-**倾向方案 ii**：它让 core 抽象更接近「审批」本质（DSH、Codex 各自的确认 UI 都只是 answerer），且避免跨 tool 调用的 grant 存活问题。此为**决策点 2**，未定稿前 A 阶段不动确认路径。
-
-目标签名骨架：
+- `prepare`/`confirm` 工具本身就是「最终参数复核」（issueKey、transitionId、expectedTargetStatus 均已确定），所以「issue 时审批」审批的正是最终参数——方案 i 的「审批时刻偏早」缺点实际不存在。
+- 「grant 跨 tool 调用存活」封装在各宿主 `approvalProvider` 实现内部（DSH 侧本地 grant store + ALS 传 agent），不污染 core。
+- core 独立服务缺省实现（`createLocalApprovalProvider` = `createActionConfirmationStore`）行为零变化，Codex 侧 216+ 测试不动。
 
 ```
 approvalProvider = {
-  request({ action, payload, reason }) → Promise<{ granted: boolean, deniedReason?: string }>
+  issue(action, payload)  → Promise<{ confirmationId, action, expiresAt }>,
+  consume(confirmationId, action) → Promise<payload>,   // 无效/过期抛 ActionConfirmationError
+  revoke(confirmationId) → boolean
 }
 ```
 
-红线：`action` 是业务动作名（如 `jira-transition` / `svn-commit`），`payload` 是纯 JSON 业务参数（issueKey、transitionId、selectedPaths），`reason` 是人类可读的解释 —— 不含 DSH 的 `agent` / `callId` / `toolName`。DSH 实现在 `packages/dsh` 里把这些 DSH 符号组装成 `reason`，再调 core 的 `request`。
+- `action` 是业务动作名（如 `jira-transition`），`payload` 是纯 JSON 业务参数 —— 不含 DSH 的 `agent`/`callId`/`toolName` 符号。
+- DSH 实现（`dshApprovalProvider`）：`issue` 里从 AsyncLocalStorage 读 agent，`await ctx.approval.request({ agent, toolName, reason })`，`allowed-once` 才委托本地 grant store 签发；`consume`/`revoke` 只委托本地 store。审批发生在「复核」工具调用内（open turn 内），满足 `ctx.approval.request` 的 turn-enclosed 前置。
+- Codex 实现：`createLocalApprovalProvider`（现状缺省），两阶段确认仍在 MCP Apps UI 驱动。
 
 ### 5.3 `sessionAuditProvider` — 会话审查数据源
 
@@ -137,12 +138,12 @@ core 用 `zod/v4`（`import * as z from "zod/v4"`），DSH 用 `@deepseek-ai/sch
 2. **B（secretStore 接口引入）**：`secretStore` 接口（`{ mode, credentialStorage, protect, unprotect }`），Codex 实现 = `dpapiSecretStore`（现状缺省），`createConfigStore` 兼容旧的裸 `protect`/`unprotect` 参数。approvalProvider（E）与 sessionAuditProvider 中立化（F）都推迟到各自 Consumer 落地的阶段，避免「改接口形状却没有第二个 Consumer 验证」。
 3. **C（DSH 进程内 host）**：`packages/dsh` 写纯 JS function plugin（`plugin.mjs`，`name: jira-workbench`、`inject: ['tools']`），`apply` 里组装 core 服务、遍历 `buildToolDefinitions` 用 `ctx.tools.register` 注册，工具名无 `mcp__` 前缀。✅ 已实现（220 测试全绿，含 3 个 plugin 测试）。**部署接线待验证**：`@jira-workbench/core` 与 `jira-workbench-dsh` 需安装到 DSH 可解析位置（`$DSH_HOME/profiles/<name>/node_modules` 或 `bareModuleBaseUrl`）。
 4. **D（dshCredentialSecretStore）**：`packages/dsh/lib/dsh-credential-secret-store.mjs` 提供 `createDshCredentialSecretStore(credentials)`，`protect` 调 `ctx.credentials.set(ref, value)` 存真值、返回引用名；`unprotect` 每次 `ctx.credentials.resolve(ref)`。`config-store.mjs` 的 `protect/unprotect` 增加第二个 key 参数（`"token"` / `"wecomWebhook"`），DPAPI 忽略、credential-ref 用它派生引用名；`createCoreService` 透传 `secretStore`。✅ 已实现（226 测试全绿）。
-5. **E（approvalProvider + 单阶段化）**：core 确认路径单阶段化（决策 2 方案 ii），引入 `approvalProvider` 接口，Codex 侧把单阶段包装回两阶段，DSH 侧映射 `ctx.approval`。
+5. **E（approvalProvider 两阶段化）**：Jira 流转确认抽象为 `approvalProvider`（`issue`/`consume`/`revoke`，决策点 2 方案 B），core 独立服务缺省 `createLocalApprovalProvider`（= 现有 `createActionConfirmationStore`，行为零变化）；DSH 实现 `dshApprovalProvider` 在 `issue` 里 `await ctx.approval.request(...)`（通过 ALS 传 agent），`consume` 只校验本地 grant。SVN commit 确认已内建服务层，不动。✅ 已实现（231 测试全绿）。
 6. **F（dshSessionAuditProvider）**：SVN 审查读 DSH Session，替代人工降级。
 
 ## 8. 已决策项
 
 1. **token 共享数据文件**（§5.1）：token 存储模式是**部署级**配置 —— 同一份 `config.json` 必须始终用同一个 `secretStore` 实现，不允许 Codex（DPAPI）与 DSH（credential-ref）混写同一文件。DSH 如需独立数据目录，用 `JIRA_WORKBENCH_CONFIG_FILE` 覆盖到独立路径，而不是在同一文件里切换存储形态。
-2. **approvalProvider 方案 ii**（§5.2）：core 的确认抽象单阶段化为 `request({ action, payload, reason }) → { granted, deniedReason? }`；Codex 侧在 MCP Apps UI 把单阶段再包装回两阶段（`issue` 一个 UI 确认，用户点了才真正 call）。此决策在 E 阶段落地。
+2. **approvalProvider 方案 B**（§5.2）：两阶段 `issue`/`consume`/`revoke`，形状同现有 `createActionConfirmationStore`；`issue` 由宿主审批栈（DSH 的 `ctx.approval`，或 Codex 的 MCP Apps UI）在签发前把关，`consume` 只校验本地 grant。DSH 实现通过 ALS 把 `exec.agent` 传入 `issue`。此决策在 E 阶段落地。
 3. **schema 归属库**（§6.1）：core 工具面继续用 `zod/v4`（Codex MCP 层零改动）；DSH 适配层写一个 `zod → schemastery` 薄转换，不双写 schema。
 4. **工作台 UI（方向 C，未排入里程碑）**：先薄封装（Slot 里 iframe 加载 `task-board.html`，数据仍走 MCP 工具），后视需要 React 重写。依赖 1–3 落地后另行评估。
