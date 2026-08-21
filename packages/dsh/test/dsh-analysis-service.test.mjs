@@ -28,7 +28,7 @@ function issue(key = "CT-300") {
   };
 }
 
-async function fixture({ promptResult, beforePrompt, sessionIds = ["session-created"] } = {}) {
+async function fixture({ promptResult, promptResults, beforePrompt, sessionIds = ["session-created"], imageContextService } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "jira-workbench-dsh-analysis-"));
   const issueBindings = createIssueBindingStore({ file: join(directory, "bindings.json") });
   const calls = { create: [], skills: [], prompt: [], rename: [] };
@@ -41,7 +41,9 @@ async function fixture({ promptResult, beforePrompt, sessionIds = ["session-crea
       async prompt(request) {
         calls.prompt.push(request.payload);
         if (beforePrompt) await beforePrompt(issueBindings);
-        return promptResult || { result: { ok: true, value: { accepted: true } } };
+        return promptResults?.[calls.prompt.length - 1]
+          || promptResult
+          || { result: { ok: true, value: { accepted: true } } };
       },
       rename(request) {
         calls.rename.push(request.payload);
@@ -84,6 +86,7 @@ async function fixture({ promptResult, beforePrompt, sessionIds = ["session-crea
     },
     taskBoardLoader: { async materializeBugMonitorAttachments() { return []; } },
     issueBindings,
+    ...(imageContextService ? { imageContextService } : {}),
     workspaceBindings: {
       async get(issueKey) {
         return {
@@ -128,6 +131,59 @@ test("DSH 新建分析会话在指定项目发送只读首条消息后再保存�
   const stored = await issueBindings.snapshot();
   assert.equal(stored.bindings["CT-300"].threadId, "session-created");
   assert.equal(stored.bindings["CT-300"].runtimeOwner, "dsh");
+});
+
+test("DSH Host 拒绝原图后自动降级为文本图片说明且只发送一个有效首轮", async (t) => {
+  const prepareCalls = [];
+  const { directory, issueBindings, service, calls } = await fixture({
+    promptResults: [
+      {
+        result: {
+          ok: false,
+          error: {
+            code: "attachment-error",
+            message: "Model does not support images",
+            details: { reason: "MODEL_DOES_NOT_SUPPORT_IMAGES" }
+          }
+        }
+      },
+      { result: { ok: true, value: { accepted: true } } }
+    ],
+    imageContextService: {
+      async prepare(input) {
+        prepareCalls.push(input);
+        if (!input.forceFallback) {
+          return {
+            mode: "native",
+            imageParts: [{ type: "image", mediaType: "image/png", data: "aW1hZ2U=", name: "错误截图.png" }],
+            textContext: "",
+            statuses: [{ attachmentId: "900", filename: "错误截图.png", mode: "native" }]
+          };
+        }
+        return {
+          mode: "fallback",
+          imageParts: [],
+          textContext: "## 图片附件处理结果\n\n### [OCR 降级] 错误截图.png\n登录失败",
+          statuses: [{ attachmentId: "900", filename: "错误截图.png", mode: "ocr", text: "登录失败" }]
+        };
+      }
+    }
+  });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const result = await service.createIssueAnalysis("CT-300", "", {
+    expectedRevision: 0,
+    projectScopeId: "scope-alpha"
+  });
+
+  assert.equal(calls.prompt.length, 2);
+  assert.equal(calls.prompt[0].content.some((part) => part.type === "image"), true);
+  assert.equal(calls.prompt[1].content.some((part) => part.type === "image"), false);
+  assert.match(calls.prompt[1].content[0].text, /\[OCR 降级\]/);
+  assert.deepEqual(prepareCalls.map((call) => Boolean(call.forceFallback)), [false, true]);
+  assert.equal(result.imageAttachmentCount, 0);
+  assert.equal(result.imageProcessing.statuses[0].mode, "ocr");
+  assert.equal((await issueBindings.snapshot()).bindings["CT-300"].threadId, "session-created");
 });
 
 test("DSH 首条消息被 Host 拒绝时不保存 Jira 关联", async (t) => {

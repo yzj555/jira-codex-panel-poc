@@ -23,7 +23,7 @@ export type JiraConfigCardProps = JiraConfigCardBaseProps
   & Partial<PropsRuntime<'settings.plugin.item'>>
   & { readonly standalone?: boolean }
 
-type Section = 'connection' | 'sources' | 'templates'
+type Section = 'connection' | 'sources' | 'templates' | 'images'
 
 interface Choice {
   value: string
@@ -41,13 +41,14 @@ export function JiraConfigCard(props: JiraConfigCardProps) {
   const sectionRefs = useRef<Record<Section, HTMLElement | null>>({
     connection: null,
     templates: null,
+    images: null,
     sources: null,
   })
 
   useEffect(() => {
     const content = settingsContentRef.current
     if (!standalone || state.loading || !content) return
-    const order: readonly Section[] = ['connection', 'templates', 'sources']
+    const order: readonly Section[] = ['connection', 'templates', 'images', 'sources']
     const syncSection = () => {
       const contentTop = content.getBoundingClientRect().top
       let next: Section = order[0]!
@@ -79,6 +80,21 @@ export function JiraConfigCard(props: JiraConfigCardProps) {
     label: `${project.key} · ${project.name}`,
     meta: project.id,
   }))
+  const discoveredVisionChoices = state.visionModels.map(model => ({
+    value: `${model.provider}\u0000${model.id}`,
+    label: model.name,
+    meta: `${model.providerName} · ${model.id}`,
+  }))
+  const selectedVision = state.imageProcessing.visionProvider && state.imageProcessing.visionModel
+    ? `${state.imageProcessing.visionProvider}\u0000${state.imageProcessing.visionModel}`
+    : ''
+  const visionChoices = selectedVision && !discoveredVisionChoices.some(choice => choice.value === selectedVision)
+    ? [{
+        value: selectedVision,
+        label: state.imageProcessing.visionModel,
+        meta: `${state.imageProcessing.visionProvider} · ${t('card.visionModelUnavailable')}`,
+      }, ...discoveredVisionChoices]
+    : discoveredVisionChoices
 
   return (
     <div className={clsx(
@@ -124,6 +140,13 @@ export function JiraConfigCard(props: JiraConfigCardProps) {
                     title={t('card.templatesNav')}
                     copy={t('card.templatesNavHint')}
                     onClick={() => { scrollToSection('templates') }}
+                  />
+                  <SettingsNavItem
+                    active={section === 'images'}
+                    target="jira-settings-images"
+                    title={t('card.imagesNav')}
+                    copy={t('card.imagesNavHint')}
+                    onClick={() => { scrollToSection('images') }}
                   />
                   <SettingsNavItem
                     active={section === 'sources'}
@@ -229,6 +252,60 @@ export function JiraConfigCard(props: JiraConfigCardProps) {
                     />
                   </div>
                   <p className={css.skillRule}>{t('card.skillRule')}</p>
+                  </section>
+                )
+                : null}
+
+              {!state.loading && standalone
+                ? (
+                  <section
+                    id="jira-settings-images"
+                    ref={element => { sectionRefs.current.images = element }}
+                    className={css.section}
+                  >
+                  <SectionHeading title={t('card.images')} copy={t('card.imagesHint')} />
+                  <div className={css.imageSettings}>
+                    <div className={css.imageRouteField}>
+                      <div>
+                        <strong>{t('card.visionModel')}</strong>
+                        <p>{t('card.visionModelHint')}</p>
+                      </div>
+                      <ChoicePicker
+                        id="jira-vision-model"
+                        value={selectedVision}
+                        options={visionChoices}
+                        placeholder={t('card.visionModelNone')}
+                        searchPlaceholder={t('card.visionModelSearch')}
+                        emptyText={t('card.visionModelEmpty')}
+                        clearable
+                        actionLabel={selectedVision ? t('card.visionModelChange') : t('card.visionModelChoose')}
+                        onChange={value => {
+                          const selected = state.visionModels.find(model => `${model.provider}\u0000${model.id}` === value)
+                          props.editImageProcessing({
+                            visionProvider: selected?.provider || '',
+                            visionModel: selected?.id || '',
+                          })
+                        }}
+                      />
+                    </div>
+                    <label className={css.ocrToggle}>
+                      <input
+                        type="checkbox"
+                        checked={state.imageProcessing.localOcrEnabled}
+                        onChange={event => { props.editImageProcessing({ localOcrEnabled: event.target.checked }) }}
+                      />
+                      <span>
+                        <strong>{t('card.localOcr')}</strong>
+                        <small>{t('card.localOcrHint')}</small>
+                      </span>
+                    </label>
+                    <ol className={css.imageStrategy}>
+                      <li>{t('card.imageStrategyNative')}</li>
+                      <li>{t('card.imageStrategyVision')}</li>
+                      <li>{t('card.imageStrategyOcr')}</li>
+                      <li>{t('card.imageStrategyUnparsed')}</li>
+                    </ol>
+                  </div>
                   </section>
                 )
                 : null}

@@ -28,6 +28,8 @@ export { createSvnWorkbenchService } from "./lib/svn-workbench-service.mjs";
 export { createNullReviewAuditProvider } from "./lib/null-review-audit-provider.mjs";
 export { createTaskBoardLoader } from "./lib/task-board-loader.mjs";
 export { findCachedAttachment, materializeAttachment, openLocalAttachment } from "./lib/attachment-cache.mjs";
+export { createImageContextCache, hashImageFile } from "./lib/image-context-cache.mjs";
+export { createLocalImageOcr, runLocalImageOcr } from "./lib/local-image-ocr.mjs";
 export { buildIssueDetailSnapshot, createJiraTaskBoardMcpServer, createJiraTaskBoardMcpHttpHandler } from "./mcp/jira-task-board-mcp.mjs";
 export {
   buildToolDefinitions,
@@ -59,7 +61,7 @@ export function createCoreService({
   secretStore,
   workspaceCatalog,
   approvalProvider,
-  version = "0.33.4"
+  version = "0.33.5"
 } = {}) {
   const configStore = createConfigStore({ configFile, ...(secretStore ? { secretStore } : {}) });
   const jira = createJiraClient();

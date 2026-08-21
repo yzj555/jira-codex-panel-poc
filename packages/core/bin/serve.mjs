@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createCoreService } from "../index.mjs";
 
-const VERSION = "0.33.4";
+const VERSION = "0.33.5";
 const host = process.env.JIRA_WORKBENCH_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_WORKBENCH_PORT || 47823);
 const uiHtmlFile = fileURLToPath(import.meta.resolve("../mcp/ui/task-board.html"));

@@ -50,7 +50,7 @@ var clsx_default = clsx;
 var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 
 // src/client/JiraConfigCard.module.css
-var css = '.Dlj8CW_card{--jira-accent:#4c72d9;--jira-accent-soft:color-mix(in srgb, var(--jira-accent) 10%, transparent);--jira-bug:#c45b50;--jira-ok:#3b9164;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s;overflow:hidden}.Dlj8CW_card,.Dlj8CW_card *,.Dlj8CW_card :before,.Dlj8CW_card :after{box-sizing:border-box}.Dlj8CW_card:hover,.Dlj8CW_cardOpen{border-color:color-mix(in srgb, var(--jira-accent) 30%, var(--dsw-alias-border-l2))}.Dlj8CW_cardOpen{overflow:visible}.Dlj8CW_pluginCard{width:100%}.Dlj8CW_pluginCard .Dlj8CW_header{padding:14px 15px}.Dlj8CW_pluginCard .Dlj8CW_description{white-space:normal;-webkit-line-clamp:2;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}.Dlj8CW_pluginCard .Dlj8CW_section{padding:18px 16px 16px}.Dlj8CW_pluginCard .Dlj8CW_connectionGrid{grid-template-columns:1fr;gap:16px}.Dlj8CW_pluginCard .Dlj8CW_footer{grid-template-columns:minmax(0,1fr) auto auto;padding:12px 16px 14px;display:grid}.Dlj8CW_workspaceCard{background:linear-gradient(180deg, color-mix(in srgb, var(--jira-accent) 2.5%, var(--dsw-alias-bg-base)) 0, var(--dsw-alias-bg-base) 170px), var(--dsw-alias-bg-base);border:0;border-radius:0;flex-direction:column;width:100%;height:100%;min-height:0;display:flex;overflow:hidden}.Dlj8CW_workspaceCard:hover,.Dlj8CW_workspaceCard.Dlj8CW_cardOpen{border-color:#0000}.Dlj8CW_workspaceCard .Dlj8CW_body{border-top:0;flex:1;grid-template-rows:minmax(0,1fr) auto;grid-template-columns:188px minmax(0,1fr);min-height:0;display:grid;overflow:hidden}.Dlj8CW_workspaceCard .Dlj8CW_settingsNav{grid-area:1/1}.Dlj8CW_workspaceCard .Dlj8CW_settingsContent{scroll-behavior:smooth;scrollbar-gutter:stable;grid-area:1/2;min-width:0;min-height:0;overflow:auto;container:Dlj8CW_jira-settings-content/inline-size}.Dlj8CW_workspaceCard .Dlj8CW_section,.Dlj8CW_workspaceCard .Dlj8CW_loading{width:min(100%,1040px);margin:0 auto;padding:34px 32px 46px}.Dlj8CW_workspaceCard .Dlj8CW_section{scroll-margin-top:0}.Dlj8CW_workspaceCard .Dlj8CW_section+.Dlj8CW_section{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 78%, transparent)}.Dlj8CW_workspaceCard .Dlj8CW_footer{background:var(--dsw-alias-bg-layer-3);grid-area:2/1/auto/-1;padding-left:max(26px,50% - 494px);padding-right:max(26px,50% - 494px)}.Dlj8CW_header{appearance:none;width:100%;color:inherit;cursor:pointer;font:inherit;text-align:left;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:15px 17px;display:flex}.Dlj8CW_header:focus,.Dlj8CW_settingsNavItem:focus,.Dlj8CW_choiceTrigger:focus,.Dlj8CW_choiceRow:focus,.Dlj8CW_segment:focus,.Dlj8CW_templateMode button:focus,.Dlj8CW_refresh:focus,.Dlj8CW_discard:focus,.Dlj8CW_save:focus{outline:0}.Dlj8CW_choiceRow:focus-visible,.Dlj8CW_refresh:focus-visible,.Dlj8CW_discard:focus-visible,.Dlj8CW_save:focus-visible{box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--jira-accent) 54%, transparent);outline:0}.Dlj8CW_header:focus-visible{box-shadow:none}.Dlj8CW_settingsNavItem:focus-visible,.Dlj8CW_choiceTrigger:focus-visible,.Dlj8CW_segment:focus-visible,.Dlj8CW_templateMode button:focus-visible{background:var(--jira-accent-soft);box-shadow:none}.Dlj8CW_brandMark{background:var(--jira-accent-soft);width:34px;height:34px;color:var(--jira-accent);letter-spacing:.04em;border-radius:9px;flex:none;place-items:center;font-size:11px;font-weight:750;display:grid}.Dlj8CW_headText{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}.Dlj8CW_name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:650;line-height:1.35}.Dlj8CW_description{color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.45;overflow:hidden}.Dlj8CW_pending,.Dlj8CW_status,.Dlj8CW_templateState{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-tertiary);white-space:nowrap;border-radius:999px;flex:none;padding:2px 7px;font-size:10px;font-weight:600;line-height:17px}.Dlj8CW_statusOk{background:color-mix(in srgb, var(--jira-ok) 11%, transparent);color:var(--jira-ok)}.Dlj8CW_chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}.Dlj8CW_chevronOpen{transform:rotate(180deg)}.Dlj8CW_body{border-top:1px solid var(--dsw-alias-border-l2)}.Dlj8CW_settingsNav{border-right:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 34%, var(--dsw-alias-bg-base));flex-direction:column;gap:1px;min-width:0;padding:28px 16px;display:flex}.Dlj8CW_settingsNavItem{appearance:none;min-height:54px;color:var(--dsw-alias-label-tertiary);cursor:pointer;box-shadow:none;font:inherit;text-align:left;background:0 0;border:0;border-radius:6px;padding:9px 10px 9px 17px;transition:background .14s,color .14s;position:relative}.Dlj8CW_settingsNavItem:before{content:"";background:0 0;border-radius:2px;width:2px;transition:background .14s,transform .14s;position:absolute;top:11px;bottom:11px;left:0}.Dlj8CW_settingsNavItem strong,.Dlj8CW_settingsNavItem small{display:block}.Dlj8CW_settingsNavItem strong{font-size:12px;font-weight:650;line-height:1.5}.Dlj8CW_settingsNavItem small{color:var(--dsw-alias-label-tertiary);margin-top:1px;font-size:10px;line-height:1.45}.Dlj8CW_settingsNavItem:hover{background:color-mix(in srgb, var(--jira-accent) 5%, transparent);color:var(--dsw-alias-label-primary)}.Dlj8CW_settingsNavItem:hover:before{background:color-mix(in srgb, var(--jira-accent) 30%, transparent)}.Dlj8CW_settingsNavItemActive{background:color-mix(in srgb, var(--jira-accent) 7%, transparent);color:var(--jira-accent);box-shadow:none}.Dlj8CW_settingsNavItemActive:before{background:var(--jira-accent);transform:scaleY(1.08)}.Dlj8CW_settingsNavItemActive small{color:color-mix(in srgb, var(--jira-accent) 72%, var(--dsw-alias-label-tertiary))}.Dlj8CW_loading{color:var(--dsw-alias-label-tertiary);text-align:center;padding:38px 20px}.Dlj8CW_section{padding:20px 18px 22px}.Dlj8CW_sectionHeading{border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent);max-width:none;margin-bottom:20px;padding:0 0 14px}.Dlj8CW_pluginConnectionHead{justify-content:space-between;align-items:flex-start;gap:16px;max-width:720px;margin-bottom:18px;display:flex}.Dlj8CW_pluginConnectionHead h3{color:var(--dsw-alias-label-primary);margin:0 0 3px;font-size:15px;font-weight:650;line-height:1.4}.Dlj8CW_pluginConnectionHead p{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.55}.Dlj8CW_pluginSettingsNote{border-left:2px solid color-mix(in srgb, var(--jira-accent) 52%, transparent);color:var(--dsw-alias-label-tertiary);margin:17px 0 0;padding-left:10px;font-size:11px;line-height:1.55}.Dlj8CW_sectionHeading h3{color:var(--dsw-alias-label-primary);margin:0 0 3px;font-size:16px;font-weight:650}.Dlj8CW_sectionHeading p,.Dlj8CW_modeHint,.Dlj8CW_skillRule,.Dlj8CW_optionMessage,.Dlj8CW_saveHint,.Dlj8CW_readOnly{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.55}.Dlj8CW_readOnly,.Dlj8CW_optionMessage{margin-bottom:12px}.Dlj8CW_connectionGrid,.Dlj8CW_sourceGrid,.Dlj8CW_templateGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;display:grid}.Dlj8CW_sourceGrid,.Dlj8CW_templateGrid{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 84%, transparent);border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 84%, transparent);background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 26%, transparent);gap:0}.Dlj8CW_field,.Dlj8CW_pickerField{flex-direction:column;gap:6px;min-width:0;display:flex}.Dlj8CW_labelRow,.Dlj8CW_sourceToolbar,.Dlj8CW_panelTitle{align-items:center;gap:8px;display:flex}.Dlj8CW_labelRow{justify-content:space-between}.Dlj8CW_label{color:var(--dsw-alias-label-primary);font-size:12px;font-weight:600;line-height:1.5}.Dlj8CW_input,.Dlj8CW_textarea,.Dlj8CW_templateTextarea,.Dlj8CW_searchInput{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);width:100%;color:var(--dsw-alias-label-primary);font:inherit;border-radius:9px;outline:0;font-size:12px;transition:border-color .14s,box-shadow .14s,background .14s}.Dlj8CW_input,.Dlj8CW_searchInput{height:36px;padding:0 11px}.Dlj8CW_textarea,.Dlj8CW_templateTextarea{resize:vertical;padding:9px 11px;line-height:1.55}.Dlj8CW_input:focus,.Dlj8CW_textarea:focus,.Dlj8CW_templateTextarea:focus,.Dlj8CW_searchInput:focus{border-color:var(--jira-accent);box-shadow:0 0 0 3px var(--jira-accent-soft)}.Dlj8CW_input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}.Dlj8CW_inputInvalid{border-color:var(--dsw-alias-label-error);}.Dlj8CW_invalid,.Dlj8CW_failed{color:var(--dsw-alias-label-error);margin:0;font-size:12px;line-height:1.5}.Dlj8CW_hint{color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere;margin:0;font-size:11px;line-height:1.5}.Dlj8CW_sourceToolbar{justify-content:flex-start;align-items:flex-end;gap:10px;margin-bottom:18px}.Dlj8CW_sourceToolbar .Dlj8CW_pickerField{width:min(560px,100% - 130px)}.Dlj8CW_refresh,.Dlj8CW_discard,.Dlj8CW_save{appearance:none;cursor:pointer;background:var(--dsw-alias-bg-layer-2);min-height:34px;color:var(--dsw-alias-label-secondary);font:inherit;border:0;border-radius:8px;padding:5px 13px;font-size:12px;font-weight:600;transition:background .14s,color .14s,box-shadow .14s,transform .14s}.Dlj8CW_refresh{background:color-mix(in srgb, var(--jira-accent) 9%, var(--dsw-alias-bg-layer-3));min-height:40px;color:var(--jira-accent);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--jira-accent) 16%, transparent);align-items:center;gap:7px;padding:6px 14px 6px 11px;display:inline-flex}.Dlj8CW_refresh:hover:not(:disabled),.Dlj8CW_discard:hover:not(:disabled){background:color-mix(in srgb, var(--jira-accent) 14%, var(--dsw-alias-bg-layer-3));color:var(--jira-accent)}.Dlj8CW_refresh:hover:not(:disabled){box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--jira-accent) 26%, transparent);transform:translateY(-1px)}.Dlj8CW_refreshIcon{background:color-mix(in srgb, var(--jira-accent) 11%, transparent);border-radius:6px;place-items:center;width:20px;height:20px;font-size:15px;font-weight:500;line-height:1;display:grid}.Dlj8CW_refreshIconBusy{animation:.9s linear infinite Dlj8CW_refreshSpin}@keyframes Dlj8CW_refreshSpin{to{transform:rotate(360deg)}}.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel{--panel-accent:var(--jira-accent);min-width:0;box-shadow:none;background:0 0;border-radius:0;padding:16px 22px 18px;overflow:visible}.Dlj8CW_bug{--panel-accent:var(--jira-bug)}.Dlj8CW_sourcePanel+.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel+.Dlj8CW_templatePanel{border-left:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent)}.Dlj8CW_panelTitle{min-height:26px;margin-bottom:8px}.Dlj8CW_panelTitle strong{color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:650}.Dlj8CW_kindDot{background:var(--jira-accent);border-radius:50%;flex:none;width:7px;height:7px}.Dlj8CW_bug .Dlj8CW_kindDot{background:var(--jira-bug)}.Dlj8CW_segmented,.Dlj8CW_templateMode{border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent);box-shadow:none;background:0 0;border-radius:0;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-bottom:12px;padding:0;display:grid}.Dlj8CW_segment,.Dlj8CW_templateMode button{appearance:none;min-height:34px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:inherit;background:0 0;border:0;border-radius:0;padding:4px 7px;font-size:11px;font-weight:600;transition:background .14s,color .14s,box-shadow .14s,transform .14s;position:relative}.Dlj8CW_segment:hover,.Dlj8CW_templateMode button:hover{background:color-mix(in srgb, var(--panel-accent) 4%, transparent);color:var(--dsw-alias-label-primary)}.Dlj8CW_segmentActive,.Dlj8CW_templateModeActive{box-shadow:inset 0 -2px 0 color-mix(in srgb, var(--panel-accent) 78%, transparent);background:color-mix(in srgb, var(--panel-accent) 5%, transparent)!important;color:var(--panel-accent)!important}.Dlj8CW_modeHint{min-height:54px;padding:10px 2px 0}.Dlj8CW_filterPicker{border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 84%, transparent);background:var(--dsw-alias-bg-layer-3);border-radius:8px;gap:0;display:grid;overflow:hidden}.Dlj8CW_filterPicker .Dlj8CW_searchInput{border:0;border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 78%, transparent);background:0 0;border-radius:0}.Dlj8CW_filterList,.Dlj8CW_choiceList{gap:3px;max-height:205px;padding:3px;display:grid;overflow:auto}.Dlj8CW_filterList{background:0 0;border:0;border-radius:0}.Dlj8CW_filterRow{cursor:pointer;border-radius:7px;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:8px;min-width:0;padding:7px 8px;display:grid}.Dlj8CW_filterRow:hover,.Dlj8CW_filterSelected{background:var(--jira-accent-soft)}.Dlj8CW_filterRow input{accent-color:var(--jira-accent);margin-top:3px}.Dlj8CW_filterRow strong,.Dlj8CW_filterRow small,.Dlj8CW_choiceRow strong,.Dlj8CW_choiceRow small{text-overflow:ellipsis;white-space:nowrap;min-width:0;display:block;overflow:hidden}.Dlj8CW_filterRow strong,.Dlj8CW_choiceRow strong{color:var(--dsw-alias-label-primary);font-size:11px;font-weight:600}.Dlj8CW_filterRow small,.Dlj8CW_choiceRow small{color:var(--dsw-alias-label-tertiary);margin-top:2px;font-size:10px}.Dlj8CW_templateGrid{align-items:stretch}.Dlj8CW_templateMode{grid-template-columns:repeat(2,minmax(0,1fr))}.Dlj8CW_templatePreview{border:0;border-left:2px solid color-mix(in srgb, var(--panel-accent) 68%, transparent);background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 62%, transparent);min-height:170px;max-height:170px;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;-webkit-line-clamp:6;border-radius:0;-webkit-box-orient:vertical;margin:0;padding:12px 13px 12px 14px;font-size:11px;line-height:1.55;display:-webkit-box;overflow:hidden}.Dlj8CW_bug .Dlj8CW_templatePreview{border-left-color:color-mix(in srgb, var(--jira-bug) 68%, transparent)}.Dlj8CW_templateTextarea{border:0;border-left:2px solid color-mix(in srgb, var(--panel-accent) 68%, transparent);background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 62%, transparent);border-radius:0;min-height:170px;max-height:170px;margin:0}.Dlj8CW_skillRule{border-left:0;margin-top:0;padding:14px 2px 0}.Dlj8CW_templatePanel>.Dlj8CW_pickerField{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 72%, transparent);grid-template-columns:96px minmax(0,1fr);align-items:center;gap:12px;margin-top:12px;padding-top:12px;display:grid}.Dlj8CW_templatePanel>.Dlj8CW_pickerField .Dlj8CW_choiceTrigger{border-color:color-mix(in srgb, var(--panel-accent) 22%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--panel-accent) 5%, var(--dsw-alias-bg-layer-3));min-height:38px;box-shadow:0 1px 2px #1018280a}.Dlj8CW_templatePanel>.Dlj8CW_pickerField .Dlj8CW_choiceTrigger:hover,.Dlj8CW_templatePanel>.Dlj8CW_pickerField .Dlj8CW_choiceTriggerOpen{border-color:color-mix(in srgb, var(--panel-accent) 44%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--panel-accent) 8%, var(--dsw-alias-bg-layer-3))}.Dlj8CW_choicePicker{gap:6px;display:grid;position:relative}.Dlj8CW_choiceTrigger{appearance:none;border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 86%, transparent);background:var(--dsw-alias-bg-layer-3);width:100%;min-height:44px;color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;text-align:left;border-radius:4px;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:7px 8px 7px 12px;transition:border-color .14s,background .14s,box-shadow .14s;display:grid;box-shadow:0 1px 2px #1018280a}.Dlj8CW_choiceTrigger:hover,.Dlj8CW_choiceTriggerOpen{border-color:color-mix(in srgb, var(--jira-accent) 43%, var(--dsw-alias-border-l2));background:var(--dsw-alias-bg-layer-3);box-shadow:0 0 0 3px color-mix(in srgb, var(--jira-accent) 7%, transparent)}.Dlj8CW_choiceTrigger strong,.Dlj8CW_choiceTrigger small{text-overflow:ellipsis;white-space:nowrap;display:block;overflow:hidden}.Dlj8CW_choiceTrigger strong{font-size:12px;font-weight:620}.Dlj8CW_choiceTrigger small{color:var(--dsw-alias-label-tertiary);margin-top:1px;font-size:9px}.Dlj8CW_choiceAffordance{flex:none;align-items:center;gap:7px;display:inline-flex}.Dlj8CW_choiceAction{color:var(--jira-accent);white-space:nowrap;font-size:10px;font-weight:650}.Dlj8CW_bug .Dlj8CW_choiceAction{color:var(--jira-bug)}.Dlj8CW_choiceChevron{background:color-mix(in srgb, var(--jira-accent) 7%, var(--dsw-alias-bg-layer-2));border-radius:4px;place-items:center;width:26px;height:26px;transition:background .14s,transform .14s;display:grid;position:relative}.Dlj8CW_choiceChevron:before{border-right:1.5px solid var(--dsw-alias-label-secondary);border-bottom:1.5px solid var(--dsw-alias-label-secondary);content:"";width:6px;height:6px;transform:translateY(-2px)rotate(45deg)}.Dlj8CW_choiceTriggerOpen .Dlj8CW_choiceChevron{background:color-mix(in srgb, var(--jira-accent) 13%, var(--dsw-alias-bg-layer-2));transform:rotate(180deg)}.Dlj8CW_choiceTriggerOpen .Dlj8CW_choiceChevron:before{border-color:var(--jira-accent)}.Dlj8CW_choicePanel{z-index:40;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:6px;gap:5px;padding:7px;display:grid;position:absolute;top:calc(100% + 6px);left:0;right:0;box-shadow:0 14px 34px #10182824}.Dlj8CW_choicePicker:has(.Dlj8CW_choiceTriggerOpen){z-index:40}.Dlj8CW_choiceRow{appearance:none;color:#0000;cursor:pointer;width:100%;min-height:42px;font:inherit;text-align:left;background:0 0;border:1px solid #0000;border-radius:4px;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:6px 8px;display:grid}.Dlj8CW_choiceRow:hover{background:var(--dsw-alias-bg-layer-2)}.Dlj8CW_choiceSelected{border-color:color-mix(in srgb, var(--jira-accent) 24%, transparent);background:var(--jira-accent-soft);color:var(--jira-accent)}.Dlj8CW_emptyList{color:var(--dsw-alias-label-tertiary);text-align:center;padding:18px 8px;font-size:11px}.Dlj8CW_footer{border-top:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 42%, var(--dsw-alias-bg-layer-3));justify-content:flex-end;align-items:center;gap:8px;padding:12px 18px;display:flex}.Dlj8CW_failed,.Dlj8CW_saveHint{flex:1;min-width:0}.Dlj8CW_save{background:var(--jira-accent);color:#fff}.Dlj8CW_save:hover:not(:disabled){background:color-mix(in srgb, var(--jira-accent) 88%, #000)}.Dlj8CW_refresh:disabled,.Dlj8CW_discard:disabled,.Dlj8CW_save:disabled{opacity:.42;cursor:default}@container Dlj8CW_jira-settings-content (width<=720px){.Dlj8CW_connectionGrid,.Dlj8CW_sourceGrid,.Dlj8CW_templateGrid{grid-template-columns:1fr}.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel{padding:0}.Dlj8CW_sourcePanel+.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel+.Dlj8CW_templatePanel{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent);border-left:0;margin-top:24px;padding-top:24px;padding-left:0}.Dlj8CW_sourceToolbar{flex-direction:column;align-items:stretch}.Dlj8CW_sourceToolbar .Dlj8CW_pickerField{width:100%}.Dlj8CW_refresh{align-self:flex-start}}@media (width<=760px){.Dlj8CW_workspaceCard .Dlj8CW_body{grid-template-rows:auto minmax(0,1fr) auto;grid-template-columns:1fr}.Dlj8CW_workspaceCard .Dlj8CW_settingsNav{grid-area:1/1}.Dlj8CW_workspaceCard .Dlj8CW_settingsContent{grid-area:2/1}.Dlj8CW_workspaceCard .Dlj8CW_footer{grid-area:3/1}.Dlj8CW_settingsNav{border-right:0;border-bottom:1px solid var(--dsw-alias-border-l2);flex-direction:row;padding:9px 12px;overflow-x:auto}.Dlj8CW_settingsNavItem{min-width:145px;padding-left:10px}.Dlj8CW_settingsNavItem:before{width:auto;height:2px;inset:auto 10px 0}.Dlj8CW_connectionGrid,.Dlj8CW_sourceGrid,.Dlj8CW_templateGrid{grid-template-columns:1fr}.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel{padding:0}.Dlj8CW_sourcePanel+.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel+.Dlj8CW_templatePanel{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent);border-left:0;margin-top:24px;padding-top:24px;padding-left:0}.Dlj8CW_sourceToolbar{flex-direction:column;align-items:stretch}.Dlj8CW_sourceToolbar .Dlj8CW_pickerField{width:100%}.Dlj8CW_refresh{align-self:flex-start}.Dlj8CW_footer{flex-wrap:wrap;align-items:stretch}.Dlj8CW_pluginCard .Dlj8CW_footer{grid-template-columns:1fr auto auto}.Dlj8CW_failed,.Dlj8CW_saveHint{flex-basis:100%;width:100%}}@media (prefers-reduced-motion:reduce){.Dlj8CW_refreshIconBusy{animation:none}}';
+var css = '.Dlj8CW_card{--jira-accent:#4c72d9;--jira-accent-soft:color-mix(in srgb, var(--jira-accent) 10%, transparent);--jira-bug:#c45b50;--jira-ok:#3b9164;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s;overflow:hidden}.Dlj8CW_card,.Dlj8CW_card *,.Dlj8CW_card :before,.Dlj8CW_card :after{box-sizing:border-box}.Dlj8CW_card:hover,.Dlj8CW_cardOpen{border-color:color-mix(in srgb, var(--jira-accent) 30%, var(--dsw-alias-border-l2))}.Dlj8CW_cardOpen{overflow:visible}.Dlj8CW_pluginCard{width:100%}.Dlj8CW_pluginCard .Dlj8CW_header{padding:14px 15px}.Dlj8CW_pluginCard .Dlj8CW_description{white-space:normal;-webkit-line-clamp:2;-webkit-box-orient:vertical;display:-webkit-box;overflow:hidden}.Dlj8CW_pluginCard .Dlj8CW_section{padding:18px 16px 16px}.Dlj8CW_pluginCard .Dlj8CW_connectionGrid{grid-template-columns:1fr;gap:16px}.Dlj8CW_pluginCard .Dlj8CW_footer{grid-template-columns:minmax(0,1fr) auto auto;padding:12px 16px 14px;display:grid}.Dlj8CW_workspaceCard{background:linear-gradient(180deg, color-mix(in srgb, var(--jira-accent) 2.5%, var(--dsw-alias-bg-base)) 0, var(--dsw-alias-bg-base) 170px), var(--dsw-alias-bg-base);border:0;border-radius:0;flex-direction:column;width:100%;height:100%;min-height:0;display:flex;overflow:hidden}.Dlj8CW_workspaceCard:hover,.Dlj8CW_workspaceCard.Dlj8CW_cardOpen{border-color:#0000}.Dlj8CW_workspaceCard .Dlj8CW_body{border-top:0;flex:1;grid-template-rows:minmax(0,1fr) auto;grid-template-columns:188px minmax(0,1fr);min-height:0;display:grid;overflow:hidden}.Dlj8CW_workspaceCard .Dlj8CW_settingsNav{grid-area:1/1}.Dlj8CW_workspaceCard .Dlj8CW_settingsContent{scroll-behavior:smooth;scrollbar-gutter:stable;grid-area:1/2;min-width:0;min-height:0;overflow:auto;container:Dlj8CW_jira-settings-content/inline-size}.Dlj8CW_workspaceCard .Dlj8CW_section,.Dlj8CW_workspaceCard .Dlj8CW_loading{width:min(100%,1040px);margin:0 auto;padding:34px 32px 46px}.Dlj8CW_workspaceCard .Dlj8CW_section{scroll-margin-top:0}.Dlj8CW_workspaceCard .Dlj8CW_section+.Dlj8CW_section{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 78%, transparent)}.Dlj8CW_workspaceCard .Dlj8CW_footer{background:var(--dsw-alias-bg-layer-3);grid-area:2/1/auto/-1;padding-left:max(26px,50% - 494px);padding-right:max(26px,50% - 494px)}.Dlj8CW_header{appearance:none;width:100%;color:inherit;cursor:pointer;font:inherit;text-align:left;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:15px 17px;display:flex}.Dlj8CW_header:focus,.Dlj8CW_settingsNavItem:focus,.Dlj8CW_choiceTrigger:focus,.Dlj8CW_choiceRow:focus,.Dlj8CW_segment:focus,.Dlj8CW_templateMode button:focus,.Dlj8CW_refresh:focus,.Dlj8CW_discard:focus,.Dlj8CW_save:focus{outline:0}.Dlj8CW_choiceRow:focus-visible,.Dlj8CW_refresh:focus-visible,.Dlj8CW_discard:focus-visible,.Dlj8CW_save:focus-visible{box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--jira-accent) 54%, transparent);outline:0}.Dlj8CW_header:focus-visible{box-shadow:none}.Dlj8CW_settingsNavItem:focus-visible,.Dlj8CW_choiceTrigger:focus-visible,.Dlj8CW_segment:focus-visible,.Dlj8CW_templateMode button:focus-visible{background:var(--jira-accent-soft);box-shadow:none}.Dlj8CW_brandMark{background:var(--jira-accent-soft);width:34px;height:34px;color:var(--jira-accent);letter-spacing:.04em;border-radius:9px;flex:none;place-items:center;font-size:11px;font-weight:750;display:grid}.Dlj8CW_headText{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}.Dlj8CW_name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:650;line-height:1.35}.Dlj8CW_description{color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.45;overflow:hidden}.Dlj8CW_pending,.Dlj8CW_status,.Dlj8CW_templateState{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-tertiary);white-space:nowrap;border-radius:999px;flex:none;padding:2px 7px;font-size:10px;font-weight:600;line-height:17px}.Dlj8CW_statusOk{background:color-mix(in srgb, var(--jira-ok) 11%, transparent);color:var(--jira-ok)}.Dlj8CW_chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}.Dlj8CW_chevronOpen{transform:rotate(180deg)}.Dlj8CW_body{border-top:1px solid var(--dsw-alias-border-l2)}.Dlj8CW_settingsNav{border-right:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 34%, var(--dsw-alias-bg-base));flex-direction:column;gap:1px;min-width:0;padding:28px 16px;display:flex}.Dlj8CW_settingsNavItem{appearance:none;min-height:54px;color:var(--dsw-alias-label-tertiary);cursor:pointer;box-shadow:none;font:inherit;text-align:left;background:0 0;border:0;border-radius:6px;padding:9px 10px 9px 17px;transition:background .14s,color .14s;position:relative}.Dlj8CW_settingsNavItem:before{content:"";background:0 0;border-radius:2px;width:2px;transition:background .14s,transform .14s;position:absolute;top:11px;bottom:11px;left:0}.Dlj8CW_settingsNavItem strong,.Dlj8CW_settingsNavItem small{display:block}.Dlj8CW_settingsNavItem strong{font-size:12px;font-weight:650;line-height:1.5}.Dlj8CW_settingsNavItem small{color:var(--dsw-alias-label-tertiary);margin-top:1px;font-size:10px;line-height:1.45}.Dlj8CW_settingsNavItem:hover{background:color-mix(in srgb, var(--jira-accent) 5%, transparent);color:var(--dsw-alias-label-primary)}.Dlj8CW_settingsNavItem:hover:before{background:color-mix(in srgb, var(--jira-accent) 30%, transparent)}.Dlj8CW_settingsNavItemActive{background:color-mix(in srgb, var(--jira-accent) 7%, transparent);color:var(--jira-accent);box-shadow:none}.Dlj8CW_settingsNavItemActive:before{background:var(--jira-accent);transform:scaleY(1.08)}.Dlj8CW_settingsNavItemActive small{color:color-mix(in srgb, var(--jira-accent) 72%, var(--dsw-alias-label-tertiary))}.Dlj8CW_loading{color:var(--dsw-alias-label-tertiary);text-align:center;padding:38px 20px}.Dlj8CW_section{padding:20px 18px 22px}.Dlj8CW_sectionHeading{border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent);max-width:none;margin-bottom:20px;padding:0 0 14px}.Dlj8CW_pluginConnectionHead{justify-content:space-between;align-items:flex-start;gap:16px;max-width:720px;margin-bottom:18px;display:flex}.Dlj8CW_pluginConnectionHead h3{color:var(--dsw-alias-label-primary);margin:0 0 3px;font-size:15px;font-weight:650;line-height:1.4}.Dlj8CW_pluginConnectionHead p{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.55}.Dlj8CW_pluginSettingsNote{border-left:2px solid color-mix(in srgb, var(--jira-accent) 52%, transparent);color:var(--dsw-alias-label-tertiary);margin:17px 0 0;padding-left:10px;font-size:11px;line-height:1.55}.Dlj8CW_sectionHeading h3{color:var(--dsw-alias-label-primary);margin:0 0 3px;font-size:16px;font-weight:650}.Dlj8CW_sectionHeading p,.Dlj8CW_modeHint,.Dlj8CW_skillRule,.Dlj8CW_optionMessage,.Dlj8CW_saveHint,.Dlj8CW_readOnly{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.55}.Dlj8CW_readOnly,.Dlj8CW_optionMessage{margin-bottom:12px}.Dlj8CW_connectionGrid,.Dlj8CW_sourceGrid,.Dlj8CW_templateGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;display:grid}.Dlj8CW_sourceGrid,.Dlj8CW_templateGrid{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 84%, transparent);border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 84%, transparent);background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 26%, transparent);gap:0}.Dlj8CW_field,.Dlj8CW_pickerField{flex-direction:column;gap:6px;min-width:0;display:flex}.Dlj8CW_labelRow,.Dlj8CW_sourceToolbar,.Dlj8CW_panelTitle{align-items:center;gap:8px;display:flex}.Dlj8CW_labelRow{justify-content:space-between}.Dlj8CW_label{color:var(--dsw-alias-label-primary);font-size:12px;font-weight:600;line-height:1.5}.Dlj8CW_input,.Dlj8CW_textarea,.Dlj8CW_templateTextarea,.Dlj8CW_searchInput{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);width:100%;color:var(--dsw-alias-label-primary);font:inherit;border-radius:9px;outline:0;font-size:12px;transition:border-color .14s,box-shadow .14s,background .14s}.Dlj8CW_input,.Dlj8CW_searchInput{height:36px;padding:0 11px}.Dlj8CW_textarea,.Dlj8CW_templateTextarea{resize:vertical;padding:9px 11px;line-height:1.55}.Dlj8CW_input:focus,.Dlj8CW_textarea:focus,.Dlj8CW_templateTextarea:focus,.Dlj8CW_searchInput:focus{border-color:var(--jira-accent);box-shadow:0 0 0 3px var(--jira-accent-soft)}.Dlj8CW_input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}.Dlj8CW_inputInvalid{border-color:var(--dsw-alias-label-error);}.Dlj8CW_invalid,.Dlj8CW_failed{color:var(--dsw-alias-label-error);margin:0;font-size:12px;line-height:1.5}.Dlj8CW_hint{color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere;margin:0;font-size:11px;line-height:1.5}.Dlj8CW_sourceToolbar{justify-content:flex-start;align-items:flex-end;gap:10px;margin-bottom:18px}.Dlj8CW_sourceToolbar .Dlj8CW_pickerField{width:min(560px,100% - 130px)}.Dlj8CW_refresh,.Dlj8CW_discard,.Dlj8CW_save{appearance:none;cursor:pointer;background:var(--dsw-alias-bg-layer-2);min-height:34px;color:var(--dsw-alias-label-secondary);font:inherit;border:0;border-radius:8px;padding:5px 13px;font-size:12px;font-weight:600;transition:background .14s,color .14s,box-shadow .14s,transform .14s}.Dlj8CW_refresh{background:color-mix(in srgb, var(--jira-accent) 9%, var(--dsw-alias-bg-layer-3));min-height:40px;color:var(--jira-accent);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--jira-accent) 16%, transparent);align-items:center;gap:7px;padding:6px 14px 6px 11px;display:inline-flex}.Dlj8CW_refresh:hover:not(:disabled),.Dlj8CW_discard:hover:not(:disabled){background:color-mix(in srgb, var(--jira-accent) 14%, var(--dsw-alias-bg-layer-3));color:var(--jira-accent)}.Dlj8CW_refresh:hover:not(:disabled){box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--jira-accent) 26%, transparent);transform:translateY(-1px)}.Dlj8CW_refreshIcon{background:color-mix(in srgb, var(--jira-accent) 11%, transparent);border-radius:6px;place-items:center;width:20px;height:20px;font-size:15px;font-weight:500;line-height:1;display:grid}.Dlj8CW_refreshIconBusy{animation:.9s linear infinite Dlj8CW_refreshSpin}@keyframes Dlj8CW_refreshSpin{to{transform:rotate(360deg)}}.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel{--panel-accent:var(--jira-accent);min-width:0;box-shadow:none;background:0 0;border-radius:0;padding:16px 22px 18px;overflow:visible}.Dlj8CW_bug{--panel-accent:var(--jira-bug)}.Dlj8CW_sourcePanel+.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel+.Dlj8CW_templatePanel{border-left:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent)}.Dlj8CW_panelTitle{min-height:26px;margin-bottom:8px}.Dlj8CW_panelTitle strong{color:var(--dsw-alias-label-primary);flex:1;font-size:13px;font-weight:650}.Dlj8CW_kindDot{background:var(--jira-accent);border-radius:50%;flex:none;width:7px;height:7px}.Dlj8CW_bug .Dlj8CW_kindDot{background:var(--jira-bug)}.Dlj8CW_segmented,.Dlj8CW_templateMode{border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent);box-shadow:none;background:0 0;border-radius:0;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-bottom:12px;padding:0;display:grid}.Dlj8CW_segment,.Dlj8CW_templateMode button{appearance:none;min-height:34px;color:var(--dsw-alias-label-tertiary);cursor:pointer;font:inherit;background:0 0;border:0;border-radius:0;padding:4px 7px;font-size:11px;font-weight:600;transition:background .14s,color .14s,box-shadow .14s,transform .14s;position:relative}.Dlj8CW_segment:hover,.Dlj8CW_templateMode button:hover{background:color-mix(in srgb, var(--panel-accent) 4%, transparent);color:var(--dsw-alias-label-primary)}.Dlj8CW_segmentActive,.Dlj8CW_templateModeActive{box-shadow:inset 0 -2px 0 color-mix(in srgb, var(--panel-accent) 78%, transparent);background:color-mix(in srgb, var(--panel-accent) 5%, transparent)!important;color:var(--panel-accent)!important}.Dlj8CW_modeHint{min-height:54px;padding:10px 2px 0}.Dlj8CW_filterPicker{border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 84%, transparent);background:var(--dsw-alias-bg-layer-3);border-radius:8px;gap:0;display:grid;overflow:hidden}.Dlj8CW_filterPicker .Dlj8CW_searchInput{border:0;border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 78%, transparent);background:0 0;border-radius:0}.Dlj8CW_filterList,.Dlj8CW_choiceList{gap:3px;max-height:205px;padding:3px;display:grid;overflow:auto}.Dlj8CW_filterList{background:0 0;border:0;border-radius:0}.Dlj8CW_filterRow{cursor:pointer;border-radius:7px;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:8px;min-width:0;padding:7px 8px;display:grid}.Dlj8CW_filterRow:hover,.Dlj8CW_filterSelected{background:var(--jira-accent-soft)}.Dlj8CW_filterRow input{accent-color:var(--jira-accent);margin-top:3px}.Dlj8CW_filterRow strong,.Dlj8CW_filterRow small,.Dlj8CW_choiceRow strong,.Dlj8CW_choiceRow small{text-overflow:ellipsis;white-space:nowrap;min-width:0;display:block;overflow:hidden}.Dlj8CW_filterRow strong,.Dlj8CW_choiceRow strong{color:var(--dsw-alias-label-primary);font-size:11px;font-weight:600}.Dlj8CW_filterRow small,.Dlj8CW_choiceRow small{color:var(--dsw-alias-label-tertiary);margin-top:2px;font-size:10px}.Dlj8CW_templateGrid{align-items:stretch}.Dlj8CW_templateMode{grid-template-columns:repeat(2,minmax(0,1fr))}.Dlj8CW_templatePreview{border:0;border-left:2px solid color-mix(in srgb, var(--panel-accent) 68%, transparent);background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 62%, transparent);min-height:170px;max-height:170px;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;-webkit-line-clamp:6;border-radius:0;-webkit-box-orient:vertical;margin:0;padding:12px 13px 12px 14px;font-size:11px;line-height:1.55;display:-webkit-box;overflow:hidden}.Dlj8CW_bug .Dlj8CW_templatePreview{border-left-color:color-mix(in srgb, var(--jira-bug) 68%, transparent)}.Dlj8CW_templateTextarea{border:0;border-left:2px solid color-mix(in srgb, var(--panel-accent) 68%, transparent);background:color-mix(in srgb, var(--dsw-alias-bg-layer-3) 62%, transparent);border-radius:0;min-height:170px;max-height:170px;margin:0}.Dlj8CW_skillRule{border-left:0;margin-top:0;padding:14px 2px 0}.Dlj8CW_templatePanel>.Dlj8CW_pickerField{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 72%, transparent);grid-template-columns:96px minmax(0,1fr);align-items:center;gap:12px;margin-top:12px;padding-top:12px;display:grid}.Dlj8CW_templatePanel>.Dlj8CW_pickerField .Dlj8CW_choiceTrigger{border-color:color-mix(in srgb, var(--panel-accent) 22%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--panel-accent) 5%, var(--dsw-alias-bg-layer-3));min-height:38px;box-shadow:0 1px 2px #1018280a}.Dlj8CW_templatePanel>.Dlj8CW_pickerField .Dlj8CW_choiceTrigger:hover,.Dlj8CW_templatePanel>.Dlj8CW_pickerField .Dlj8CW_choiceTriggerOpen{border-color:color-mix(in srgb, var(--panel-accent) 44%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--panel-accent) 8%, var(--dsw-alias-bg-layer-3))}.Dlj8CW_choicePicker{gap:6px;display:grid;position:relative}.Dlj8CW_choiceTrigger{appearance:none;border:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 86%, transparent);background:var(--dsw-alias-bg-layer-3);width:100%;min-height:44px;color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;text-align:left;border-radius:4px;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:7px 8px 7px 12px;transition:border-color .14s,background .14s,box-shadow .14s;display:grid;box-shadow:0 1px 2px #1018280a}.Dlj8CW_choiceTrigger:hover,.Dlj8CW_choiceTriggerOpen{border-color:color-mix(in srgb, var(--jira-accent) 43%, var(--dsw-alias-border-l2));background:var(--dsw-alias-bg-layer-3);box-shadow:0 0 0 3px color-mix(in srgb, var(--jira-accent) 7%, transparent)}.Dlj8CW_choiceTrigger strong,.Dlj8CW_choiceTrigger small{text-overflow:ellipsis;white-space:nowrap;display:block;overflow:hidden}.Dlj8CW_choiceTrigger strong{font-size:12px;font-weight:620}.Dlj8CW_choiceTrigger small{color:var(--dsw-alias-label-tertiary);margin-top:1px;font-size:9px}.Dlj8CW_choiceAffordance{flex:none;align-items:center;gap:7px;display:inline-flex}.Dlj8CW_choiceAction{color:var(--jira-accent);white-space:nowrap;font-size:10px;font-weight:650}.Dlj8CW_bug .Dlj8CW_choiceAction{color:var(--jira-bug)}.Dlj8CW_choiceChevron{background:color-mix(in srgb, var(--jira-accent) 7%, var(--dsw-alias-bg-layer-2));border-radius:4px;place-items:center;width:26px;height:26px;transition:background .14s,transform .14s;display:grid;position:relative}.Dlj8CW_choiceChevron:before{border-right:1.5px solid var(--dsw-alias-label-secondary);border-bottom:1.5px solid var(--dsw-alias-label-secondary);content:"";width:6px;height:6px;transform:translateY(-2px)rotate(45deg)}.Dlj8CW_choiceTriggerOpen .Dlj8CW_choiceChevron{background:color-mix(in srgb, var(--jira-accent) 13%, var(--dsw-alias-bg-layer-2));transform:rotate(180deg)}.Dlj8CW_choiceTriggerOpen .Dlj8CW_choiceChevron:before{border-color:var(--jira-accent)}.Dlj8CW_choicePanel{z-index:40;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:6px;gap:5px;padding:7px;display:grid;position:absolute;top:calc(100% + 6px);left:0;right:0;box-shadow:0 14px 34px #10182824}.Dlj8CW_choicePicker:has(.Dlj8CW_choiceTriggerOpen){z-index:40}.Dlj8CW_choiceRow{appearance:none;color:#0000;cursor:pointer;width:100%;min-height:42px;font:inherit;text-align:left;background:0 0;border:1px solid #0000;border-radius:4px;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:6px 8px;display:grid}.Dlj8CW_choiceRow:hover{background:var(--dsw-alias-bg-layer-2)}.Dlj8CW_choiceSelected{border-color:color-mix(in srgb, var(--jira-accent) 24%, transparent);background:var(--jira-accent-soft);color:var(--jira-accent)}.Dlj8CW_emptyList{color:var(--dsw-alias-label-tertiary);text-align:center;padding:18px 8px;font-size:11px}.Dlj8CW_imageSettings{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 78%, transparent);max-width:980px;display:grid}.Dlj8CW_imageRouteField,.Dlj8CW_ocrToggle{border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 72%, transparent);grid-template-columns:minmax(220px,.72fr) minmax(300px,1.28fr);align-items:center;gap:28px;padding:18px 2px;display:grid}.Dlj8CW_imageRouteField>div>strong,.Dlj8CW_ocrToggle strong{color:var(--dsw-alias-label-primary);font-size:12px;font-weight:650;display:block}.Dlj8CW_imageRouteField>div>p,.Dlj8CW_ocrToggle small{color:var(--dsw-alias-label-tertiary);margin:4px 0 0;font-size:10px;line-height:1.45;display:block}.Dlj8CW_ocrToggle{cursor:pointer}.Dlj8CW_ocrToggle input{width:16px;height:16px;accent-color:var(--jira-accent);grid-area:1/2;justify-self:end}.Dlj8CW_ocrToggle span{grid-area:1/1}.Dlj8CW_imageStrategy{color:var(--dsw-alias-label-secondary);counter-reset:image-strategy;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:18px 0 0;padding:0;list-style:none;display:grid}.Dlj8CW_imageStrategy li{counter-increment:image-strategy;min-width:0;padding:31px 14px 4px 0;font-size:10px;line-height:1.55;position:relative}.Dlj8CW_imageStrategy li:before{border:1px solid color-mix(in srgb, var(--jira-accent) 36%, var(--dsw-alias-border-l2));background:color-mix(in srgb, var(--jira-accent) 7%, var(--dsw-alias-bg-layer-3));width:22px;height:22px;color:var(--jira-accent);content:counter(image-strategy);border-radius:50%;place-items:center;font-size:10px;font-weight:700;display:grid;position:absolute;top:0;left:0}.Dlj8CW_imageStrategy li:not(:last-child):after{background:color-mix(in srgb, var(--jira-accent) 24%, var(--dsw-alias-border-l2));content:"";height:1px;position:absolute;top:11px;left:29px;right:10px}.Dlj8CW_footer{border-top:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb, var(--dsw-alias-bg-layer-2) 42%, var(--dsw-alias-bg-layer-3));justify-content:flex-end;align-items:center;gap:8px;padding:12px 18px;display:flex}.Dlj8CW_failed,.Dlj8CW_saveHint{flex:1;min-width:0}.Dlj8CW_save{background:var(--jira-accent);color:#fff}.Dlj8CW_save:hover:not(:disabled){background:color-mix(in srgb, var(--jira-accent) 88%, #000)}.Dlj8CW_refresh:disabled,.Dlj8CW_discard:disabled,.Dlj8CW_save:disabled{opacity:.42;cursor:default}@container Dlj8CW_jira-settings-content (width<=720px){.Dlj8CW_connectionGrid,.Dlj8CW_sourceGrid,.Dlj8CW_templateGrid{grid-template-columns:1fr}.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel{padding:0}.Dlj8CW_sourcePanel+.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel+.Dlj8CW_templatePanel{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent);border-left:0;margin-top:24px;padding-top:24px;padding-left:0}.Dlj8CW_sourceToolbar{flex-direction:column;align-items:stretch}.Dlj8CW_sourceToolbar .Dlj8CW_pickerField{width:100%}.Dlj8CW_refresh{align-self:flex-start}.Dlj8CW_imageRouteField,.Dlj8CW_ocrToggle{grid-template-columns:1fr;gap:10px}.Dlj8CW_ocrToggle input,.Dlj8CW_ocrToggle span{grid-column:1}.Dlj8CW_ocrToggle input{grid-row:2;justify-self:start}.Dlj8CW_ocrToggle span{grid-row:1}.Dlj8CW_imageStrategy{grid-template-columns:1fr 1fr;row-gap:14px}}@media (width<=760px){.Dlj8CW_workspaceCard .Dlj8CW_body{grid-template-rows:auto minmax(0,1fr) auto;grid-template-columns:1fr}.Dlj8CW_workspaceCard .Dlj8CW_settingsNav{grid-area:1/1}.Dlj8CW_workspaceCard .Dlj8CW_settingsContent{grid-area:2/1}.Dlj8CW_workspaceCard .Dlj8CW_footer{grid-area:3/1}.Dlj8CW_settingsNav{border-right:0;border-bottom:1px solid var(--dsw-alias-border-l2);flex-direction:row;padding:9px 12px;overflow-x:auto}.Dlj8CW_settingsNavItem{min-width:145px;padding-left:10px}.Dlj8CW_settingsNavItem:before{width:auto;height:2px;inset:auto 10px 0}.Dlj8CW_connectionGrid,.Dlj8CW_sourceGrid,.Dlj8CW_templateGrid{grid-template-columns:1fr}.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel{padding:0}.Dlj8CW_sourcePanel+.Dlj8CW_sourcePanel,.Dlj8CW_templatePanel+.Dlj8CW_templatePanel{border-top:1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 82%, transparent);border-left:0;margin-top:24px;padding-top:24px;padding-left:0}.Dlj8CW_sourceToolbar{flex-direction:column;align-items:stretch}.Dlj8CW_sourceToolbar .Dlj8CW_pickerField{width:100%}.Dlj8CW_refresh{align-self:flex-start}.Dlj8CW_footer{flex-wrap:wrap;align-items:stretch}.Dlj8CW_pluginCard .Dlj8CW_footer{grid-template-columns:1fr auto auto}.Dlj8CW_failed,.Dlj8CW_saveHint{flex-basis:100%;width:100%}}@media (prefers-reduced-motion:reduce){.Dlj8CW_refreshIconBusy{animation:none}}';
 var tagId = "@jira-workbench/dsh-client/JiraConfigCard.module.css";
 if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
   const tag = document.createElement("style");
@@ -59,7 +59,7 @@ if (typeof document !== "undefined" && document.querySelector("style[data-plugin
   tag.textContent = css;
   document.head.appendChild(tag);
 }
-var JiraConfigCard_default = { "body": "Dlj8CW_body", "brandMark": "Dlj8CW_brandMark", "bug": "Dlj8CW_bug", "card": "Dlj8CW_card", "cardOpen": "Dlj8CW_cardOpen", "chevron": "Dlj8CW_chevron", "chevronOpen": "Dlj8CW_chevronOpen", "choiceAction": "Dlj8CW_choiceAction", "choiceAffordance": "Dlj8CW_choiceAffordance", "choiceChevron": "Dlj8CW_choiceChevron", "choiceList": "Dlj8CW_choiceList", "choicePanel": "Dlj8CW_choicePanel", "choicePicker": "Dlj8CW_choicePicker", "choiceRow": "Dlj8CW_choiceRow", "choiceSelected": "Dlj8CW_choiceSelected", "choiceTrigger": "Dlj8CW_choiceTrigger", "choiceTriggerOpen": "Dlj8CW_choiceTriggerOpen", "connectionGrid": "Dlj8CW_connectionGrid", "description": "Dlj8CW_description", "discard": "Dlj8CW_discard", "emptyList": "Dlj8CW_emptyList", "failed": "Dlj8CW_failed", "field": "Dlj8CW_field", "filterList": "Dlj8CW_filterList", "filterPicker": "Dlj8CW_filterPicker", "filterRow": "Dlj8CW_filterRow", "filterSelected": "Dlj8CW_filterSelected", "footer": "Dlj8CW_footer", "headText": "Dlj8CW_headText", "header": "Dlj8CW_header", "hint": "Dlj8CW_hint", "input": "Dlj8CW_input", "inputInvalid": "Dlj8CW_inputInvalid", "invalid": "Dlj8CW_invalid", "jira-settings-content": "Dlj8CW_jira-settings-content", "kindDot": "Dlj8CW_kindDot", "label": "Dlj8CW_label", "labelRow": "Dlj8CW_labelRow", "loading": "Dlj8CW_loading", "modeHint": "Dlj8CW_modeHint", "name": "Dlj8CW_name", "optionMessage": "Dlj8CW_optionMessage", "panelTitle": "Dlj8CW_panelTitle", "pending": "Dlj8CW_pending", "pickerField": "Dlj8CW_pickerField", "pluginCard": "Dlj8CW_pluginCard", "pluginConnectionHead": "Dlj8CW_pluginConnectionHead", "pluginSettingsNote": "Dlj8CW_pluginSettingsNote", "readOnly": "Dlj8CW_readOnly", "refresh": "Dlj8CW_refresh", "refreshIcon": "Dlj8CW_refreshIcon", "refreshIconBusy": "Dlj8CW_refreshIconBusy", "refreshSpin": "Dlj8CW_refreshSpin", "save": "Dlj8CW_save", "saveHint": "Dlj8CW_saveHint", "searchInput": "Dlj8CW_searchInput", "section": "Dlj8CW_section", "sectionHeading": "Dlj8CW_sectionHeading", "segment": "Dlj8CW_segment", "segmentActive": "Dlj8CW_segmentActive", "segmented": "Dlj8CW_segmented", "settingsContent": "Dlj8CW_settingsContent", "settingsNav": "Dlj8CW_settingsNav", "settingsNavItem": "Dlj8CW_settingsNavItem", "settingsNavItemActive": "Dlj8CW_settingsNavItemActive", "skillRule": "Dlj8CW_skillRule", "sourceGrid": "Dlj8CW_sourceGrid", "sourcePanel": "Dlj8CW_sourcePanel", "sourceToolbar": "Dlj8CW_sourceToolbar", "status": "Dlj8CW_status", "statusOk": "Dlj8CW_statusOk", "templateGrid": "Dlj8CW_templateGrid", "templateMode": "Dlj8CW_templateMode", "templateModeActive": "Dlj8CW_templateModeActive", "templatePanel": "Dlj8CW_templatePanel", "templatePreview": "Dlj8CW_templatePreview", "templateState": "Dlj8CW_templateState", "templateTextarea": "Dlj8CW_templateTextarea", "textarea": "Dlj8CW_textarea", "workspaceCard": "Dlj8CW_workspaceCard" };
+var JiraConfigCard_default = { "body": "Dlj8CW_body", "brandMark": "Dlj8CW_brandMark", "bug": "Dlj8CW_bug", "card": "Dlj8CW_card", "cardOpen": "Dlj8CW_cardOpen", "chevron": "Dlj8CW_chevron", "chevronOpen": "Dlj8CW_chevronOpen", "choiceAction": "Dlj8CW_choiceAction", "choiceAffordance": "Dlj8CW_choiceAffordance", "choiceChevron": "Dlj8CW_choiceChevron", "choiceList": "Dlj8CW_choiceList", "choicePanel": "Dlj8CW_choicePanel", "choicePicker": "Dlj8CW_choicePicker", "choiceRow": "Dlj8CW_choiceRow", "choiceSelected": "Dlj8CW_choiceSelected", "choiceTrigger": "Dlj8CW_choiceTrigger", "choiceTriggerOpen": "Dlj8CW_choiceTriggerOpen", "connectionGrid": "Dlj8CW_connectionGrid", "description": "Dlj8CW_description", "discard": "Dlj8CW_discard", "emptyList": "Dlj8CW_emptyList", "failed": "Dlj8CW_failed", "field": "Dlj8CW_field", "filterList": "Dlj8CW_filterList", "filterPicker": "Dlj8CW_filterPicker", "filterRow": "Dlj8CW_filterRow", "filterSelected": "Dlj8CW_filterSelected", "footer": "Dlj8CW_footer", "headText": "Dlj8CW_headText", "header": "Dlj8CW_header", "hint": "Dlj8CW_hint", "imageRouteField": "Dlj8CW_imageRouteField", "imageSettings": "Dlj8CW_imageSettings", "imageStrategy": "Dlj8CW_imageStrategy", "input": "Dlj8CW_input", "inputInvalid": "Dlj8CW_inputInvalid", "invalid": "Dlj8CW_invalid", "jira-settings-content": "Dlj8CW_jira-settings-content", "kindDot": "Dlj8CW_kindDot", "label": "Dlj8CW_label", "labelRow": "Dlj8CW_labelRow", "loading": "Dlj8CW_loading", "modeHint": "Dlj8CW_modeHint", "name": "Dlj8CW_name", "ocrToggle": "Dlj8CW_ocrToggle", "optionMessage": "Dlj8CW_optionMessage", "panelTitle": "Dlj8CW_panelTitle", "pending": "Dlj8CW_pending", "pickerField": "Dlj8CW_pickerField", "pluginCard": "Dlj8CW_pluginCard", "pluginConnectionHead": "Dlj8CW_pluginConnectionHead", "pluginSettingsNote": "Dlj8CW_pluginSettingsNote", "readOnly": "Dlj8CW_readOnly", "refresh": "Dlj8CW_refresh", "refreshIcon": "Dlj8CW_refreshIcon", "refreshIconBusy": "Dlj8CW_refreshIconBusy", "refreshSpin": "Dlj8CW_refreshSpin", "save": "Dlj8CW_save", "saveHint": "Dlj8CW_saveHint", "searchInput": "Dlj8CW_searchInput", "section": "Dlj8CW_section", "sectionHeading": "Dlj8CW_sectionHeading", "segment": "Dlj8CW_segment", "segmentActive": "Dlj8CW_segmentActive", "segmented": "Dlj8CW_segmented", "settingsContent": "Dlj8CW_settingsContent", "settingsNav": "Dlj8CW_settingsNav", "settingsNavItem": "Dlj8CW_settingsNavItem", "settingsNavItemActive": "Dlj8CW_settingsNavItemActive", "skillRule": "Dlj8CW_skillRule", "sourceGrid": "Dlj8CW_sourceGrid", "sourcePanel": "Dlj8CW_sourcePanel", "sourceToolbar": "Dlj8CW_sourceToolbar", "status": "Dlj8CW_status", "statusOk": "Dlj8CW_statusOk", "templateGrid": "Dlj8CW_templateGrid", "templateMode": "Dlj8CW_templateMode", "templateModeActive": "Dlj8CW_templateModeActive", "templatePanel": "Dlj8CW_templatePanel", "templatePreview": "Dlj8CW_templatePreview", "templateState": "Dlj8CW_templateState", "templateTextarea": "Dlj8CW_templateTextarea", "textarea": "Dlj8CW_textarea", "workspaceCard": "Dlj8CW_workspaceCard" };
 
 // src/client/JiraConfigCard.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
@@ -73,12 +73,13 @@ function JiraConfigCard(props) {
   const sectionRefs = (0, import_react.useRef)({
     connection: null,
     templates: null,
+    images: null,
     sources: null
   });
   (0, import_react.useEffect)(() => {
     const content = settingsContentRef.current;
     if (!standalone || state.loading || !content) return;
-    const order = ["connection", "templates", "sources"];
+    const order = ["connection", "templates", "images", "sources"];
     const syncSection = () => {
       const contentTop = content.getBoundingClientRect().top;
       let next = order[0];
@@ -111,6 +112,17 @@ function JiraConfigCard(props) {
     label: `${project.key} \xB7 ${project.name}`,
     meta: project.id
   }));
+  const discoveredVisionChoices = state.visionModels.map((model) => ({
+    value: `${model.provider}\0${model.id}`,
+    label: model.name,
+    meta: `${model.providerName} \xB7 ${model.id}`
+  }));
+  const selectedVision = state.imageProcessing.visionProvider && state.imageProcessing.visionModel ? `${state.imageProcessing.visionProvider}\0${state.imageProcessing.visionModel}` : "";
+  const visionChoices = selectedVision && !discoveredVisionChoices.some((choice) => choice.value === selectedVision) ? [{
+    value: selectedVision,
+    label: state.imageProcessing.visionModel,
+    meta: `${state.imageProcessing.visionProvider} \xB7 ${t("card.visionModelUnavailable")}`
+  }, ...discoveredVisionChoices] : discoveredVisionChoices;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: clsx_default(
     JiraConfigCard_default.card,
     open && JiraConfigCard_default.cardOpen,
@@ -160,6 +172,18 @@ function JiraConfigCard(props) {
             copy: t("card.templatesNavHint"),
             onClick: () => {
               scrollToSection("templates");
+            }
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SettingsNavItem,
+          {
+            active: section === "images",
+            target: "jira-settings-images",
+            title: t("card.imagesNav"),
+            copy: t("card.imagesNavHint"),
+            onClick: () => {
+              scrollToSection("images");
             }
           }
         ),
@@ -277,6 +301,69 @@ function JiraConfigCard(props) {
                 )
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: JiraConfigCard_default.skillRule, children: t("card.skillRule") })
+            ]
+          }
+        ) : null,
+        !state.loading && standalone ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "section",
+          {
+            id: "jira-settings-images",
+            ref: (element) => {
+              sectionRefs.current.images = element;
+            },
+            className: JiraConfigCard_default.section,
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SectionHeading, { title: t("card.images"), copy: t("card.imagesHint") }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: JiraConfigCard_default.imageSettings, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: JiraConfigCard_default.imageRouteField, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: t("card.visionModel") }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: t("card.visionModelHint") })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    ChoicePicker,
+                    {
+                      id: "jira-vision-model",
+                      value: selectedVision,
+                      options: visionChoices,
+                      placeholder: t("card.visionModelNone"),
+                      searchPlaceholder: t("card.visionModelSearch"),
+                      emptyText: t("card.visionModelEmpty"),
+                      clearable: true,
+                      actionLabel: selectedVision ? t("card.visionModelChange") : t("card.visionModelChoose"),
+                      onChange: (value) => {
+                        const selected = state.visionModels.find((model) => `${model.provider}\0${model.id}` === value);
+                        props.editImageProcessing({
+                          visionProvider: selected?.provider || "",
+                          visionModel: selected?.id || ""
+                        });
+                      }
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: JiraConfigCard_default.ocrToggle, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "input",
+                    {
+                      type: "checkbox",
+                      checked: state.imageProcessing.localOcrEnabled,
+                      onChange: (event) => {
+                        props.editImageProcessing({ localOcrEnabled: event.target.checked });
+                      }
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: t("card.localOcr") }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: t("card.localOcrHint") })
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ol", { className: JiraConfigCard_default.imageStrategy, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: t("card.imageStrategyNative") }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: t("card.imageStrategyVision") }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: t("card.imageStrategyOcr") }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: t("card.imageStrategyUnparsed") })
+                ] })
+              ] })
             ]
           }
         ) : null,
@@ -1331,6 +1418,11 @@ var EMPTY_TEMPLATES = {
   requirement: { ...EMPTY_TEMPLATE },
   bug: { ...EMPTY_TEMPLATE }
 };
+var EMPTY_IMAGE_PROCESSING = {
+  visionProvider: "",
+  visionModel: "",
+  localOcrEnabled: true
+};
 function cloneBoardSources(value) {
   return {
     ...value,
@@ -1350,10 +1442,14 @@ function clonePromptTemplates(value) {
     }
   };
 }
+function cloneImageProcessing(value) {
+  return { ...value };
+}
 function configurationFromPayload(payload) {
   const value = payload;
   const sources = value?.boardSources ?? EMPTY_BOARD_SOURCES;
   const templates = value?.promptTemplates ?? EMPTY_TEMPLATES;
+  const imageProcessing = value?.imageProcessing ?? EMPTY_IMAGE_PROCESSING;
   return {
     configured: value?.configured === true,
     baseUrl: String(value?.baseUrl || ""),
@@ -1367,7 +1463,8 @@ function configurationFromPayload(payload) {
     promptTemplates: clonePromptTemplates({
       requirement: { ...EMPTY_TEMPLATE, ...templates.requirement },
       bug: { ...EMPTY_TEMPLATE, ...templates.bug }
-    })
+    }),
+    imageProcessing: cloneImageProcessing({ ...EMPTY_IMAGE_PROCESSING, ...imageProcessing })
   };
 }
 async function jsonRequest(url, init) {
@@ -1421,11 +1518,13 @@ var JiraConfigCardController = class {
     this.configuration = null;
     this.boardSourcesDraft = null;
     this.promptTemplatesDraft = null;
+    this.imageProcessingDraft = null;
     this.baseUrlDraft = null;
     this.tokenDraft = "";
     this.projects = [];
     this.filters = [];
     this.skills = [];
+    this.visionModels = [];
     this.loading = true;
     this.optionsLoading = false;
     this.optionsMessage = "";
@@ -1450,13 +1549,19 @@ var JiraConfigCardController = class {
   effectivePromptTemplates() {
     return clonePromptTemplates(this.promptTemplatesDraft ?? this.configuration?.promptTemplates ?? EMPTY_TEMPLATES);
   }
+  effectiveImageProcessing() {
+    return cloneImageProcessing(
+      this.imageProcessingDraft ?? this.configuration?.imageProcessing ?? EMPTY_IMAGE_PROCESSING
+    );
+  }
   projection() {
     const snapshot2 = this.scope.getSnapshot();
     const persistedBaseUrl = this.configuration !== null ? this.configuration.baseUrl : currentBaseUrl(snapshot2.value);
     const baseUrlText = this.baseUrlDraft ?? persistedBaseUrl;
     const boardSources = this.effectiveBoardSources();
     const promptTemplates = this.effectivePromptTemplates();
-    const preferencesDirty = this.configuration !== null && (!sameJson(boardSources, this.configuration.boardSources) || !sameJson(promptTemplates, this.configuration.promptTemplates));
+    const imageProcessing = this.effectiveImageProcessing();
+    const preferencesDirty = this.configuration !== null && (!sameJson(boardSources, this.configuration.boardSources) || !sameJson(promptTemplates, this.configuration.promptTemplates) || !sameJson(imageProcessing, this.configuration.imageProcessing));
     const baseUrlInvalid = this.baseUrlDraft !== null && !isValidBaseUrl(this.baseUrlDraft);
     return {
       available: true,
@@ -1468,9 +1573,11 @@ var JiraConfigCardController = class {
       tokenConfigured: this.token.configured || this.configuration?.hasToken === true,
       boardSources,
       promptTemplates,
+      imageProcessing,
       projects: this.projects,
       filters: this.filters,
       skills: this.skills,
+      visionModels: this.visionModels,
       optionsLoading: this.optionsLoading,
       optionsMessage: this.optionsMessage,
       dirty: this.baseUrlDraft !== null || this.tokenDraft.trim() !== "" || preferencesDirty,
@@ -1537,9 +1644,10 @@ var JiraConfigCardController = class {
     this.optionsLoading = true;
     this.optionsMessage = "";
     this.publish();
-    const [projectsResult, skillsResult] = await Promise.allSettled([
+    const [projectsResult, skillsResult, visionModelsResult] = await Promise.allSettled([
       this.fetchOptions("projects"),
-      this.fetchOptions("skills")
+      this.fetchOptions("skills"),
+      this.fetchOptions("vision-models")
     ]);
     if (requestVersion !== this.optionsRequestVersion) return;
     if (projectsResult.status === "fulfilled") {
@@ -1552,6 +1660,14 @@ var JiraConfigCardController = class {
       if (skillsResult.value.message) this.optionsMessage = skillsResult.value.message;
     } else if (!this.optionsMessage) {
       this.optionsMessage = skillsResult.reason instanceof Error ? skillsResult.reason.message : String(skillsResult.reason);
+    }
+    if (visionModelsResult.status === "fulfilled") {
+      this.visionModels = Array.isArray(visionModelsResult.value.models) ? visionModelsResult.value.models : [];
+      if (visionModelsResult.value.message && !this.optionsMessage) {
+        this.optionsMessage = visionModelsResult.value.message;
+      }
+    } else if (!this.optionsMessage) {
+      this.optionsMessage = visionModelsResult.reason instanceof Error ? visionModelsResult.reason.message : String(visionModelsResult.reason);
     }
     await this.loadFilters(this.effectiveBoardSources().projectKey);
     if (requestVersion !== this.optionsRequestVersion) return;
@@ -1575,6 +1691,9 @@ var JiraConfigCardController = class {
       },
       editTemplate: (kind, patch) => {
         this.editTemplate(kind, patch);
+      },
+      editImageProcessing: (patch) => {
+        this.editImageProcessing(patch);
       },
       refreshOptions: () => {
         void this.loadOptions();
@@ -1636,11 +1755,18 @@ var JiraConfigCardController = class {
     this.clearFailure();
     this.publish();
   }
+  editImageProcessing(patch) {
+    const next = this.effectiveImageProcessing();
+    this.imageProcessingDraft = { ...next, ...patch };
+    this.clearFailure();
+    this.publish();
+  }
   discard() {
     this.baseUrlDraft = null;
     this.tokenDraft = "";
     this.boardSourcesDraft = null;
     this.promptTemplatesDraft = null;
+    this.imageProcessingDraft = null;
     this.clearFailure();
     this.publish();
   }
@@ -1669,7 +1795,8 @@ var JiraConfigCardController = class {
         this.configuration = await this.commitConfiguration({
           baseUrl,
           boardSources: state.boardSources,
-          promptTemplates: state.promptTemplates
+          promptTemplates: state.promptTemplates,
+          imageProcessing: state.imageProcessing
         });
       } catch (error) {
         landed = false;
@@ -1681,6 +1808,7 @@ var JiraConfigCardController = class {
       this.tokenDraft = "";
       this.boardSourcesDraft = null;
       this.promptTemplatesDraft = null;
+      this.imageProcessingDraft = null;
       void this.syncSettingsBaseUrl(baseUrl);
       void this.loadOptions();
     }
@@ -1809,7 +1937,7 @@ async function clearJiraSessionContext(input) {
 var NS = "jira-workbench";
 var zh = {
   "card.title": "Jira \u5DE5\u4F5C\u53F0",
-  "card.description": "\u914D\u7F6E Jira \u8FDE\u63A5\u3001\u4EFB\u52A1\u9762\u677F\u6765\u6E90\u3001\u9996\u6761\u6D88\u606F\u6A21\u677F\u4E0E DSH Skill\u3002",
+  "card.description": "\u914D\u7F6E Jira \u8FDE\u63A5\u3001\u4EFB\u52A1\u9762\u677F\u6765\u6E90\u3001\u9996\u6761\u6D88\u606F\u6A21\u677F\u3001DSH Skill \u4E0E\u56FE\u7247\u964D\u7EA7\u7B56\u7565\u3002",
   "card.pluginDescription": "\u914D\u7F6E Jira \u8FDE\u63A5\uFF1B\u4EFB\u52A1\u6765\u6E90\u3001\u6A21\u677F\u548C Skill \u5728\u5DE5\u4F5C\u53F0\u4E2D\u7BA1\u7406\u3002",
   "card.pluginSettingsHint": "\u4EFB\u52A1\u9762\u677F\u6765\u6E90\u3001\u6D88\u606F\u6A21\u677F\u4E0E Skill \u8BF7\u524D\u5F80 Jira \u5DE5\u4F5C\u53F0\u7684\u201C\u8BBE\u7F6E\u201D\u4E2D\u7BA1\u7406\u3002",
   "card.connectionSaveHint": "\u4EC5\u4FDD\u5B58 Jira \u5730\u5740\u548C Token\uFF0C\u4E0D\u4F1A\u6539\u53D8\u5DE5\u4F5C\u53F0\u7684\u5176\u4ED6\u914D\u7F6E\u3002",
@@ -1823,6 +1951,24 @@ var zh = {
   "card.templatesNav": "\u6D88\u606F\u6A21\u677F",
   "card.templatesNavHint": "\u9996\u6761\u5206\u6790\u6D88\u606F\u4E0E Skill",
   "card.templatesHint": "\u5206\u522B\u63A7\u5236\u9700\u6C42\u4E0E Bug \u65B0\u4F1A\u8BDD\u7684\u9996\u6761\u53EA\u8BFB\u5206\u6790\u6D88\u606F\u3002",
+  "card.imagesNav": "\u56FE\u7247\u9644\u4EF6",
+  "card.imagesNavHint": "\u89C6\u89C9\u6A21\u578B\u4E0E OCR \u964D\u7EA7",
+  "card.images": "\u56FE\u7247\u9644\u4EF6\u5904\u7406",
+  "card.imagesHint": "\u5F53\u524D\u6A21\u578B\u652F\u6301\u56FE\u7247\u65F6\u53D1\u9001\u539F\u56FE\uFF1B\u4E0D\u652F\u6301\u65F6\u4F9D\u6B21\u4F7F\u7528\u89C6\u89C9\u6A21\u578B\u3001\u672C\u5730 OCR \u548C\u660E\u786E\u7684\u672A\u89E3\u6790\u63D0\u793A\u3002",
+  "card.visionModel": "\u964D\u7EA7\u89C6\u89C9\u6A21\u578B",
+  "card.visionModelHint": "\u4EC5\u5217\u51FA DSH \u660E\u786E\u58F0\u660E\u652F\u6301\u56FE\u7247\u8F93\u5165\u7684\u6A21\u578B\uFF1B\u7528\u4E8E\u751F\u6210\u7ED3\u6784\u5316\u56FE\u7247\u8BF4\u660E\u3002",
+  "card.visionModelNone": "\u4E0D\u914D\u7F6E\u89C6\u89C9\u6A21\u578B",
+  "card.visionModelSearch": "\u641C\u7D22\u89C6\u89C9\u6A21\u578B",
+  "card.visionModelEmpty": "\u5F53\u524D\u6CA1\u6709\u53EF\u7528\u7684\u89C6\u89C9\u6A21\u578B",
+  "card.visionModelUnavailable": "\u5DF2\u4FDD\u5B58\uFF0C\u5F53\u524D\u6A21\u578B\u76EE\u5F55\u672A\u8FD4\u56DE\u6B64\u9879",
+  "card.visionModelChange": "\u66F4\u6539\u6A21\u578B",
+  "card.visionModelChoose": "\u9009\u62E9\u6A21\u578B",
+  "card.localOcr": "\u5141\u8BB8\u672C\u5730 OCR \u964D\u7EA7",
+  "card.localOcrHint": "\u89C6\u89C9\u6A21\u578B\u4E0D\u53EF\u7528\u6216\u89E3\u6790\u5931\u8D25\u65F6\uFF0C\u5148\u5C1D\u8BD5 Windows OCR\uFF0C\u518D\u5C1D\u8BD5\u672C\u673A Tesseract\u3002",
+  "card.imageStrategyNative": "\u5F53\u524D\u6A21\u578B\u652F\u6301\u56FE\u7247\uFF1A\u9996\u6761\u6D88\u606F\u643A\u5E26\u539F\u56FE\u3001\u6587\u4EF6\u540D\u548C Jira \u6765\u6E90\u3002",
+  "card.imageStrategyVision": "\u5F53\u524D\u6A21\u578B\u4E0D\u652F\u6301\u56FE\u7247\uFF1A\u4F18\u5148\u8C03\u7528\u4E0A\u65B9\u89C6\u89C9\u6A21\u578B\u751F\u6210\u7ED3\u6784\u5316\u8BF4\u660E\u3002",
+  "card.imageStrategyOcr": "\u89C6\u89C9\u6A21\u578B\u672A\u4EA7\u51FA\u7ED3\u679C\uFF1A\u4F7F\u7528\u672C\u5730 OCR \u63D0\u53D6\u53EF\u89C1\u6587\u5B57\u3002",
+  "card.imageStrategyUnparsed": "\u4ECD\u65E0\u6CD5\u89E3\u6790\uFF1A\u4F1A\u8BDD\u7167\u5E38\u521B\u5EFA\uFF0C\u5E76\u660E\u786E\u63D0\u793A\u56FE\u7247\u5C1A\u672A\u89E3\u6790\u3002",
   "card.advancedNav": "\u9AD8\u7EA7\u914D\u7F6E",
   "card.advancedNavHint": "\u4EFB\u52A1\u6765\u6E90\u4E0E\u9879\u76EE\u8303\u56F4",
   "card.loading": "\u6B63\u5728\u8BFB\u53D6 Jira \u5DE5\u4F5C\u53F0\u914D\u7F6E\u2026",
@@ -1889,7 +2035,7 @@ var zh = {
 };
 var en = {
   "card.title": "Jira Workbench",
-  "card.description": "Configure Jira access, task board sources, first-message templates, and DSH Skills.",
+  "card.description": "Configure Jira access, board sources, first-message templates, DSH Skills, and image fallbacks.",
   "card.pluginDescription": "Configure Jira access; manage sources, templates, and Skills in the workbench.",
   "card.pluginSettingsHint": "Manage task board sources, message templates, and Skills in Jira Workbench settings.",
   "card.connectionSaveHint": "Only the Jira URL and token are saved; other workbench settings are unchanged.",
@@ -1903,6 +2049,24 @@ var en = {
   "card.templatesNav": "Message templates",
   "card.templatesNavHint": "First analysis message and Skills",
   "card.templatesHint": "Control the first read-only analysis message for requirement and bug sessions.",
+  "card.imagesNav": "Image attachments",
+  "card.imagesNavHint": "Vision model and OCR fallback",
+  "card.images": "Image attachment handling",
+  "card.imagesHint": "Send originals when the current model supports images; otherwise use a vision model, local OCR, then an explicit unparsed notice.",
+  "card.visionModel": "Fallback vision model",
+  "card.visionModelHint": "Only DSH models that explicitly declare image input are listed; the selected model produces a structured description.",
+  "card.visionModelNone": "No vision model",
+  "card.visionModelSearch": "Search vision models",
+  "card.visionModelEmpty": "No image-capable model is currently available",
+  "card.visionModelUnavailable": "Saved; not currently returned by the model catalog",
+  "card.visionModelChange": "Change model",
+  "card.visionModelChoose": "Choose model",
+  "card.localOcr": "Allow local OCR fallback",
+  "card.localOcrHint": "When vision analysis is unavailable, try Windows OCR and then the local Tesseract executable.",
+  "card.imageStrategyNative": "Image-capable current model: send the original with its filename and Jira source.",
+  "card.imageStrategyVision": "Text-only current model: use the configured vision model for a structured description.",
+  "card.imageStrategyOcr": "No vision result: extract visible text with local OCR.",
+  "card.imageStrategyUnparsed": "Still unavailable: create the session and clearly mark the image as unparsed.",
   "card.advancedNav": "Advanced",
   "card.advancedNavHint": "Task sources and project scope",
   "card.loading": "Loading Jira workbench settings\u2026",

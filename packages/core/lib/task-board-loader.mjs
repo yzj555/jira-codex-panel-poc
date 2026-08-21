@@ -219,10 +219,14 @@ export function createTaskBoardLoader({
           attachment
         });
         materialized.push({
+          attachmentId,
           path: cached.path,
+          filename: cached.filename,
           label: `[${descriptor.sourceLabel} ${descriptor.sourceIssueKey}] ${cached.filename}`,
           mimeType: cached.mimeType,
-          sourceIssueKey: descriptor.sourceIssueKey
+          size: Number(cached.size || descriptor.size || 0),
+          sourceIssueKey: descriptor.sourceIssueKey,
+          sourceLabel: descriptor.sourceLabel
         });
       } catch (error) {
         failures.push({

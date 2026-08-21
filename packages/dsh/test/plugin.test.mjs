@@ -416,6 +416,11 @@ test("DSH 配置路由把任务来源和模板 Skill 一并写入 Core", async (
     promptTemplates: {
       requirement: { customized: false, content: "default", skill: null },
       bug: { customized: true, content: "诊断 {{key}}", skill: { name: "bug-tracer", path: "", scope: "dsh" } }
+    },
+    imageProcessing: {
+      visionProvider: "openai",
+      visionModel: "gpt-4.1",
+      localOcrEnabled: true
     }
   })]);
   request.method = "PUT";
@@ -432,6 +437,7 @@ test("DSH 配置路由把任务来源和模板 Skill 一并写入 Core", async (
   assert.equal(calls[0].tokenReference, "JIRA_WORKBENCH_TOKEN");
   assert.equal(calls[0].boardSources.projectKey, "GAME");
   assert.equal(calls[0].promptTemplates.bug.skill.name, "bug-tracer");
+  assert.equal(calls[0].imageProcessing.visionModel, "gpt-4.1");
 });
 
 test("DSH 配置选项路由从 Jira 和 DSH Skill 注册表读取候选项", async () => {
@@ -466,6 +472,16 @@ test("DSH 配置选项路由从 Jira 和 DSH Skill 注册表读取候选项", as
           invocation: { userInvocable: true, modelInvocable: true }
         }];
       }
+    }),
+    getLlm: () => ({
+      listProviders() {
+        return [{ id: "openai", name: "OpenAI" }, { id: "text", name: "Text only" }];
+      },
+      async listModels(provider) {
+        return provider === "openai"
+          ? [{ provider, id: "gpt-4.1", name: "GPT-4.1", inputModalities: ["text", "image"] }]
+          : [{ provider, id: "text-1", name: "Text", inputModalities: ["text"] }];
+      }
     })
   });
 
@@ -488,6 +504,13 @@ test("DSH 配置选项路由从 Jira 和 DSH Skill 注册表读取候选项", as
   const skills = await invoke("/jira-workbench/config-options?resource=skills");
   assert.deepEqual(skills.json.skills.map((skill) => skill.name), ["global-skill", "project-skill"]);
   assert.deepEqual(skills.json.skills.find((skill) => skill.name === "project-skill").scopes, ["repo"]);
+  const visionModels = await invoke("/jira-workbench/config-options?resource=vision-models");
+  assert.deepEqual(visionModels.json.models, [{
+    provider: "openai",
+    providerName: "OpenAI",
+    id: "gpt-4.1",
+    name: "GPT-4.1"
+  }]);
 });
 
 test("DSH 配置选项通过 apiProxy 读取 preset realm 内的真实 Skill", async () => {

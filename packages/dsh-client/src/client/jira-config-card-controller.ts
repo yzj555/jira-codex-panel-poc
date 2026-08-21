@@ -49,6 +49,19 @@ export interface PromptTemplates {
   bug: PromptTemplateEntry
 }
 
+export interface ImageProcessingSettings {
+  visionProvider: string
+  visionModel: string
+  localOcrEnabled: boolean
+}
+
+export interface VisionModelOption {
+  provider: string
+  providerName: string
+  id: string
+  name: string
+}
+
 export interface JiraProjectOption {
   id: string
   key: string
@@ -78,6 +91,7 @@ interface WorkbenchConfiguration {
   hasToken: boolean
   boardSources: BoardSources
   promptTemplates: PromptTemplates
+  imageProcessing: ImageProcessingSettings
 }
 
 interface TokenState {
@@ -95,9 +109,11 @@ export interface JiraConfigCardState {
   tokenConfigured: boolean
   boardSources: BoardSources
   promptTemplates: PromptTemplates
+  imageProcessing: ImageProcessingSettings
   projects: JiraProjectOption[]
   filters: JiraFilterOption[]
   skills: DshSkillOption[]
+  visionModels: VisionModelOption[]
   optionsLoading: boolean
   optionsMessage: string
   dirty: boolean
@@ -112,6 +128,7 @@ export type CommitJiraConfiguration = (input: {
   baseUrl: string
   boardSources: BoardSources
   promptTemplates: PromptTemplates
+  imageProcessing: ImageProcessingSettings
 }) => Promise<WorkbenchConfiguration>
 
 const EMPTY_BOARD_SOURCE: BoardSource = { mode: 'builtin', jql: '', filterIds: [] }
@@ -126,6 +143,11 @@ const EMPTY_TEMPLATE: PromptTemplateEntry = { customized: false, content: '', sk
 const EMPTY_TEMPLATES: PromptTemplates = {
   requirement: { ...EMPTY_TEMPLATE },
   bug: { ...EMPTY_TEMPLATE },
+}
+const EMPTY_IMAGE_PROCESSING: ImageProcessingSettings = {
+  visionProvider: '',
+  visionModel: '',
+  localOcrEnabled: true,
 }
 
 function cloneBoardSources(value: BoardSources): BoardSources {
@@ -149,10 +171,15 @@ function clonePromptTemplates(value: PromptTemplates): PromptTemplates {
   }
 }
 
+function cloneImageProcessing(value: ImageProcessingSettings): ImageProcessingSettings {
+  return { ...value }
+}
+
 function configurationFromPayload(payload: unknown): WorkbenchConfiguration {
   const value = payload as Partial<WorkbenchConfiguration> | null
   const sources = value?.boardSources ?? EMPTY_BOARD_SOURCES
   const templates = value?.promptTemplates ?? EMPTY_TEMPLATES
+  const imageProcessing = value?.imageProcessing ?? EMPTY_IMAGE_PROCESSING
   return {
     configured: value?.configured === true,
     baseUrl: String(value?.baseUrl || ''),
@@ -167,6 +194,7 @@ function configurationFromPayload(payload: unknown): WorkbenchConfiguration {
       requirement: { ...EMPTY_TEMPLATE, ...templates.requirement },
       bug: { ...EMPTY_TEMPLATE, ...templates.bug },
     }),
+    imageProcessing: cloneImageProcessing({ ...EMPTY_IMAGE_PROCESSING, ...imageProcessing }),
   }
 }
 
@@ -192,6 +220,7 @@ async function commitJiraConfiguration(input: {
   baseUrl: string
   boardSources: BoardSources
   promptTemplates: PromptTemplates
+  imageProcessing: ImageProcessingSettings
 }): Promise<WorkbenchConfiguration> {
   const payload = await jsonRequest<{ configuration: unknown }>('/jira-workbench/config', {
     method: 'PUT',
@@ -239,6 +268,7 @@ export interface JiraConfigCardActions {
   editBoardSource: (kind: IssueKind, patch: Partial<BoardSource>) => void
   toggleFilter: (kind: IssueKind, filterId: string) => void
   editTemplate: (kind: IssueKind, patch: Partial<PromptTemplateEntry>) => void
+  editImageProcessing: (patch: Partial<ImageProcessingSettings>) => void
   refreshOptions: () => void
   save: () => void
   discard: () => void
@@ -258,11 +288,13 @@ export class JiraConfigCardController {
   private configuration: WorkbenchConfiguration | null = null
   private boardSourcesDraft: BoardSources | null = null
   private promptTemplatesDraft: PromptTemplates | null = null
+  private imageProcessingDraft: ImageProcessingSettings | null = null
   private baseUrlDraft: string | null = null
   private tokenDraft = ''
   private projects: JiraProjectOption[] = []
   private filters: JiraFilterOption[] = []
   private skills: DshSkillOption[] = []
+  private visionModels: VisionModelOption[] = []
   private loading = true
   private optionsLoading = false
   private optionsMessage = ''
@@ -297,6 +329,12 @@ export class JiraConfigCardController {
     return clonePromptTemplates(this.promptTemplatesDraft ?? this.configuration?.promptTemplates ?? EMPTY_TEMPLATES)
   }
 
+  private effectiveImageProcessing(): ImageProcessingSettings {
+    return cloneImageProcessing(
+      this.imageProcessingDraft ?? this.configuration?.imageProcessing ?? EMPTY_IMAGE_PROCESSING,
+    )
+  }
+
   private projection(): JiraConfigCardState {
     const snapshot = this.scope.getSnapshot()
     // The workbench config endpoint is the authority. DSH settings is only a
@@ -307,9 +345,11 @@ export class JiraConfigCardController {
     const baseUrlText = this.baseUrlDraft ?? persistedBaseUrl
     const boardSources = this.effectiveBoardSources()
     const promptTemplates = this.effectivePromptTemplates()
+    const imageProcessing = this.effectiveImageProcessing()
     const preferencesDirty = this.configuration !== null && (
       !sameJson(boardSources, this.configuration.boardSources)
       || !sameJson(promptTemplates, this.configuration.promptTemplates)
+      || !sameJson(imageProcessing, this.configuration.imageProcessing)
     )
     const baseUrlInvalid = this.baseUrlDraft !== null && !isValidBaseUrl(this.baseUrlDraft)
     return {
@@ -322,9 +362,11 @@ export class JiraConfigCardController {
       tokenConfigured: this.token.configured || this.configuration?.hasToken === true,
       boardSources,
       promptTemplates,
+      imageProcessing,
       projects: this.projects,
       filters: this.filters,
       skills: this.skills,
+      visionModels: this.visionModels,
       optionsLoading: this.optionsLoading,
       optionsMessage: this.optionsMessage,
       dirty: this.baseUrlDraft !== null || this.tokenDraft.trim() !== '' || preferencesDirty,
@@ -400,9 +442,10 @@ export class JiraConfigCardController {
     this.optionsLoading = true
     this.optionsMessage = ''
     this.publish()
-    const [projectsResult, skillsResult] = await Promise.allSettled([
+    const [projectsResult, skillsResult, visionModelsResult] = await Promise.allSettled([
       this.fetchOptions<{ projects?: JiraProjectOption[] }>('projects'),
       this.fetchOptions<{ skills?: DshSkillOption[], message?: string }>('skills'),
+      this.fetchOptions<{ models?: VisionModelOption[], message?: string }>('vision-models'),
     ])
     if (requestVersion !== this.optionsRequestVersion) return
     if (projectsResult.status === 'fulfilled') {
@@ -420,6 +463,16 @@ export class JiraConfigCardController {
         ? skillsResult.reason.message
         : String(skillsResult.reason)
     }
+    if (visionModelsResult.status === 'fulfilled') {
+      this.visionModels = Array.isArray(visionModelsResult.value.models) ? visionModelsResult.value.models : []
+      if (visionModelsResult.value.message && !this.optionsMessage) {
+        this.optionsMessage = visionModelsResult.value.message
+      }
+    } else if (!this.optionsMessage) {
+      this.optionsMessage = visionModelsResult.reason instanceof Error
+        ? visionModelsResult.reason.message
+        : String(visionModelsResult.reason)
+    }
     await this.loadFilters(this.effectiveBoardSources().projectKey)
     if (requestVersion !== this.optionsRequestVersion) return
     this.optionsLoading = false
@@ -434,6 +487,7 @@ export class JiraConfigCardController {
       editBoardSource: (kind, patch) => { this.editBoardSource(kind, patch) },
       toggleFilter: (kind, filterId) => { this.toggleFilter(kind, filterId) },
       editTemplate: (kind, patch) => { this.editTemplate(kind, patch) },
+      editImageProcessing: patch => { this.editImageProcessing(patch) },
       refreshOptions: () => { void this.loadOptions() },
       save: () => { void this.save() },
       discard: () => { this.discard() },
@@ -496,11 +550,19 @@ export class JiraConfigCardController {
     this.publish()
   }
 
+  editImageProcessing(patch: Partial<ImageProcessingSettings>): void {
+    const next = this.effectiveImageProcessing()
+    this.imageProcessingDraft = { ...next, ...patch }
+    this.clearFailure()
+    this.publish()
+  }
+
   discard(): void {
     this.baseUrlDraft = null
     this.tokenDraft = ''
     this.boardSourcesDraft = null
     this.promptTemplatesDraft = null
+    this.imageProcessingDraft = null
     this.clearFailure()
     this.publish()
   }
@@ -533,6 +595,7 @@ export class JiraConfigCardController {
           baseUrl,
           boardSources: state.boardSources,
           promptTemplates: state.promptTemplates,
+          imageProcessing: state.imageProcessing,
         })
       } catch (error) {
         landed = false
@@ -545,6 +608,7 @@ export class JiraConfigCardController {
       this.tokenDraft = ''
       this.boardSourcesDraft = null
       this.promptTemplatesDraft = null
+      this.imageProcessingDraft = null
       void this.syncSettingsBaseUrl(baseUrl)
       void this.loadOptions()
     }

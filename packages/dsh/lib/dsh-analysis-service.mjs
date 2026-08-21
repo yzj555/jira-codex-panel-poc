@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { buildIssueDetailSnapshot, buildIssuePrompt, isBugIssue } from "@jira-workbench/core/index.mjs";
+import { createDshImageContextService } from "./dsh-image-context-service.mjs";
 
 const FIRST_TURN_GUARD = "【首轮约束】本轮只能进行需求理解、诊断分析和影响评估；禁止修改代码、配置、文件或数据，禁止执行提交。";
-const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 export class DshAnalysisServiceError extends Error {
   constructor(message, { code = "DSH_ANALYSIS_SERVICE_ERROR", statusCode = 400, details } = {}) {
@@ -140,19 +140,13 @@ function analysisMessage(issue, config, skills, supplementalDescription) {
   };
 }
 
-async function promptImageParts(materialized) {
-  const parts = [];
-  for (const attachment of Array.isArray(materialized) ? materialized : []) {
-    const mediaType = String(attachment?.mimeType || "").toLowerCase();
-    if (!SUPPORTED_IMAGE_TYPES.has(mediaType) || !attachment?.path) continue;
-    parts.push({
-      type: "image",
-      mediaType,
-      data: (await readFile(attachment.path)).toString("base64"),
-      name: String(attachment.label || "Jira 图片附件")
-    });
-  }
-  return parts;
+function isAttachmentAdmissionError(response) {
+  return response?.result?.ok === false && response.result.error?.code === "attachment-error";
+}
+
+function messageWithImageContext(message, imageContext) {
+  const textContext = String(imageContext?.textContext || "").trim();
+  return textContext ? `${message.text}\n\n${textContext}` : message.text;
 }
 
 export function createDshAnalysisService({
@@ -161,13 +155,18 @@ export function createDshAnalysisService({
   configStore,
   taskBoardLoader,
   issueBindings,
-  workspaceBindings
+  workspaceBindings,
+  imageContextService
 } = {}) {
   if (!ctx || typeof ctx.get !== "function") throw new TypeError("ctx is required.");
   if (!workbench || typeof workbench.getIssue !== "function") throw new TypeError("workbench is required.");
   if (!configStore || typeof configStore.load !== "function") throw new TypeError("configStore is required.");
   if (!issueBindings || typeof issueBindings.snapshot !== "function") throw new TypeError("issueBindings is required.");
   if (!workspaceBindings || typeof workspaceBindings.get !== "function") throw new TypeError("workspaceBindings is required.");
+  const images = imageContextService || createDshImageContextService({
+    ctx,
+    cacheRoot: join(dirname(String(configStore.configFile || join(process.cwd(), "config.json"))), "image-context-cache")
+  });
 
   async function createIssueAnalysis(issueKey, supplementalDescription = "", {
     expectedRevision,
@@ -228,8 +227,6 @@ export function createDshAnalysisService({
     const attachments = typeof taskBoardLoader?.materializeBugMonitorAttachments === "function"
       ? await taskBoardLoader.materializeBugMonitorAttachments(issue, config)
       : [];
-    const imageParts = await promptImageParts(attachments);
-
     const apiProxy = requireApiProxy(ctx);
     const created = await requireRpcResult(
       apiProxy.sessions.create(rpcRequest("create", { workspaceId: String(workspace.id) })),
@@ -245,9 +242,30 @@ export function createDshAnalysisService({
 
     const skills = await availableSkills(apiProxy, sessionId);
     const message = analysisMessage(issue, config, skills, supplement);
-    const content = [{ type: "text", text: message.text }, ...imageParts];
+    let imageContext = await images.prepare({ sessionId, attachments, config });
+    let content = [
+      { type: "text", text: messageWithImageContext(message, imageContext) },
+      ...(Array.isArray(imageContext?.imageParts) ? imageContext.imageParts : [])
+    ];
+    let promptResponse = await apiProxy.sessions.prompt(rpcRequest("prompt", {
+      sessionId,
+      mode: "queue",
+      content
+    }));
+    if (imageContext?.mode === "native" && isAttachmentAdmissionError(promptResponse)) {
+      // DSH validates image admission before appending the user message, so a
+      // text-only retry cannot duplicate the first turn. This also covers an
+      // advisory catalog that did not declare modalities but rejects at send.
+      imageContext = await images.prepare({ sessionId, attachments, config, forceFallback: true });
+      content = [{ type: "text", text: messageWithImageContext(message, imageContext) }];
+      promptResponse = await apiProxy.sessions.prompt(rpcRequest("prompt-fallback", {
+        sessionId,
+        mode: "queue",
+        content
+      }));
+    }
     await requireRpcResult(
-      apiProxy.sessions.prompt(rpcRequest("prompt", { sessionId, mode: "queue", content })),
+      Promise.resolve(promptResponse),
       "发送首条只读分析消息",
       { sessionId }
     );
@@ -328,6 +346,10 @@ export function createDshAnalysisService({
       workspaceId: String(workspace.id || ""),
       selectedSkill: message.skill,
       imageAttachmentCount: content.filter((part) => part.type === "image").length,
+      imageProcessing: {
+        mode: String(imageContext?.mode || "none"),
+        statuses: Array.isArray(imageContext?.statuses) ? imageContext.statuses : []
+      },
       issueSnapshot: buildIssueDetailSnapshot({
         issue,
         binding: storedBinding,

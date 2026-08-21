@@ -194,6 +194,9 @@ export function createDshConnectionConfigHandler(configStore) {
           : {}),
         ...(Object.prototype.hasOwnProperty.call(input || {}, "promptTemplates")
           ? { promptTemplates: input.promptTemplates }
+          : {}),
+        ...(Object.prototype.hasOwnProperty.call(input || {}, "imageProcessing")
+          ? { imageProcessing: input.imageProcessing }
           : {})
       });
       sendJson(response, 200, { ok: true, configuration });
@@ -213,7 +216,8 @@ export function createDshConfigOptionsHandler({
   getSkills,
   getApiProxy,
   getAgents,
-  listThreads
+  listThreads,
+  getLlm
 } = {}) {
   if (!configStore || typeof configStore.load !== "function") throw new TypeError("configStore is required.");
   if (!jira || typeof jira.fetchProjects !== "function" || typeof jira.fetchFilters !== "function") {
@@ -245,6 +249,41 @@ export function createDshConfigOptionsHandler({
               projectId: String(requestUrl.searchParams.get("projectId") || "").trim(),
               projectName: String(requestUrl.searchParams.get("projectName") || "").trim()
             });
+      } else if (resource === "vision-models") {
+        const llm = typeof getLlm === "function" ? await getLlm() : null;
+        if (!llm || typeof llm.listProviders !== "function" || typeof llm.listModels !== "function") {
+          payload = { available: false, models: [], message: "当前 DSH 未加载模型服务。" };
+        } else {
+          const listedProviders = llm.listProviders();
+          const providers = Array.isArray(listedProviders) ? listedProviders : [];
+          const discovered = await Promise.allSettled(providers.map(async (provider) => ({
+            provider,
+            models: await llm.listModels(String(provider?.id || ""))
+          })));
+          const models = [];
+          for (const result of discovered) {
+            if (result.status !== "fulfilled") continue;
+            const providerId = String(result.value.provider?.id || "").trim();
+            const providerName = String(result.value.provider?.name || providerId).trim();
+            for (const model of Array.isArray(result.value.models) ? result.value.models : []) {
+              if (!Array.isArray(model?.inputModalities) || !model.inputModalities.includes("image")) continue;
+              const id = String(model?.id || "").trim();
+              if (!providerId || !id) continue;
+              models.push({
+                provider: providerId,
+                providerName,
+                id,
+                name: String(model?.name || id).trim()
+              });
+            }
+          }
+          payload = {
+            available: true,
+            models: models.sort((left, right) => (
+              `${left.providerName}/${left.name}`.localeCompare(`${right.providerName}/${right.name}`, "zh-CN")
+            ))
+          };
+        }
       } else if (resource === "skills") {
         const catalog = workspaceCatalog && typeof workspaceCatalog.list === "function"
           ? await workspaceCatalog.list()
@@ -624,7 +663,7 @@ export async function apply(ctx, config = {}) {
   const core = createCoreService({
     dataRoot: dshDataRoot(),
     configFile: dshConfigFile(),
-    version: config.version || "0.33.4",
+    version: config.version || "0.33.5",
     workspaceCatalog,
     ...(secretStore ? { secretStore } : {})
   });
@@ -750,7 +789,8 @@ export async function apply(ctx, config = {}) {
         getSkills: () => ctx.get("skills"),
         getApiProxy: () => ctx.get("apiProxy"),
         getAgents: () => ctx.get("agents"),
-        listThreads: (options) => conversations.listThreads(options)
+        listThreads: (options) => conversations.listThreads(options),
+        getLlm: () => ctx.get("llm")
       })
     });
     const disposeSessionContext = httpCtx.webServer.register({

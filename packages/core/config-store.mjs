@@ -42,6 +42,11 @@ export const DEFAULT_SYNC_SETTINGS = Object.freeze({
   sheetsIntervalSeconds: 300,
   updateCheckEnabled: true
 });
+export const DEFAULT_IMAGE_PROCESSING = Object.freeze({
+  visionProvider: "",
+  visionModel: "",
+  localOcrEnabled: true
+});
 
 export class ConfigurationError extends Error {
   constructor(message, { code = "INVALID_CONFIGURATION", statusCode = 400 } = {}) {
@@ -349,6 +354,35 @@ export function normalizeSyncSettings(input, previous = {}) {
   };
 }
 
+export function normalizeImageProcessing(input, previous = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const prior = previous && typeof previous === "object" ? previous : {};
+  const visionProvider = String(
+    source.visionProvider ?? prior.visionProvider ?? DEFAULT_IMAGE_PROCESSING.visionProvider
+  ).trim();
+  const visionModel = String(
+    source.visionModel ?? prior.visionModel ?? DEFAULT_IMAGE_PROCESSING.visionModel
+  ).trim();
+  if (Boolean(visionProvider) !== Boolean(visionModel)) {
+    throw new ConfigurationError("视觉模型的 Provider 与 Model 必须同时选择或同时清空。", {
+      code: "INVALID_VISION_MODEL_ROUTE"
+    });
+  }
+  if (visionProvider.length > 300 || visionModel.length > 300) {
+    throw new ConfigurationError("视觉模型标识不能超过 300 个字符。", {
+      code: "INVALID_VISION_MODEL_ROUTE"
+    });
+  }
+  return {
+    visionProvider,
+    visionModel,
+    localOcrEnabled: normalizeBoolean(
+      source.localOcrEnabled,
+      prior.localOcrEnabled ?? DEFAULT_IMAGE_PROCESSING.localOcrEnabled
+    )
+  };
+}
+
 export function normalizeWecomWebhook(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -539,6 +573,7 @@ export function normalizeConfiguration(input, previous = {}) {
   const bugMonitorEnabled = Boolean(input.bugMonitorEnabled ?? previous.bugMonitorEnabled ?? false);
   const monitorGeneration = Math.max(0, Number(input.monitorGeneration ?? previous.monitorGeneration ?? 0) || 0);
   const syncSettings = normalizeSyncSettings(input.syncSettings, previous.syncSettings);
+  const imageProcessing = normalizeImageProcessing(input.imageProcessing, previous.imageProcessing);
 
   if (!token) {
     throw new ConfigurationError("请填写 Jira Data Center Personal Access Token (PAT)。", { code: "TOKEN_REQUIRED" });
@@ -566,6 +601,7 @@ export function normalizeConfiguration(input, previous = {}) {
     messageTemplate: promptTemplates.requirement.content,
     maxResults: normalizeMaxResults(input.maxResults ?? previous.maxResults),
     syncSettings,
+    imageProcessing,
     bugMonitorEnabled,
     monitorGeneration,
     wecomWebhook
@@ -660,6 +696,7 @@ function publicConfiguration(record, credentialStorage = "Windows DPAPI（当前
     messageTemplate: promptTemplates.requirement.content,
     maxResults: record?.maxResults || 100,
     syncSettings: normalizeSyncSettings(record?.syncSettings),
+    imageProcessing: normalizeImageProcessing(record?.imageProcessing),
     hasToken: Boolean(record?.tokenProtected),
     bugMonitorEnabled: Boolean(record?.bugMonitorEnabled),
     monitorGeneration: Math.max(0, Number(record?.monitorGeneration || 0)),
@@ -743,7 +780,7 @@ export function createConfigStore({
       });
     }
     const record = {
-      version: 5,
+      version: 6,
       deployment: normalized.deployment,
       baseUrl: normalized.baseUrl,
       email: normalized.email,
@@ -756,6 +793,7 @@ export function createConfigStore({
       promptTemplates: storedPromptTemplates(normalized.promptTemplates),
       maxResults: normalized.maxResults,
       syncSettings: normalized.syncSettings,
+      imageProcessing: normalized.imageProcessing,
       bugMonitorEnabled: normalized.bugMonitorEnabled,
       monitorGeneration: normalized.monitorGeneration,
       tokenProtected,
@@ -787,7 +825,7 @@ export function createConfigStore({
     const wasEnabled = Boolean(record.bugMonitorEnabled);
     const nextRecord = {
       ...record,
-      version: Math.max(5, Number(record.version || 1)),
+      version: Math.max(6, Number(record.version || 1)),
       bugMonitorEnabled: nextEnabled,
       monitorGeneration: !wasEnabled && nextEnabled
         ? Math.max(0, Number(record.monitorGeneration || 0)) + 1
@@ -806,7 +844,7 @@ export function createConfigStore({
     const record = await readRecord();
     const nextRecord = {
       ...(record || {}),
-      version: Math.max(5, Number(record?.version || 1)),
+      version: Math.max(6, Number(record?.version || 1)),
       baseUrl: normalizedBaseUrl,
       updatedAt: new Date().toISOString()
     };
@@ -818,7 +856,7 @@ export function createConfigStore({
   // DSH 等宿主会先把明文 Token 写入自己的 credentials 服务，再把固定引用
   // 写入本配置。这里在落盘前真实解析一次引用，避免出现“设置界面已保存，
   // 但 config.json 没有关联 Token、工具仍未配置”的半成功状态。
-  async function updateCredentialReference({ baseUrl, tokenReference, boardSources, promptTemplates }) {
+  async function updateCredentialReference({ baseUrl, tokenReference, boardSources, promptTemplates, imageProcessing }) {
     const normalizedBaseUrl = String(baseUrl || "").trim()
       ? normalizeBaseUrl(baseUrl)
       : "";
@@ -846,7 +884,9 @@ export function createConfigStore({
       }
     }
     const record = await readRecord();
-    const updatesPreferences = boardSources !== undefined || promptTemplates !== undefined;
+    const updatesPreferences = boardSources !== undefined
+      || promptTemplates !== undefined
+      || imageProcessing !== undefined;
     let normalizedPreferences = null;
     if (updatesPreferences) {
       if (!normalizedBaseUrl || !token) {
@@ -864,18 +904,20 @@ export function createConfigStore({
         baseUrl: normalizedBaseUrl,
         token,
         ...(boardSources !== undefined ? { boardSources } : {}),
-        ...(promptTemplates !== undefined ? { promptTemplates } : {})
+        ...(promptTemplates !== undefined ? { promptTemplates } : {}),
+        ...(imageProcessing !== undefined ? { imageProcessing } : {})
       }, previous);
     }
     const nextRecord = {
       ...(record || {}),
-      version: Math.max(5, Number(record?.version || 1)),
+      version: Math.max(6, Number(record?.version || 1)),
       baseUrl: normalizedBaseUrl,
       tokenProtected: reference,
       ...(normalizedPreferences
         ? {
             boardSources: normalizedPreferences.boardSources,
-            promptTemplates: storedPromptTemplates(normalizedPreferences.promptTemplates)
+            promptTemplates: storedPromptTemplates(normalizedPreferences.promptTemplates),
+            imageProcessing: normalizedPreferences.imageProcessing
           }
         : {}),
       updatedAt: new Date().toISOString()

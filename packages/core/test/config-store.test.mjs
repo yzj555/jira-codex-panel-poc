@@ -69,6 +69,11 @@ test("配置固定为 Data Center，文件只保存受保护 Token，公开配�
       sheetsIntervalSeconds: 300,
       updateCheckEnabled: true
     });
+    assert.deepEqual(publicConfig.imageProcessing, {
+      visionProvider: "",
+      visionModel: "",
+      localOcrEnabled: true
+    });
     assert.equal("token" in publicConfig, false);
     assert.equal(publicConfig.baseUrl, "https://demo.atlassian.net");
 
@@ -235,7 +240,7 @@ test("需求与 Bug 模板、技能独立保存，系统默认正文不固化到
     assert.equal(publicConfig.promptTemplates.bug.skill.name, "custom-bug-skill");
 
     const record = JSON.parse(await readFile(configFile, "utf8"));
-    assert.equal(record.version, 5);
+    assert.equal(record.version, 6);
     assert.equal("content" in record.promptTemplates.requirement, false);
     assert.equal(record.promptTemplates.bug.content, "诊断 {{key}}：{{description}}");
     assert.equal("messageTemplate" in record, false);
@@ -364,6 +369,11 @@ test("凭据引用更新可原子保存 DSH 的任务来源、模板与 Skill", 
           content: "诊断 {{key}}",
           skill: { name: "ct-devops-tracer", path: "", scope: "dsh" }
         }
+      },
+      imageProcessing: {
+        visionProvider: "openai",
+        visionModel: "gpt-4.1",
+        localOcrEnabled: false
       }
     });
     assert.equal(publicConfig.boardSources.projectKey, "GAME");
@@ -373,6 +383,11 @@ test("凭据引用更新可原子保存 DSH 的任务来源、模板与 Skill", 
       name: "ct-devops-tracer",
       path: "",
       scope: "dsh"
+    });
+    assert.deepEqual(publicConfig.imageProcessing, {
+      visionProvider: "openai",
+      visionModel: "gpt-4.1",
+      localOcrEnabled: false
     });
     const reloadedConfig = await store.getPublic();
     assert.deepEqual(reloadedConfig.promptTemplates.bug.skill, {

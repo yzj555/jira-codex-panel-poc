@@ -74,7 +74,7 @@ pnpm dsh web
 2. 填写 Jira 根地址，例如 `http://jira.example.com:8080`；不要填写 `/browse/...` 页面地址。
 3. 填写当前用户 PAT 并保存。Token 写入 DSH credentials 的固定引用 `JIRA_WORKBENCH_TOKEN`，公开设置和 Jira Workbench 数据文件都不保存明文。
 4. 从侧边栏打开“Jira 工作台”。
-5. 在工作台“设置”中选择 Jira 项目，分别配置需求/Bug 面板来源、首条消息模板与 DSH Skill。
+5. 在工作台“设置”中选择 Jira 项目，分别配置需求/Bug 面板来源、首条消息模板与 DSH Skill；“图片附件”中可选一个明确支持图片的 DSH 模型，并决定是否启用本地 OCR 降级。
 6. 打开一个 Issue，在“处理上下文”中选择一个或多个 DSH 项目；需要时关联已有会话，或新建分析会话并关联。
 
 ## 3. 安装后验收
@@ -87,6 +87,7 @@ pnpm dsh web
 - Issue 详情能显示父子上下文和附件，图片可以切换并放大预览。
 - 项目候选来自 DSH workspace registry；会话候选来自 DSH session query。
 - 新建并绑定会话后进入正式 DSH 会话；已绑定会话摘要栏显示 Jira 入口。
+- 当前会话模型支持图片时首条消息携带原图、文件名和 Jira 来源；文本模型会依次尝试配置的视觉模型与本地 OCR，均失败时仍创建会话并明确标记“图片未解析”。成功的视觉/OCR 结果按附件 ID 与文件 SHA-256 缓存。
 - SVN 审核读取明确选择的工作副本；最终提交仍要求面板确认和 DSH approval。
 
 仓库开发者还应在 Jira Workbench 根目录运行：
