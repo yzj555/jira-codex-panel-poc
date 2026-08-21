@@ -22,7 +22,7 @@ flowchart LR
     UI["@jira-workbench/dsh-client<br/>设置 / 工作台 / 会话浮窗"]
     Host["@jira-workbench/dsh<br/>Cordis Host 插件"]
     Core["@jira-workbench/core<br/>Jira / JXL / SVN 业务核"]
-    Providers["DSH providers<br/>credentials / approval<br/>workspaceRegistry / sessionQuery / apiProxy"]
+    Providers["DSH providers<br/>credentials / approval<br/>workspaceRegistry / sessionQuery / apiProxy / agentDefaultModel"]
     Jira["Jira Data Center / JXL"]
     SVN["SVN 工作副本 / 仓库"]
     Data["$DSH_HOME/jira-workbench"]
@@ -113,7 +113,7 @@ Codex 已提供对应 reader。DSH 初版没有会话语义审查 provider，使
 
 1. 读取当前 Jira 父子上下文、附件、模板和所选项目 Skill；图片附件先落入当前用户缓存。
 2. 通过 DSH Host 在所选项目创建正式会话。
-3. 解析会话当前模型能力：支持图片则发送原图与来源；明确不支持或 Host 拒绝图片时，按配置的视觉模型、本地 OCR、明确未解析提示顺序降级。视觉/OCR 成功结果以附件 ID 与文件 SHA-256 为键缓存，失败不长期缓存。
+3. 解析会话当前模型能力：支持图片则发送原图与来源；明确不支持时，优先将这个新 Jira 会话切到配置的图片模型并发送原图。由于 DSH 不允许含图片历史的会话再切回文本模型，该会话会继续使用图片模型，但插件立即恢复未来新会话的默认模型。无法安全切换或 Host 仍拒绝图片时，再按视觉解析、本地 OCR、明确未解析提示顺序降级。视觉/OCR 成功结果以附件 ID 与文件 SHA-256 为键缓存，失败不长期缓存。
 4. 发送首条只读分析消息；Skill 可用时以 Skill 约束为准，模板补充 Jira 上下文。
 5. Host 接受消息后才使用预期 revision 保存绑定。
 6. 绑定成功后由 DSH 原生 session API 打开会话。

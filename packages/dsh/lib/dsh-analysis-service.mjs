@@ -4,6 +4,7 @@ import { buildIssueDetailSnapshot, buildIssuePrompt, isBugIssue } from "@jira-wo
 import { createDshImageContextService } from "./dsh-image-context-service.mjs";
 
 const FIRST_TURN_GUARD = "【首轮约束】本轮只能进行需求理解、诊断分析和影响评估；禁止修改代码、配置、文件或数据，禁止执行提交。";
+const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 export class DshAnalysisServiceError extends Error {
   constructor(message, { code = "DSH_ANALYSIS_SERVICE_ERROR", statusCode = 400, details } = {}) {
@@ -35,6 +36,134 @@ function rpcRequest(prefix, payload) {
     rpcId: `jira-workbench-${prefix}-${randomUUID()}`,
     payload
   };
+}
+
+function imageProcessingRoute(config) {
+  const provider = String(config?.imageProcessing?.visionProvider || "").trim();
+  const model = String(config?.imageProcessing?.visionModel || "").trim();
+  return provider && model ? { provider, model } : null;
+}
+
+function containsImageAttachment(attachments) {
+  return (Array.isArray(attachments) ? attachments : []).some((attachment) => (
+    IMAGE_MIME_TYPES.has(String(attachment?.mimeType || "").toLowerCase())
+      && Boolean(String(attachment?.path || "").trim())
+  ));
+}
+
+async function routeSupportsImages(ctx, route) {
+  const llm = ctx?.get?.("llm");
+  if (!llm?.resolveModelInfo || !route?.provider || !route?.model) return null;
+  try {
+    const info = await llm.resolveModelInfo(route.provider, route.model);
+    return Array.isArray(info?.inputModalities) ? info.inputModalities.includes("image") : null;
+  } catch {
+    return null;
+  }
+}
+
+async function restoreDefaultModelSelection(ctx, selection) {
+  const defaults = ctx?.get?.("agentDefaultModel");
+  if (typeof defaults?.saveSelection !== "function") {
+    return { restored: false, reason: "unsupported" };
+  }
+  try {
+    await defaults.saveSelection(selection);
+    return { restored: true };
+  } catch (error) {
+    return { restored: false, reason: String(error?.code || error?.name || "restore-failed") };
+  }
+}
+
+async function selectVisualRouteForNativeImage({
+  ctx,
+  apiProxy,
+  sessionId,
+  config,
+  attachments,
+  afterAdmissionFailure = false
+} = {}) {
+  const route = imageProcessingRoute(config);
+  if (!route || !containsImageAttachment(attachments)) return { switched: false, reason: "not-needed" };
+  if (!apiProxy?.sessions?.models || !apiProxy?.sessions?.selectModel) {
+    return { switched: false, reason: "unsupported" };
+  }
+  if (typeof ctx?.get?.("agentDefaultModel")?.saveSelection !== "function") {
+    return { switched: false, reason: "default-model-service-unsupported" };
+  }
+  try {
+    const catalog = await apiProxy.sessions.models(rpcRequest("models-before-image", { sessionId }));
+    if (catalog?.result?.ok !== true) {
+      return { switched: false, reason: String(catalog?.result?.error?.code || "models-failed") };
+    }
+    const current = catalog.result.value?.current || {};
+    const original = {
+      provider: String(current.provider || "").trim(),
+      model: String(current.model || "").trim(),
+      ...(String(current.reasoningEffort || "").trim()
+        ? { reasoningEffort: String(current.reasoningEffort).trim() }
+        : {})
+    };
+    if (!original.provider || !original.model) return { switched: false, reason: "current-model-missing" };
+    if (original.provider === route.provider && original.model === route.model) {
+      return { switched: false, reason: "already-selected", route };
+    }
+    const [currentSupportsImages, visualSupportsImages] = await Promise.all([
+      routeSupportsImages(ctx, original),
+      routeSupportsImages(ctx, route)
+    ]);
+    if (visualSupportsImages === false) return { switched: false, reason: "visual-model-text-only" };
+    if (!afterAdmissionFailure && currentSupportsImages !== false) {
+      return {
+        switched: false,
+        reason: currentSupportsImages === true ? "current-model-supports-images" : "current-model-unknown"
+      };
+    }
+    const selected = await apiProxy.sessions.selectModel(rpcRequest("select-image-model", {
+      sessionId,
+      provider: route.provider,
+      model: route.model
+    }));
+    if (selected?.result?.ok !== true) {
+      return { switched: false, reason: String(selected?.result?.error?.code || "select-failed") };
+    }
+    const defaultRestore = await restoreDefaultModelSelection(ctx, original);
+    if (!defaultRestore.restored) {
+      // session.selectModel also changes DSH's default for future sessions. If
+      // that global preference cannot be put back safely, undo this session
+      // switch before any image is admitted and keep the existing fallback.
+      const undone = await apiProxy.sessions.selectModel(rpcRequest("undo-image-model", {
+        sessionId,
+        ...original
+      }));
+      if (undone?.result?.ok === true) {
+        return { switched: false, reason: `default-${defaultRestore.reason}` };
+      }
+      return {
+        switched: true,
+        original,
+        route,
+        defaultRestored: false,
+        warning: `default-${defaultRestore.reason};undo-${String(undone?.result?.error?.code || "failed")}`
+      };
+    }
+    return { switched: true, original, route, defaultRestored: true };
+  } catch (error) {
+    return { switched: false, reason: String(error?.code || error?.name || "select-failed") };
+  }
+}
+
+async function restoreModelImmediately(apiProxy, sessionId, routing) {
+  if (!routing?.switched || !apiProxy?.sessions?.selectModel) return;
+  try {
+    await apiProxy.sessions.selectModel(rpcRequest("restore-model-after-failure", {
+      sessionId,
+      ...routing.original
+    }));
+  } catch {
+    // The original prompt did not land, so restoration is best effort. The
+    // session remains visible and the user can still select a model manually.
+  }
 }
 
 async function requireRpcResult(promise, operation, { sessionId = "" } = {}) {
@@ -242,34 +371,69 @@ export function createDshAnalysisService({
 
     const skills = await availableSkills(apiProxy, sessionId);
     const message = analysisMessage(issue, config, skills, supplement);
+    let modelRouting = await selectVisualRouteForNativeImage({
+      ctx,
+      apiProxy,
+      sessionId,
+      config,
+      attachments
+    });
     let imageContext = await images.prepare({ sessionId, attachments, config });
     let content = [
       { type: "text", text: messageWithImageContext(message, imageContext) },
       ...(Array.isArray(imageContext?.imageParts) ? imageContext.imageParts : [])
     ];
-    let promptResponse = await apiProxy.sessions.prompt(rpcRequest("prompt", {
+    let promptRequest = rpcRequest("prompt", {
       sessionId,
       mode: "queue",
       content
-    }));
+    });
+    let promptResponse = await apiProxy.sessions.prompt(promptRequest);
     if (imageContext?.mode === "native" && isAttachmentAdmissionError(promptResponse)) {
-      // DSH validates image admission before appending the user message, so a
-      // text-only retry cannot duplicate the first turn. This also covers an
-      // advisory catalog that did not declare modalities but rejects at send.
-      imageContext = await images.prepare({ sessionId, attachments, config, forceFallback: true });
-      content = [{ type: "text", text: messageWithImageContext(message, imageContext) }];
-      promptResponse = await apiProxy.sessions.prompt(rpcRequest("prompt-fallback", {
-        sessionId,
-        mode: "queue",
-        content
-      }));
+      // An unknown current model may only reveal its text-only limitation at
+      // Host admission. That rejection happens before the message is stored,
+      // so it is safe to select the configured visual route and retry the same
+      // native image exactly once.
+      if (!modelRouting.switched) {
+        const lateRouting = await selectVisualRouteForNativeImage({
+          ctx,
+          apiProxy,
+          sessionId,
+          config,
+          attachments,
+          afterAdmissionFailure: true
+        });
+        if (lateRouting.switched) {
+          modelRouting = lateRouting;
+          imageContext = await images.prepare({ sessionId, attachments, config });
+          content = [
+            { type: "text", text: messageWithImageContext(message, imageContext) },
+            ...(Array.isArray(imageContext?.imageParts) ? imageContext.imageParts : [])
+          ];
+          promptRequest = rpcRequest("prompt-visual-model", { sessionId, mode: "queue", content });
+          promptResponse = await apiProxy.sessions.prompt(promptRequest);
+        }
+      }
+      if (isAttachmentAdmissionError(promptResponse)) {
+        // The configured route also rejected the original image, or the Host
+        // cannot switch models. Keep the existing compatibility chain as the
+        // final non-blocking fallback.
+        imageContext = await images.prepare({ sessionId, attachments, config, forceFallback: true });
+        content = [{ type: "text", text: messageWithImageContext(message, imageContext) }];
+        promptRequest = rpcRequest("prompt-fallback", { sessionId, mode: "queue", content });
+        promptResponse = await apiProxy.sessions.prompt(promptRequest);
+      }
     }
-    await requireRpcResult(
-      Promise.resolve(promptResponse),
-      "发送首条只读分析消息",
-      { sessionId }
-    );
-
+    try {
+      await requireRpcResult(
+        Promise.resolve(promptResponse),
+        "发送首条只读分析消息",
+        { sessionId }
+      );
+    } catch (error) {
+      await restoreModelImmediately(apiProxy, sessionId, modelRouting);
+      throw error;
+    }
     const title = [`分析 ${key}`, issue.title || ""].filter(Boolean).join(" ").slice(0, 180);
     if (typeof apiProxy.sessions.rename === "function") {
       try {
@@ -348,7 +512,17 @@ export function createDshAnalysisService({
       imageAttachmentCount: content.filter((part) => part.type === "image").length,
       imageProcessing: {
         mode: String(imageContext?.mode || "none"),
-        statuses: Array.isArray(imageContext?.statuses) ? imageContext.statuses : []
+        statuses: Array.isArray(imageContext?.statuses) ? imageContext.statuses : [],
+        modelRouting: modelRouting.switched
+          ? {
+              mode: "session-vision-model",
+              provider: modelRouting.route.provider,
+              model: modelRouting.route.model,
+              sessionRetainsModel: true,
+              defaultModelRestored: Boolean(modelRouting.defaultRestored),
+              ...(modelRouting.warning ? { warning: modelRouting.warning } : {})
+            }
+          : { mode: "unchanged", reason: String(modelRouting.reason || "not-needed") }
       },
       issueSnapshot: buildIssueDetailSnapshot({
         issue,

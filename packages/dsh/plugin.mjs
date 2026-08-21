@@ -5,7 +5,7 @@
 // 模型侧工具名就是 core 的原始工具名（jira_list_my_tasks 等），不再有
 // mcp__jira-workbench__ 前缀。
 //
-// 本插件注入 tools、workspaceRegistry、sessionQuery 与 apiProxy：前两类目录
+// 本插件注入 tools、workspaceRegistry、sessionQuery、apiProxy 与 agentDefaultModel：前两类目录
 // 分别提供 DSH 项目/会话，apiProxy 负责原生新建会话、读取 Skill 并发送首条
 // 消息。credentials/approval/webServer/settings 仍按能力可选注入。core 通过
 // ESM import 直接加载，不 import 任何 DSH 的 TypeScript 包。
@@ -76,7 +76,7 @@ export function dshConfigFile(env = process.env, osHome = homedir()) {
 
 export const name = "jira-workbench";
 
-export const inject = ["tools", "workspaceRegistry", "sessionQuery", "apiProxy"];
+export const inject = ["tools", "workspaceRegistry", "sessionQuery", "apiProxy", "agentDefaultModel"];
 
 export function createDshWorkspaceCatalog(ctx) {
   return {
@@ -663,7 +663,7 @@ export async function apply(ctx, config = {}) {
   const core = createCoreService({
     dataRoot: dshDataRoot(),
     configFile: dshConfigFile(),
-    version: config.version || "0.33.5",
+    version: config.version || "0.33.6",
     workspaceCatalog,
     ...(secretStore ? { secretStore } : {})
   });

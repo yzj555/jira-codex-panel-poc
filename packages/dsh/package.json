@@ -1,6 +1,6 @@
 {
   "name": "@jira-workbench/dsh",
-  "version": "0.33.5",
+  "version": "0.33.6",
   "type": "module",
   "main": "plugin.mjs",
   "exports": {
@@ -31,8 +31,8 @@
     }
   },
   "dependencies": {
-    "@jira-workbench/core": "0.33.5",
-    "@jira-workbench/dsh-client": "0.33.5",
+    "@jira-workbench/core": "0.33.6",
+    "@jira-workbench/dsh-client": "0.33.6",
     "schemastery": "^3.18.0",
     "zod": "^4.4.3"
   },

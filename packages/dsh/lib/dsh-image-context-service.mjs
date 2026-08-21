@@ -32,6 +32,18 @@ function attachmentCacheId(attachment) {
     || `${attachmentSource(attachment)}:${attachmentName(attachment)}`;
 }
 
+function visionFailure(error, route) {
+  const message = String(error?.message || error || "视觉模型调用失败。")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+  return {
+    provider: String(route?.provider || ""),
+    model: String(route?.model || ""),
+    message: message || "视觉模型调用失败。"
+  };
+}
+
 async function currentModelImageCapability(ctx, sessionId) {
   const apiProxy = ctx?.get?.("apiProxy");
   const llm = ctx?.get?.("llm");
@@ -154,10 +166,17 @@ function fallbackText(statuses) {
         ? "视觉解析"
         : status.mode === "ocr" ? "OCR 降级" : "图片未解析";
       const heading = `### [${marker}] ${status.filename}（来源：${status.source || "Jira 单子"}）`;
+      const failedVision = status.visionFailure
+        ? `已尝试视觉模型 ${status.visionFailure.provider}/${status.visionFailure.model}，但调用失败：${status.visionFailure.message}`
+        : "";
       if (status.mode === "unparsed") {
-        return `${heading}\n当前会话模型不支持图片，且配置的视觉模型与本地 OCR 均未产出可用结果。请让用户补充图片内容，或切换到支持图片的模型后再分析；不要假设图片内容。`;
+        return [
+          heading,
+          failedVision,
+          "当前会话模型不支持图片，且配置的视觉模型与本地 OCR 均未产出可用结果。请让用户补充图片内容，或切换到支持图片的模型后再分析；不要假设图片内容。"
+        ].filter(Boolean).join("\n");
       }
-      return `${heading}\n${status.text}`;
+      return [heading, failedVision, status.text].filter(Boolean).join("\n");
     })
   ].join("\n\n");
 }
@@ -215,7 +234,15 @@ export function createDshImageContextService({
         // otherwise usable visual/OCR result into a blocked Jira session.
         cached = { sha256: "", record: null };
       }
-      if (cached.record) {
+      // A cached visual result remains the strongest available result. OCR is
+      // reusable only when no visual route is configured; once the user
+      // selects a visual model, the old OCR record becomes a fallback instead
+      // of preventing the configured model from ever running.
+      const cachedOcr = cached.record?.mode === "ocr" ? cached.record : null;
+      if (cached.record && (
+        cached.record.mode === "vision"
+        || (!route && cached.record.mode === "ocr" && localOcrEnabled)
+      )) {
         return {
           attachmentId,
           filename: attachmentName(attachment),
@@ -227,6 +254,7 @@ export function createDshImageContextService({
         };
       }
 
+      let failedVision = null;
       if (route) {
         try {
           const text = await analyzeWithVision({ ctx, attachment, route, sessionId });
@@ -258,10 +286,24 @@ export function createDshImageContextService({
             cached: false,
             processor: record.processor
           };
-        } catch {
+        } catch (error) {
+          failedVision = visionFailure(error, route);
           // The configured visual route is optional. OCR is the next declared
           // fallback and its own result is surfaced below.
         }
+      }
+
+      if (cachedOcr && localOcrEnabled) {
+        return {
+          attachmentId,
+          filename: attachmentName(attachment),
+          source: attachmentSource(attachment),
+          mode: "ocr",
+          text: cachedOcr.text,
+          cached: true,
+          processor: cachedOcr.processor,
+          ...(failedVision ? { visionFailure: failedVision } : {})
+        };
       }
 
       if (localOcrEnabled) {
@@ -293,7 +335,8 @@ export function createDshImageContextService({
               mode: "ocr",
               text: record.text,
               cached: false,
-              processor: record.processor
+              processor: record.processor,
+              ...(failedVision ? { visionFailure: failedVision } : {})
             };
           }
         } catch {
@@ -309,7 +352,8 @@ export function createDshImageContextService({
         source: attachmentSource(attachment),
         mode: "unparsed",
         text: "",
-        cached: false
+        cached: false,
+        ...(failedVision ? { visionFailure: failedVision } : {})
       };
     });
 

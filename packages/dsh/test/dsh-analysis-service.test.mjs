@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -28,10 +28,29 @@ function issue(key = "CT-300") {
   };
 }
 
-async function fixture({ promptResult, promptResults, beforePrompt, sessionIds = ["session-created"], imageContextService } = {}) {
+async function fixture({
+  promptResult,
+  promptResults,
+  beforePrompt,
+  sessionIds = ["session-created"],
+  imageContextService,
+  configuration,
+  materializedAttachments = [],
+  modelSelection = { provider: "main", model: "chat" },
+  modelModalities = {}
+} = {}) {
   const directory = await mkdtemp(join(tmpdir(), "jira-workbench-dsh-analysis-"));
   const issueBindings = createIssueBindingStore({ file: join(directory, "bindings.json") });
-  const calls = { create: [], skills: [], prompt: [], rename: [] };
+  const calls = {
+    create: [],
+    skills: [],
+    prompt: [],
+    rename: [],
+    models: [],
+    selectModel: [],
+    defaultModelRestore: []
+  };
+  let currentModel = { ...modelSelection };
   const apiProxy = {
     sessions: {
       create(request) {
@@ -48,6 +67,21 @@ async function fixture({ promptResult, promptResults, beforePrompt, sessionIds =
       rename(request) {
         calls.rename.push(request.payload);
         return ok({ title: request.payload.title, seq: 3 });
+      },
+      models(request) {
+        calls.models.push(request.payload);
+        return ok({ current: { ...currentModel }, groups: [], failures: [], routable: true });
+      },
+      selectModel(request) {
+        calls.selectModel.push(request.payload);
+        currentModel = {
+          provider: request.payload.provider,
+          model: request.payload.model,
+          ...(request.payload.reasoningEffort
+            ? { reasoningEffort: request.payload.reasoningEffort }
+            : {})
+        };
+        return ok({ selected: { ...currentModel } });
       }
     },
     skills: {
@@ -69,12 +103,27 @@ async function fixture({ promptResult, promptResults, beforePrompt, sessionIds =
         if (name === "workspaceRegistry") {
           return { list: () => [{ id: "workspace-alpha", path: "F:\\work\\alpha", title: "Alpha" }] };
         }
+        if (name === "llm") {
+          return {
+            async resolveModelInfo(provider, model) {
+              return { inputModalities: modelModalities[`${provider}/${model}`] || ["text"] };
+            }
+          };
+        }
+        if (name === "agentDefaultModel") {
+          return {
+            async saveSelection(selection) {
+              calls.defaultModelRestore.push(selection);
+            }
+          };
+        }
         return undefined;
       }
     },
     workbench: { async getIssue(issueKey) { return { issue: issue(issueKey) }; } },
     configStore: {
       async load() {
+        if (configuration) return configuration;
         return {
           messageTemplate: "模板降级内容",
           promptTemplates: {
@@ -84,7 +133,7 @@ async function fixture({ promptResult, promptResults, beforePrompt, sessionIds =
         };
       }
     },
-    taskBoardLoader: { async materializeBugMonitorAttachments() { return []; } },
+    taskBoardLoader: { async materializeBugMonitorAttachments() { return materializedAttachments; } },
     issueBindings,
     ...(imageContextService ? { imageContextService } : {}),
     workspaceBindings: {
@@ -131,6 +180,75 @@ test("DSH 新建分析会话在指定项目发送只读首条消息后再保存�
   const stored = await issueBindings.snapshot();
   assert.equal(stored.bindings["CT-300"].threadId, "session-created");
   assert.equal(stored.bindings["CT-300"].runtimeOwner, "dsh");
+});
+
+test("DSH 当前模型明确不支持图片时切到配置的视觉模型并发送原图", async (t) => {
+  const attachments = [];
+  const { directory, service, calls } = await fixture({
+    materializedAttachments: attachments,
+    modelSelection: { provider: "text-provider", model: "text-model", reasoningEffort: "high" },
+    modelModalities: {
+      "text-provider/text-model": ["text"],
+      "vision-provider/vision-model": ["text", "image"]
+    },
+    configuration: {
+      messageTemplate: "模板降级内容",
+      promptTemplates: {
+        requirement: { content: "需求模板", skill: { name: "project-requirement" } },
+        bug: { content: "Bug 模板", skill: null }
+      },
+      imageProcessing: {
+        visionProvider: "vision-provider",
+        visionModel: "vision-model",
+        localOcrEnabled: true
+      }
+    }
+  });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const imagePath = join(directory, "jira-evidence.png");
+  await writeFile(imagePath, Buffer.from("89504e470d0a1a0a", "hex"));
+  attachments.push({
+    attachmentId: "image-1",
+    filename: "jira-evidence.png",
+    label: "jira-evidence.png",
+    mimeType: "image/png",
+    path: imagePath,
+    sourceIssueKey: "CT-300",
+    sourceLabel: "当前单子"
+  });
+
+  const result = await service.createIssueAnalysis("CT-300", "", {
+    expectedRevision: 0,
+    projectScopeId: "scope-alpha"
+  });
+
+  assert.equal(calls.selectModel.length, 1);
+  assert.deepEqual(
+    {
+      sessionId: calls.selectModel[0].sessionId,
+      provider: calls.selectModel[0].provider,
+      model: calls.selectModel[0].model
+    },
+    { sessionId: "session-created", provider: "vision-provider", model: "vision-model" }
+  );
+  assert.equal(calls.prompt.length, 1);
+  assert.equal(calls.prompt[0].content.some((part) => part.type === "image"), true);
+  assert.doesNotMatch(calls.prompt[0].content[0].text, /图片附件处理结果|视觉解析|OCR 降级/);
+  assert.equal(calls.defaultModelRestore.length, 1);
+  assert.deepEqual(calls.defaultModelRestore[0], {
+    provider: "text-provider",
+    model: "text-model",
+    reasoningEffort: "high"
+  });
+  assert.equal(result.imageAttachmentCount, 1);
+  assert.equal(result.imageProcessing.mode, "native");
+  assert.deepEqual(result.imageProcessing.modelRouting, {
+    mode: "session-vision-model",
+    provider: "vision-provider",
+    model: "vision-model",
+    sessionRetainsModel: true,
+    defaultModelRestored: true
+  });
 });
 
 test("DSH Host 拒绝原图后自动降级为文本图片说明且只发送一个有效首轮", async (t) => {

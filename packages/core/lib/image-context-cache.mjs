@@ -59,6 +59,15 @@ function normalizedRecord(value, { attachmentId, sha256 }) {
   };
 }
 
+function keepsExistingRecord(existing, incoming) {
+  if (!existing) return false;
+  // Visual analysis is richer than OCR. Never let a later OCR write downgrade
+  // a visual cache record, while allowing a successful visual call to replace
+  // the OCR fallback stored before the user configured a visual model.
+  if (existing.mode === "vision") return true;
+  return incoming.mode === "ocr";
+}
+
 export function createImageContextCache({ cacheRoot } = {}) {
   const root = String(cacheRoot || "").trim();
   if (!root) throw new TypeError("cacheRoot is required.");
@@ -114,16 +123,21 @@ export function createImageContextCache({ cacheRoot } = {}) {
     const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`;
     await mkdir(join(root, attachmentDirectoryName(id)), { recursive: true });
     try {
+      const beforeWrite = await lookup({ attachmentId: id, sha256 });
+      if (keepsExistingRecord(beforeWrite.record, record)) return beforeWrite.record;
       await writeFile(temporary, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
       try {
         await rename(temporary, destination);
       } catch (error) {
-        if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
-        // Another concurrent analyzer may have published the exact same
-        // content-addressed record first. Its validated record is equivalent.
+        if (error?.code !== "EEXIST" && error?.code !== "EPERM" && error?.code !== "EACCES") throw error;
         const existing = await lookup({ attachmentId: id, sha256 });
-        if (!existing.record) throw error;
-        return existing.record;
+        if (keepsExistingRecord(existing.record, record)) return existing.record;
+        if (existing.record?.mode !== "ocr" || record.mode !== "vision") throw error;
+        // Windows rename does not replace an existing destination. Cache files
+        // are derived and recoverable, so remove only this exact validated OCR
+        // record and publish the richer visual result in its place.
+        await rm(destination, { force: true });
+        await rename(temporary, destination);
       }
     } finally {
       await rm(temporary, { force: true }).catch(() => {});

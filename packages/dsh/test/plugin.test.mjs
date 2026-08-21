@@ -158,7 +158,7 @@ test("Jira 配置卡片以插件配置服务为准，不因 DSH settings 尚未�
 
 test("无 DSH 审批服务时只注册 13 个只读工具", async () => {
   assert.equal(name, "jira-workbench");
-  assert.deepEqual(inject, ["tools", "workspaceRegistry", "sessionQuery", "apiProxy"]);
+  assert.deepEqual(inject, ["tools", "workspaceRegistry", "sessionQuery", "apiProxy", "agentDefaultModel"]);
 
   const { ctx, registered } = mockCtx();
   await apply(ctx, { version: "0.32.3" });

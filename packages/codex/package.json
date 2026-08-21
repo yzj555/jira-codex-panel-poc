@@ -1,6 +1,6 @@
 {
   "name": "jira-workbench-codex",
-  "version": "0.33.5",
+  "version": "0.33.6",
   "private": true,
   "type": "module",
   "description": "Codex Desktop adapter: App Server adapter, CDP injection, installer, and official Plugin/MCP Apps UI.",

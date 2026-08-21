@@ -48,3 +48,41 @@ test("未解析失败不能写入长期图片上下文缓存", async (t) => {
     /Only successful vision or OCR results/
   );
 });
+
+test("视觉解析可以升级已有 OCR 缓存，后续 OCR 不会覆盖视觉结果", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-image-context-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const image = join(directory, "image.png");
+  await writeFile(image, Buffer.from("same-image"));
+  const cache = createImageContextCache({ cacheRoot: join(directory, "cache") });
+
+  await cache.store({
+    attachmentId: "902",
+    filePath: image,
+    mode: "ocr",
+    text: "OCR 旧结果",
+    processor: { kind: "ocr", engine: "windows-media-ocr" }
+  });
+  const upgraded = await cache.store({
+    attachmentId: "902",
+    filePath: image,
+    mode: "vision",
+    text: "视觉模型的新结果",
+    processor: { kind: "vision", provider: "openai", model: "gpt-4.1" }
+  });
+  assert.equal(upgraded.mode, "vision");
+  assert.equal(upgraded.text, "视觉模型的新结果");
+
+  const refusedDowngrade = await cache.store({
+    attachmentId: "902",
+    filePath: image,
+    mode: "ocr",
+    text: "第二次 OCR",
+    processor: { kind: "ocr", engine: "tesseract" }
+  });
+  assert.equal(refusedDowngrade.mode, "vision");
+  assert.equal(refusedDowngrade.text, "视觉模型的新结果");
+  const hit = await cache.lookup({ attachmentId: "902", filePath: image });
+  assert.equal(hit.record.mode, "vision");
+  assert.equal(hit.record.processor.model, "gpt-4.1");
+});
