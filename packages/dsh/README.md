@@ -2,7 +2,7 @@
 
 DeepSeek Harness（DSH）Host 适配层。它在 DSH 进程内组装 `@jira-workbench/core`，把 Jira/JXL/SVN 工具注册到 Cordis，并把 DSH 的 credentials、approval、项目目录、会话目录和会话创建能力注入业务核。它不启动第二个 Jira HTTP 业务进程，也不使用 `dsh-mcp-client` 转接工具。
 
-> 当前 Jira Workbench 版本：`0.33.2`<br>
+> 当前 Jira Workbench 版本：`0.33.3`<br>
 > 当前验证的 DSH 版本：`0.1.0-rc.7`<br>
 > 详细安装、升级、卸载与故障排查：[INSTALL.md](INSTALL.md)
 

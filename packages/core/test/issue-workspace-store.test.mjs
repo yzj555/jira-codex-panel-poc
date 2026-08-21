@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createIssueBindingStore } from "../lib/issue-binding-store.mjs";
@@ -96,6 +96,7 @@ test("宿主项目目录列表按绝对路径规范化并去重", async () => {
 
 test("SVN 可仅凭 Jira 项目绑定工作，不要求 Codex 会话", async () => {
   const root = await mkdtemp(join(tmpdir(), "jira-workspaces-svn-"));
+  const canonicalRoot = await realpath(root);
   const bindingStore = createIssueBindingStore({ file: join(root, "issue-bindings.json") });
   const workspaceStore = createIssueWorkspaceStore({ file: join(root, "issue-workspaces.json") });
   const workspaceService = createIssueWorkspaceService({ store: workspaceStore });
@@ -118,7 +119,7 @@ test("SVN 可仅凭 Jira 项目绑定工作，不要求 Codex 会话", async () 
     const result = await svn.context({ issueKey: "CT-102" });
     assert.equal(result.scopeSelectionRequired, false);
     assert.equal(calls[0].threadId, "workspace:CT-102");
-    assert.equal(calls[0].workspaceContext.cwd, root);
+    assert.equal(calls[0].workspaceContext.cwd, canonicalRoot);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
