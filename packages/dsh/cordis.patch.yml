@@ -1,18 +1,27 @@
-# jira-workbench-dsh bundle patch: 进程内 host 插件。
+# @jira-workbench/dsh bundle patch: 进程内 host 插件 + 浏览器 UI。
 #
-# 本 patch 叠加在 dsh-base 之上，挂载 jira-workbench-dsh 自带的 plugin.mjs，
-# 把宿主无关的 core 工具面（@jira-workbench/core 的 buildToolDefinitions）
-# 直接注册到 DSH 的 ctx.tools。模型侧工具名就是 core 的原始工具名
-# （jira_list_my_tasks 等），不再有 mcp__jira-workbench__ 前缀。
+# 本 patch 叠加在 dsh-base 之上，挂载两行：
+# 1. jira-workbench —— @jira-workbench/dsh 自带的 plugin.mjs（host 半），把宿主
+#    无关的 core 工具面（@jira-workbench/core 的 buildToolDefinitions）直接注册
+#    到 DSH 的 ctx.tools。模型侧工具名就是 core 的原始工具名（jira_list_my_tasks
+#    等），不再有 mcp__jira-workbench__ 前缀。
+# 2. ui-jira-workbench —— @jira-workbench/dsh-client（client 半），浏览器端注册
+#    插件配置卡片（settings.plugin.item，key = jira-workbench）与侧边栏看板入口。
+#    客户端扫描据此发现 dsh.client 声明并 serve ./client（lib/client.js，由
+#    esbuild 构建，见该包的 scripts/build-client.mjs）。
 #
-# 覆盖 8 个 Jira 只读/流转工具与 11 个 SVN 审核工具（无 Codex 会话、桌面操作、
-# 自动 Bug 分析或 GitHub 更新）。SVN 审查降级为人工审核（无 DSH agent-loop
-# 审查 provider）。
+# 覆盖 13 个只读工具和 14 个受审批写工具（含 DSH 项目/会话目录、独立的 Jira→项目目录绑定，
+# 以及 DSH 原生新建分析会话；不含 Codex 桌面操作、自动 Bug 分析或 GitHub 更新）。没有 ctx.approval
+# 时只注册只读工具；SVN 审查降级为人工审核。
 #
-# 使用前提：@jira-workbench/core 与 jira-workbench-dsh 包须安装在 DSH 能解析
-# 的位置（$DSH_HOME/profiles/<name>/node_modules，或通过 bareModuleBaseUrl
-# 锚定）。plugin.mjs 是纯 JS（ESM），不依赖 DSH 的 TypeScript 编译产物。
+# 使用前提：@jira-workbench/core、@jira-workbench/dsh 与 @jira-workbench/dsh-client
+# 必须来自同一版本，并通过 `dsh plugin --profile <name> add` 安装到目标 profile。
+# GitHub Release 已携带构建后的 lib/client.js；只有源码修改 dsh-client 后才需要
+# 重新执行 `npm run build --workspace @jira-workbench/dsh-client`。完整步骤见 INSTALL.md。
 
 - insert:
     - id: jira-workbench
-      name: 'jira-workbench-dsh'
+      name: '@jira-workbench/dsh'
+
+    - id: ui-jira-workbench
+      name: '@jira-workbench/dsh-client'

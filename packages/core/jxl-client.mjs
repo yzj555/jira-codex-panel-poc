@@ -71,8 +71,14 @@ function userIdentity(user) {
   };
 }
 
+function sheetAccessLevel(value) {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+  return String(value.sheetAccess || value.access || "");
+}
+
 function matchesAccessRule(rule, user, access) {
-  if (rule?.access !== access || !rule?.holder) return false;
+  if (sheetAccessLevel(rule?.access) !== access || !rule?.holder) return false;
   if (rule.holder.type === "user") return user.alternateIds.has(String(rule.holder.id || ""));
   if (rule.holder.type === "group") return user.groups.has(String(rule.holder.id || ""));
   return false;
@@ -80,10 +86,11 @@ function matchesAccessRule(rule, user, access) {
 
 export function canViewJxlSheet(sheetData, currentUser) {
   const access = sheetData?.access;
-  if (!access || access.default === "edit") return true;
+  const defaultAccess = sheetAccessLevel(access?.default);
+  if (!access || defaultAccess === "edit") return true;
   const user = userIdentity(currentUser);
   if (access.rules?.some((rule) => matchesAccessRule(rule, user, "edit"))) return true;
-  if (access.default === "view") return true;
+  if (defaultAccess === "view") return true;
   return Boolean(access.rules?.some((rule) => matchesAccessRule(rule, user, "view")));
 }
 

@@ -1,0 +1,42 @@
+/* Sidebar footer action for the persistent Jira main-area workspace. */
+
+.root {
+  display: flex;
+}
+
+.trigger {
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--dsw-alias-label-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1;
+  transition: color .14s ease, background-color .14s ease;
+}
+
+.trigger:hover,
+.triggerActive {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.triggerActive {
+  color: #5272d2;
+  background: color-mix(in srgb, #5272d2 11%, var(--dsw-alias-bg-layer-3));
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+.label {
+  font-size: 13px;
+  line-height: 1.5;
+}

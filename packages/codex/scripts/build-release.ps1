@@ -46,9 +46,13 @@ try {
     Copy-Item -LiteralPath (Join-Path $root $relative) -Destination (Join-Path $stage $relative) -Force
   }
 
-  # Workspace packages: copy core and codex trees, excluding tests and dev runtime dirs.
+  # Keep one release archive for the complete product. The Codex updater still
+  # consumes this archive, while DSH users receive the matching Host + client
+  # adapters and the exact same Core version from the same signed input.
   Copy-ReleaseTree -Source (Join-Path $root 'packages\core') -Destination (Join-Path $stage 'packages\core') -ExcludeDirectory @('test')
   Copy-ReleaseTree -Source (Join-Path $root 'packages\codex') -Destination (Join-Path $stage 'packages\codex') -ExcludeDirectory @('test', '.runtime', '.cdp-profile')
+  Copy-ReleaseTree -Source (Join-Path $root 'packages\dsh') -Destination (Join-Path $stage 'packages\dsh') -ExcludeDirectory @('test')
+  Copy-ReleaseTree -Source (Join-Path $root 'packages\dsh-client') -Destination (Join-Path $stage 'packages\dsh-client') -ExcludeDirectory @('test', 'node_modules')
 
   foreach ($required in @(
     'packages\codex\install.cmd',
@@ -62,7 +66,11 @@ try {
     'packages\codex\.agents\plugins\marketplace.json',
     'packages\codex\server.mjs',
     'packages\codex\injector.mjs',
-    'packages\core\index.mjs'
+    'packages\core\index.mjs',
+    'packages\dsh\plugin.mjs',
+    'packages\dsh\cordis.patch.yml',
+    'packages\dsh-client\index.mjs',
+    'packages\dsh-client\lib\client.js'
   )) {
     if (-not (Test-Path -LiteralPath (Join-Path $stage $required) -PathType Leaf)) {
       throw "Release staging is missing required file: $required"

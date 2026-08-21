@@ -405,7 +405,8 @@ function normalizeSkillReference(value, fallback = null) {
 function isLegacyDefaultBugSkill(value) {
   const skill = value && typeof value === "object" ? value : null;
   return String(skill?.name || "").trim().toLowerCase() === "ct-devops-tracer"
-    && !String(skill?.path || "").trim();
+    && !String(skill?.path || "").trim()
+    && !String(skill?.scope || "").trim();
 }
 
 function isManagedLegacyTemplate(value) {
@@ -715,7 +716,7 @@ export function createConfigStore({
           : ""
       };
     } catch {
-      throw new ConfigurationError("Jira Token 无法由当前 Windows 用户解密，请重新配置。", {
+      throw new ConfigurationError(`Jira Token 无法从${credentialStorage}读取，请重新配置。`, {
         code: "TOKEN_DECRYPT_FAILED",
         statusCode: 500
       });
@@ -736,7 +737,7 @@ export function createConfigStore({
         wecomWebhookProtected = await resolveProtect(normalized.wecomWebhook, "wecomWebhook");
       }
     } catch {
-      throw new ConfigurationError("Jira Token 或企业微信 Webhook 无法写入 Windows DPAPI。", {
+      throw new ConfigurationError(`Jira Token 或企业微信 Webhook 无法写入${credentialStorage}。`, {
         code: "TOKEN_ENCRYPT_FAILED",
         statusCode: 500
       });
@@ -814,5 +815,85 @@ export function createConfigStore({
     return publicConfiguration(nextRecord, credentialStorage);
   }
 
-  return { configFile, load, prepare, save, clear, getPublic, setBugMonitorEnabled, updateBaseUrl };
+  // DSH 等宿主会先把明文 Token 写入自己的 credentials 服务，再把固定引用
+  // 写入本配置。这里在落盘前真实解析一次引用，避免出现“设置界面已保存，
+  // 但 config.json 没有关联 Token、工具仍未配置”的半成功状态。
+  async function updateCredentialReference({ baseUrl, tokenReference, boardSources, promptTemplates }) {
+    const normalizedBaseUrl = String(baseUrl || "").trim()
+      ? normalizeBaseUrl(baseUrl)
+      : "";
+    const reference = String(tokenReference || "").trim();
+    if (!reference || reference.length > 200 || !/^[A-Za-z][A-Za-z0-9_.:-]*$/.test(reference)) {
+      throw new ConfigurationError("Jira Token 凭据引用无效。", {
+        code: "INVALID_TOKEN_REFERENCE"
+      });
+    }
+    let token = "";
+    if (normalizedBaseUrl) {
+      try {
+        token = await resolveUnprotect(reference, "token");
+      } catch {
+        throw new ConfigurationError(`Jira Token 无法从${credentialStorage}读取，请重新保存 Token。`, {
+          code: "TOKEN_REFERENCE_UNAVAILABLE",
+          statusCode: 428
+        });
+      }
+      if (!String(token || "").trim()) {
+        throw new ConfigurationError("Jira Token 凭据尚未配置，请先填写并保存 Token。", {
+          code: "TOKEN_REFERENCE_UNAVAILABLE",
+          statusCode: 428
+        });
+      }
+    }
+    const record = await readRecord();
+    const updatesPreferences = boardSources !== undefined || promptTemplates !== undefined;
+    let normalizedPreferences = null;
+    if (updatesPreferences) {
+      if (!normalizedBaseUrl || !token) {
+        throw new ConfigurationError("请先配置 Jira 地址和 Token，再保存任务来源或消息模板。", {
+          code: "JIRA_NOT_CONFIGURED",
+          statusCode: 428
+        });
+      }
+      const previous = {
+        ...publicConfiguration(record, credentialStorage),
+        token
+      };
+      normalizedPreferences = normalizeConfiguration({
+        ...previous,
+        baseUrl: normalizedBaseUrl,
+        token,
+        ...(boardSources !== undefined ? { boardSources } : {}),
+        ...(promptTemplates !== undefined ? { promptTemplates } : {})
+      }, previous);
+    }
+    const nextRecord = {
+      ...(record || {}),
+      version: Math.max(5, Number(record?.version || 1)),
+      baseUrl: normalizedBaseUrl,
+      tokenProtected: reference,
+      ...(normalizedPreferences
+        ? {
+            boardSources: normalizedPreferences.boardSources,
+            promptTemplates: storedPromptTemplates(normalizedPreferences.promptTemplates)
+          }
+        : {}),
+      updatedAt: new Date().toISOString()
+    };
+    await mkdir(dirname(configFile), { recursive: true });
+    await writeFile(configFile, `${JSON.stringify(nextRecord, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    return publicConfiguration(nextRecord, credentialStorage);
+  }
+
+  return {
+    configFile,
+    load,
+    prepare,
+    save,
+    clear,
+    getPublic,
+    setBugMonitorEnabled,
+    updateBaseUrl,
+    updateCredentialReference
+  };
 }

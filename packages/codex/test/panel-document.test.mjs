@@ -64,6 +64,11 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.match(ui, /父子单共同提供需求上下文/);
   assert.match(ui, /aria-label="上一张图片"/);
   assert.match(ui, /aria-label="下一张图片"/);
+  assert.match(ui, /class="attachment-preview-stage" data-open-attachment-lightbox/);
+  assert.match(ui, /class="attachment-lightbox" role="dialog" aria-modal="true"/);
+  assert.match(ui, /attachmentLightboxOpen/);
+  assert.match(ui, /height: clamp\(320px, 52vh, 680px\)/);
+  assert.match(ui, /\.attachment-lightbox-stage img \{[^}]*width: 100%;[^}]*height: 100%;/);
   assert.match(ui, /svn-tree-dir/);
   assert.match(ui, /body\.svn-mode #svn-view/);
   assert.match(ui, /body\.svn-mode #loading \{ top: 57px; \}/);
@@ -77,6 +82,8 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.match(ui, /data-svn-category/);
   assert.match(ui, /人工审核（默认）/);
   assert.match(ui, /Codex 辅助审查/);
+  assert.match(ui, /snapshot\.capabilities\?\.codexReview === true/);
+  assert.match(ui, /当前宿主或任务没有可用的 Codex 会话，仅提供人工审核/);
   assert.match(ui, /svn_open_issue_external_diff/);
   assert.match(ui, /TortoiseSVN 比较/);
   assert.match(ui, /dblclick/);
@@ -103,20 +110,204 @@ test("官方 MCP Apps 工作台覆盖任务、详情、状态、附件、会话�
   assert.match(ui, /\.svn-message \{ background: var\(--panel\); color: var\(--text\); \}/);
   assert.match(ui, /data-svn-scroll="workbench"/);
   assert.match(ui, /document\.body\.classList\.add\("svn-mode"\)/);
+  assert.match(ui, /function enterSvnLayout\(\) \{[\s\S]*classList\.add\("svn-mode"\)[\s\S]*body > header[\s\S]*body > nav/);
+  assert.match(ui, /function leaveSvnLayout\(\) \{[\s\S]*if \(svnDedicatedMode\) return;[\s\S]*classList\.remove\("svn-mode"\)/);
+  assert.match(ui, /function showSvn\(\) \{[\s\S]*enterSvnLayout\(\);[\s\S]*renderSvn\(\);/);
+  assert.match(ui, /else \{ leaveSvnLayout\(\); document\.body\.classList\.add\("detail-active"\)/);
   assert.match(ui, /codex_create_and_bind_issue_analysis/);
+  assert.match(ui, /id="analysis-project-scope"/);
+  assert.match(ui, /expectedRevision: cache\.issue\.bindingsRevision/);
+  assert.match(ui, /type: "open-session"/);
+  assert.match(ui, /会话创建并确认消息已接收后才保存关联/);
   assert.match(ui, /codex_open_bound_issue_thread/);
+  assert.match(ui, /jira_list_available_workspaces/);
+  assert.match(ui, /id="workspace-select"/);
+  assert.match(ui, /选择 DSH 项目/);
+  assert.match(ui, /selectedWorkspace\?\.projectId/);
   assert.match(ui, /jira_get_bug_monitor_status/);
   assert.match(ui, /jira_set_bug_monitor_enabled/);
   assert.match(ui, /jira_get_update_status/);
   assert.match(ui, /id="version-status"/);
   assert.match(ui, /__JIRA_WORKBENCH_VERSION__/);
+  assert.match(ui, /__JIRA_WORKBENCH_SETTINGS_URL__/);
+  assert.match(ui, /EFFECTIVE_SETTINGS_URL/);
+  assert.match(ui, /SETTINGS_URL_PLACEHOLDER/);
+  assert.match(ui, /__JIRA_WORKBENCH_HOST_KIND__/);
+  assert.match(ui, /SESSION_HOST_NAME/);
+  assert.match(ui, /HOST_KIND === "dsh"/);
+  assert.match(ui, /source: "jira-workbench-dsh"/);
+  assert.match(ui, /type: "open-session"/);
   assert.match(ui, /ui\/initialize/);
   assert.match(ui, /tools\/call/);
   assert.match(ui, /ui\/open-link/);
   assert.match(ui, /LOCAL_TRANSPORT/);
   assert.match(ui, /new URL\("\/mcp", window\.location\.origin\)/);
   assert.match(ui, /jira-workbench-local-ui/);
+  assert.match(ui, /class="sheet-directory"/);
+  assert.match(ui, /class="sheet-table"/);
+  assert.match(ui, /data-sheet-sort/);
+  assert.match(ui, /data-sheet-filter/);
+  assert.match(ui, /class="sheet-row"/);
+  assert.match(ui, /sheetColumnValue\(issue, column\.key\)/);
+  assert.match(ui, /body\.sheets-active #sheets-view/);
+  assert.match(ui, /#board-view, #sheets-view, #detail-view, #svn-view \{[^}]*flex: 1/);
+  assert.match(ui, /\.columns \{[^}]*height: 100%/);
+  assert.match(ui, /\.list \{[^}]*overflow: auto[^}]*flex: 1/);
+  assert.match(ui, /else await selectTab\(activeTab\)/);
+  assert.match(ui, /-32602\|not found/i);
   assert.doesNotThrow(() => new Function(ui.match(/<script>([\s\S]*?)<\/script>/)?.[1] || ""));
+});
+
+test("DSH 会话详情、SVN 与设置统一进入主内容区工作台", async () => {
+  const [ui, dshContext, dshContextStyles, surface, surfaceStyles, panel, entry] = await Promise.all([
+    readFile(new URL("../../core/mcp/ui/task-board.html", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/JiraSessionContext.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/JiraSessionContext.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/JiraWorkspaceSurface.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/JiraWorkspaceSurface.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/JiraPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/index.ts", import.meta.url), "utf8")
+  ]);
+  assert.match(surface, /params\.set\('embed', 'detail'\)/);
+  assert.match(surface, /params\.set\('currentSession', route\.sessionId\)/);
+  assert.match(surface, /route\.kind === 'settings'/);
+  assert.match(surface, /<JiraConfigCard \{\.\.\.props\} standalone/);
+  assert.match(surface, /className=\{css\.backIcon\}[^>]*>←<\/span>/);
+  assert.match(surfaceStyles, /\.backButton \{[^}]*background:[^}]*box-shadow:/);
+  assert.match(surfaceStyles, /\.iconButton \{[^}]*box-shadow:/);
+  assert.match(dshContext, /jiraWorkspaceStore\.open\(\{ kind: 'detail'/);
+  assert.match(dshContext, /jiraWorkspaceStore\.open\(\{ kind: 'svn'/);
+  assert.match(dshContext, /jiraWorkspaceStore\.subscribe/);
+  assert.doesNotMatch(dshContext, /autoOpenedIssueRef/);
+  assert.match(dshContext, /className=\{css\.body\}/);
+  assert.match(dshContext, /className=\{css\.moreMenu\}/);
+  assert.match(dshContextStyles, /\.popover \{[^}]*position: fixed;[^}]*top: 56px;[^}]*right: 28px;[^}]*height: clamp\(440px, 76vh, 560px\);[^}]*grid-template-rows:/);
+  assert.match(dshContextStyles, /\.body \{[^}]*overflow: auto;/);
+  assert.match(dshContextStyles, /\.footer \{[^}]*border-top:/);
+  assert.match(entry, /conversation\.session\.header\.utilities[\s\S]*id: 'jira-workbench-session-context',[\s\S]*order: -10/);
+  assert.doesNotMatch(dshContext, /<Modal/);
+  assert.doesNotMatch(panel, /<Modal/);
+  assert.match(panel, /jiraWorkspaceStore\.toggleBoard/);
+  assert.match(panel, /data-jira-workbench-trigger/);
+  assert.match(surface, /addEventListener\('pointerdown', onPointerDown, true\)/);
+  assert.match(surface, /rootRef\.current\?\.contains\(target\)/);
+  assert.match(entry, /rootSlots\.inject\('shell\.overlay'/);
+  assert.match(entry, /id: 'jira-workbench-surface'/);
+  assert.match(ui, /const EMBED_DETAIL_MODE/);
+  assert.match(ui, /const WORKSPACE_EMBED_MODE/);
+  assert.match(ui, /notifyDesktopHost\("open-settings"\)/);
+  assert.match(ui, /body\.detail-embed:not\(\.workspace-embed\) > header/);
+  assert.match(ui, /document\.body\.classList\.add\("workspace-embed"\)/);
+  assert.match(ui, /EMBED_DETAIL_MODE && !WORKSPACE_EMBED_MODE/);
+  assert.match(ui, /处理上下文/);
+  assert.match(ui, /id="manage-association"/);
+  assert.match(ui, /id="manage-association" class="context-manage">更改关联<\/button>/);
+  assert.match(ui, /id="back" aria-label="返回任务列表"/);
+  assert.match(ui, /class="back-icon" aria-hidden="true">←<\/span><span>返回任务列表<\/span>/);
+  assert.match(ui, /back\.onclick = \(\) => void returnToTaskList\(\)/);
+  assert.match(ui, /notifyDesktopHost\("navigation-state", \{ view \}\)/);
+  assert.match(ui, /source === "jira-workbench-dsh-host"/);
+  assert.match(ui, /message\.type === "navigate-back"/);
+  assert.match(surface, /window\.history\.pushState/);
+  assert.match(surface, /window\.history\.back\(\)/);
+  assert.match(surface, /addEventListener\('popstate'/);
+  assert.match(surface, /source: 'jira-workbench-dsh-host'/);
+  assert.match(surface, /type: 'navigate-back'/);
+  assert.match(ui, /data-association-workspace/);
+  assert.match(ui, /name="association-default-workspace"/);
+  assert.match(ui, /name="association-conversation-mode"/);
+  assert.match(ui, /class="detail-side-rail"/);
+  assert.match(ui, /class="detail-command-panel" aria-label="任务操作"/);
+  assert.match(ui, /class="detail-side-rail">[\s\S]*\$\{detailCommandPanel\}<\/aside>/);
+  assert.doesNotMatch(ui, /class="detail-command-bar"/);
+  assert.match(ui, /class="detail-scroll"/);
+  assert.match(ui, /class="detail-modal-layer association-modal-layer"/);
+  assert.match(ui, /class="detail-modal-layer transition-modal-layer"/);
+  assert.match(ui, /role="dialog" aria-modal="true"/);
+  assert.match(ui, /\.detail-modal-layer \{[^}]*place-items: center/);
+  assert.match(ui, /\.command-actions \{[^}]*grid-template-columns: repeat\(2/);
+  assert.match(ui, /class="modal-close" aria-label="关闭处理上下文"/);
+  assert.doesNotMatch(ui, /class="detail-workspace-overlay/);
+  assert.match(ui, /id="open-transition-panel"/);
+  assert.doesNotMatch(ui, />Task actions</);
+  assert.match(ui, /id="association-thread-search"/);
+  assert.match(ui, /data-association-thread/);
+  assert.doesNotMatch(ui, /id="association-thread-select"/);
+  assert.match(ui, /persistAssociationWorkspaces/);
+  assert.match(ui, /保存时会校验最新数据/);
+  assert.match(ui, /function renderDetail\(options = \{\}\)/);
+  assert.match(ui, /options\.modalOnly/);
+  assert.match(ui, /patchSelectors: \["#attachment-preview-slot"\]/);
+  assert.match(ui, /syncAssociationWorkspacePicker\(\)/);
+  assert.match(ui, /syncTransitionChoice\(\)/);
+  assert.match(ui, /callTool\(TOOLS\.issue, \{ issueKey: key \}, \{ accept: false \}\)/);
+});
+
+test("DSH 插件设置只保留 Jira 连接，工作台设置保留完整高级配置", async () => {
+  const [card, styles, locales, controller, plugin] = await Promise.all([
+    readFile(new URL("../../dsh-client/src/client/JiraConfigCard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/JiraConfigCard.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/locales.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh-client/src/client/jira-config-card-controller.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../dsh/plugin.mjs", import.meta.url), "utf8")
+  ]);
+  assert.match(card, /type Section = 'connection' \| 'sources' \| 'templates'/);
+  assert.match(card, /standalone \? css\.workspaceCard : css\.pluginCard/);
+  assert.match(card, /\{standalone\s*\? \(\s*<nav className=\{css\.settingsNav\}/);
+  assert.match(card, /function SettingsNavItem/);
+  assert.match(card, /const settingsContentRef = useRef<HTMLDivElement>\(null\)/);
+  assert.match(card, /content\.addEventListener\('scroll', syncSection/);
+  assert.match(card, /const scrollToSection = \(next: Section\)/);
+  assert.match(card, /target="jira-settings-connection"/);
+  assert.match(card, /id="jira-settings-connection"/);
+  assert.match(card, /id="jira-settings-templates"/);
+  assert.match(card, /id="jira-settings-sources"/);
+  assert.doesNotMatch(card, /section === 'connection'\}\s*\? \(/);
+  assert.doesNotMatch(card, /section === 'sources'\}\s*\? \(/);
+  assert.doesNotMatch(card, /section === 'templates'\}\s*\? \(/);
+  assert.match(card, /card\.pluginSettingsHint/);
+  assert.match(card, /function ChoicePicker/);
+  assert.match(card, /document\.addEventListener\('pointerdown', onPointerDown, true\)/);
+  assert.match(card, /document\.addEventListener\('focusin', onFocusIn\)/);
+  assert.match(card, /document\.addEventListener\('keydown', onKeyDown, true\)/);
+  assert.match(card, /event\.stopPropagation\(\)/);
+  assert.match(card, /actionLabel=\{selectedSkill \? '更改 Skill' : '选择 Skill'\}/);
+  assert.match(card, /className=\{css\.choiceAffordance\} aria-hidden="true"/);
+  assert.match(card, /className=\{css\.choiceAction\}/);
+  assert.match(card, /className=\{clsx\(css\.refreshIcon/);
+  assert.match(card, /requirementSource/);
+  assert.match(card, /bugSource/);
+  assert.match(card, /requirementTemplate/);
+  assert.match(card, /bugTemplate/);
+  assert.match(card, /绑定 DSH Skill/);
+  assert.doesNotMatch(card, /<select/);
+  assert.match(styles, /\.pluginCard \.connectionGrid \{\s*grid-template-columns: 1fr;/);
+  assert.match(styles, /\.card \*,\s*\.card \*::before,\s*\.card \*::after \{\s*box-sizing: border-box;/);
+  assert.match(styles, /\.workspaceCard \.body \{[^}]*grid-template-columns: 188px minmax\(0, 1fr\)/);
+  assert.match(styles, /\.workspaceCard \.section \+ \.section \{[^}]*border-top:/);
+  assert.match(styles, /\.settingsNavItemActive/);
+  assert.match(styles, /\.settingsNavItem::before/);
+  assert.match(styles, /\.sourcePanel,\s*\.templatePanel \{[^}]*background: transparent;[^}]*box-shadow: none;/);
+  assert.match(styles, /\.sourcePanel \+ \.sourcePanel,\s*\.templatePanel \+ \.templatePanel \{[^}]*border-left:/);
+  assert.match(styles, /\.choiceTrigger \{[^}]*min-height: 44px;[^}]*border:[^}]*box-shadow:/);
+  assert.match(styles, /\.choiceTrigger \{[^}]*border-radius: 4px;/);
+  assert.match(styles, /\.choicePanel \{[^}]*border-radius: 6px;/);
+  assert.match(styles, /\.choiceChevron::before/);
+  assert.match(styles, /\.segmentActive,\s*\.templateModeActive \{[^}]*--panel-accent|\.segmentActive,\s*\.templateModeActive \{[^}]*var\(--panel-accent\)/);
+  assert.match(styles, /\.sourceGrid,\s*\.templateGrid \{[^}]*border-top:[^}]*border-bottom:[^}]*background:/);
+  assert.match(styles, /\.templatePreview \{[^}]*min-height: 170px;[^}]*border: 0;[^}]*border-left: 2px solid/);
+  assert.match(styles, /\.filterPicker \.searchInput \{[^}]*border-bottom:/);
+  assert.match(styles, /\.refreshIconBusy/);
+  assert.match(styles, /\.pluginSettingsNote/);
+  assert.match(locales, /'card\.pluginDescription'/);
+  assert.match(locales, /'card\.connectionSaveHint'/);
+  assert.match(controller, /\/jira-workbench\/config-options/);
+  assert.match(controller, /boardSources: state\.boardSources/);
+  assert.match(controller, /promptTemplates: state\.promptTemplates/);
+  assert.match(plugin, /createDshConfigOptionsHandler/);
+  assert.match(plugin, /resource === "projects"/);
+  assert.match(plugin, /resource === "filters"/);
+  assert.match(plugin, /resource === "skills"/);
 });
 
 test("SVN 文件行区分单击预览与双击 TortoiseSVN，且交互控件不会误触发", async () => {

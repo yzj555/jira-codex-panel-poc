@@ -29,9 +29,24 @@ export function runWithAgent(agent, fn) {
 
 function humanReason(action, payload) {
   const detail = payload && typeof payload === "object"
-    ? Object.entries(payload).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(", ")
+    ? Object.entries(payload)
+      .filter(([key]) => !/token|confirmationId/i.test(key))
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(", ")
     : String(payload ?? "");
-  const label = action === "jira-transition" ? "Jira 状态流转" : String(action);
+  const labels = {
+    "jira-transition": "Jira 状态流转",
+    "jira-bind-session": "关联 Jira 与 DSH 会话",
+    "jira-unbind-session": "解除 Jira 会话关联",
+    "jira-bind-workspace": "绑定 Jira 项目目录",
+    "jira-unbind-workspace": "解除 Jira 项目目录绑定",
+    "svn-create-review": "创建 SVN 审核快照",
+    "svn-cancel-review": "取消 Codex SVN 审查",
+    "svn-confirm-review": "确认 SVN 人工审核并签发提交许可",
+    "svn-reconcile-commit": "核对并更新 SVN 提交状态",
+    "svn-confirm-committed": "人工登记 SVN 提交结果",
+    "svn-abandon-review": "放弃 SVN 审核草稿"
+  };
+  const label = labels[action] || String(action);
   return `${label}：${detail}`;
 }
 
@@ -46,25 +61,33 @@ export function createDshApprovalProvider(approval, options = {}) {
   }
   const local = createLocalApprovalProvider(options);
 
+  async function approve(action, payload, { toolName = String(action || "jira-workbench") } = {}) {
+    const agent = agentStorage.getStore();
+    if (!agent || !agent.session) {
+      const error = new Error("审批上下文不可用：tool 执行缺少 agent，写操作已拒绝。");
+      error.code = "APPROVAL_CONTEXT_UNAVAILABLE";
+      error.statusCode = 409;
+      throw error;
+    }
+    const outcome = await approval.request({
+      agent,
+      toolName,
+      reason: humanReason(action, payload)
+    });
+    if (outcome !== "allowed-once") {
+      const error = new Error(outcome === "rejected"
+        ? "用户未批准该操作。"
+        : outcome === "cancelled" ? "审批已取消。" : "审批服务不可用，操作被拒绝。");
+      error.code = "APPROVAL_DENIED";
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
   return {
+    approve,
     async issue(action, payload) {
-      const agent = agentStorage.getStore();
-      if (!agent || !agent.session) {
-        throw new Error("审批上下文不可用：tool 执行缺少 agent。");
-      }
-      const outcome = await approval.request({
-        agent,
-        toolName: "jira_prepare_transition",
-        reason: humanReason(action, payload)
-      });
-      if (outcome !== "allowed-once") {
-        const error = new Error(outcome === "rejected"
-          ? "用户未批准该操作。"
-          : outcome === "cancelled" ? "审批已取消。" : "审批服务不可用，操作被拒绝。");
-        error.code = "APPROVAL_DENIED";
-        error.statusCode = 409;
-        throw error;
-      }
+      await approve(action, payload, { toolName: "jira_prepare_transition" });
       return local.issue(action, payload);
     },
     async consume(confirmationId, action) {

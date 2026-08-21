@@ -11,11 +11,31 @@ const version = normalizeVersion(packageJson.version);
 if (!tagVersion) throw new Error("必须提供 vX.Y.Z Release tag。");
 if (tagVersion !== version) throw new Error(`Release tag v${tagVersion} 与 package.json v${version} 不一致。`);
 
+for (const relative of [
+  "packages/core/package.json",
+  "packages/codex/package.json",
+  "packages/dsh/package.json",
+  "packages/dsh-client/package.json"
+]) {
+  const manifest = JSON.parse(await readFile(join(root, relative), "utf8"));
+  if (normalizeVersion(manifest.version) !== version) {
+    throw new Error(`${relative} 没有同步到 v${version}。`);
+  }
+}
+const dshManifest = JSON.parse(await readFile(join(root, "packages/dsh/package.json"), "utf8"));
+for (const dependency of ["@jira-workbench/core", "@jira-workbench/dsh-client"]) {
+  if (normalizeVersion(dshManifest.dependencies?.[dependency]) !== version) {
+    throw new Error(`packages/dsh/package.json 的 ${dependency} 没有同步到 v${version}。`);
+  }
+}
+
 const checks = [
   ["packages/codex/server.mjs", `const VERSION = "${version}";`],
   ["packages/codex/inject/client.js", `const VERSION = "${version}";`],
   ["packages/core/bin/serve.mjs", `const VERSION = "${version}";`],
   ["packages/core/index.mjs", `  version = "${version}"`],
+  ["packages/dsh/plugin.mjs", `    version: config.version || "${version}"`],
+  ["packages/dsh/README.md", `> 当前 Jira Workbench 版本：\`${version}\``],
   ["README.md", `> 当前版本：\`${version}\``]
 ];
 for (const [relative, marker] of checks) {

@@ -1,149 +1,169 @@
-# DSH 适配设计：宿主无关 core 的 provider 契约
+# DSH 适配设计
 
-本文定义 `@jira-workbench/core` 如何从「Codex 优先、MCP 绑定的 core」演进为「真宿主无关的 core」，以及 `jira-workbench-dsh` 适配层如何基于三个可注入 provider 接口接入 DSH。它是动手实现的契约依据，不是已完成的设计。
+本文记录 Jira Workbench 在 DeepSeek Harness（DSH）中的当前架构和长期边界。运行方式、安装命令和用户可见行为分别以 [README.md](README.md)、[INSTALL.md](INSTALL.md) 和自动化测试为准。
 
 ## 1. 目标
 
-让 core 的 Jira/JXL/SVN 业务规则与状态被任意宿主复用，宿主能力（密钥存储、敏感操作确认、会话审查数据源）全部通过构造参数注入，core 不 import 任何宿主的文件、协议、平台或对象模型。
+Jira、JXL、项目绑定和 SVN 规则只实现一次，由 `@jira-workbench/core` 持有。Codex 与 DSH 负责把各自宿主的凭据、审批、会话、项目和 UI 能力注入 Core，不在适配层复制业务状态机。
 
-## 2. 红线：宿主无关的三层
+DSH 适配必须满足以下约束：
 
-| 层 | 含义 | 判定标准 |
-| --- | --- | --- |
-| 1. 不 import 宿主文件 | core 不 import `@jira-workbench/codex` / `@jira-workbench/dsh` | 已成立 |
-| 2. 不绑定宿主协议/平台 | core 不依赖 MCP 协议、不硬编码 Windows DPAPI | 半成立（见 §3） |
-| 3. 接口形状不被某宿主语义绑架 | core 的抽象用业务语义，不用某宿主的对象模型 | 有反例（见 §3） |
+1. DSH 进程内直接组装 Core，不启动第二个 Jira HTTP 业务进程。
+2. Core 不 import DSH 或 Codex 的文件、对象模型和运行协议。
+3. Jira PAT 使用 DSH credentials，公开配置文件只保存引用名。
+4. 模型侧写操作没有 DSH approval 时不可用，不以本地确认或默认许可代替。
+5. 项目目录来自 DSH workspace registry，会话来自 DSH session query，两者分别绑定。
+6. Host 是业务事实来源，浏览器 Client 只负责呈现和显式用户操作。
 
-三条守则：
+## 2. 当前架构
 
-1. **core 接口只暴露业务语义**：`action` / `payload` / `reason` / `granted` / `thread` / `turn` / `touchedFiles` 这类词；不出现 `agent` / `CredentialRef` / `callId` / `ctx` / `Session.events` / `local:` 前缀。
-2. **宿主特有符号封在各自适配层**：DSH 的 `ctx.*` 只在 `packages/dsh` import；Codex 的 App Server/CDP 只在 `packages/codex` import。
-3. **降级语义保留**：core 不带任何 provider 时（`bin/serve.mjs`），三个接口各自有明确缺省实现，缺省不伪装可用。
+```mermaid
+flowchart LR
+    UI["@jira-workbench/dsh-client<br/>设置 / 工作台 / 会话浮窗"]
+    Host["@jira-workbench/dsh<br/>Cordis Host 插件"]
+    Core["@jira-workbench/core<br/>Jira / JXL / SVN 业务核"]
+    Providers["DSH providers<br/>credentials / approval<br/>workspaceRegistry / sessionQuery / apiProxy"]
+    Jira["Jira Data Center / JXL"]
+    SVN["SVN 工作副本 / 仓库"]
+    Data["$DSH_HOME/jira-workbench"]
 
-适配层依赖宿主是天经地义（它本就是适配层）；core 依赖宿主才是破坏。守则 1–3 是这条边界的可执行判定。
-
-## 3. 现状诊断
-
-### 3.1 第 2 层半成立
-
-- `mcp/jira-task-board-mcp.mjs` import `McpServer`（`@modelcontextprotocol/sdk`），工具定义与 MCP 协议耦合。core 一旦要进程内被 DSH 组装（DSH 工具是 `ctx.tools` 注册的 Cordis 工具，不走 MCP），此耦合必须解除。
-- `config-store.mjs` 的 `protectWithDpapi` / `unprotectWithDpapi` 硬编码 Windows DPAPI（`process.platform !== "win32"` 直接抛错）。DSH 的密钥走 `ctx.credentials`，core 需要可注入的密钥存储。
-
-### 3.2 第 3 层有反例
-
-`createSvnReviewManager` 的 `turnReader` / `sessionReader` 返回形状是 Codex 会话形状：`threadId` 带 `local:` 前缀（core 里 `readOfficialThread` 用 `replace(/^local:/i, "")` 剥离）、turn 有 `items`（`type: "userMessage"|"agentMessage"|"fileChange"`）、touched files 从 `fileChange` item 的 `changes[].path` 提取。这是「被 Codex 这一个 Consumer 绑架」的现行痕迹——DSH 若实现此接口，就不得不把 DSH `Session.events` 硬塞进 Codex 形状。
-
-## 4. 演进总览
-
-```
-前置重构（行为零变化，靠 215 测试锁回归）
-  ├─ A. 工具面从 MCP 协议解耦
-  └─ B. secretStore / approvalProvider 接口引入（先给 Codex 实现 = 现状缺省）
-
-连通性里程碑
-  └─ C. DSH 进程内 host（function plugin，替代独立 HTTP 进程）
-
-逐项接 provider
-  ├─ D. dshCredentialSecretStore（Token 走 ctx.credentials）
-  ├─ E. dshApprovalProvider（确认走 ctx.approval）
-  └─ F. dshSessionAuditProvider（SVN 审查读 DSH Session）
+    UI <-->|同源 API 与 DSH 原生导航| Host
+    Host --> Core
+    Providers --> Host
+    Core --> Jira
+    Core --> SVN
+    Core --> Data
 ```
 
-顺序约束：A 是 C/D/E/F 的前置（不解除 MCP 耦合，DSH 进程内无法注册 core 工具）；C 是 D/E 的前置（DSH 服务只在 DSH 进程内存在）；F 依赖 B 阶段把 `turnReader`/`sessionReader` 中立化。
+### 2.1 Core
 
-## 5. provider 契约
+Core 提供宿主无关的服务与工具定义：Jira 查询、父子上下文、JXL Sheets、附件、状态流转、项目目录绑定、SVN 审核和提交。工具先表达为 host-agnostic definitions，再由 Codex MCP adapter 或 DSH Cordis adapter 注册；DSH 不经过 MCP 转发。
 
-三个接口的签名骨架与职责边界。精确字段在各自实现里程碑定稿；本节锁定的是边界、语义与红线。
+### 2.2 DSH Host
 
-### 5.1 `secretStore` — 密钥存储
+`packages/dsh/plugin.mjs` 是纯 ESM function plugin。它完成以下组装：
 
+- 以 `$DSH_HOME/jira-workbench` 创建独立 Core data root。
+- 注入 DSH credential-reference secret store 和 approval provider。
+- 把 Core 工具注册到 `ctx.tools`，保留读写与开放世界安全注解。
+- 从 `workspaceRegistry` 提供项目目录，从 `sessionQuery` 提供会话目录。
+- 通过 `apiProxy` 创建原生会话、发送首条分析消息、读取 Skill 并跳转会话。
+- 提供同源工作台路由、设置 namespace、会话关联摘要和浏览器操作接口。
+
+### 2.3 DSH Client
+
+`@jira-workbench/dsh-client` 注册 DSH 原生浏览器扩展点：
+
+- `settings.plugin.item`：只显示 Jira 地址和 PAT 配置状态。
+- `sidebar.footer.action`：打开中心任务工作区。
+- `shell.overlay`：在中心区域承载任务首页、详情、设置、关联管理和 SVN 审核。
+- 会话 header action：只在当前 DSH 会话存在 Jira 关联时显示入口，并从入口附近展开浮窗。
+
+Client 不保存 Jira PAT、绑定 revision、审核快照或提交令牌。页面重新加载后从 Host 重新读取状态。
+
+## 3. Provider 约定
+
+### 3.1 `secretStore`
+
+Core 只依赖以下业务语义：
+
+```text
+protect(key, plaintext) -> storedReferenceOrCiphertext
+unprotect(key, storedValue) -> plaintext
 ```
-secretStore = {
-  mode: "dpapi" | "credential-ref",        // 配置 UI 展示用，core 不据此分支行为
-  protect(plaintext) → Promise<string>,    // 存储形态：dpapi 是 base64 密文；credential-ref 是引用名
-  unprotect(stored) → Promise<string>      // 还原明文；credential-ref 每次调用 resolve 真值
+
+- Codex/独立 Windows 服务默认使用 DPAPI 密文。
+- DSH 使用 `ctx.credentials.set/resolve`，配置文件保存 `JIRA_WORKBENCH_TOKEN` 或 `JIRA_WORKBENCH_WECOM_WEBHOOK` 引用。
+- `unprotect` 每次操作都重新 resolve，不跨操作缓存 PAT，确保 Token 轮换在下一次请求生效。
+
+同一份配置文件只能由一种 secret store 解释。Codex 与 DSH 默认使用不同 data root，因此不会把 DPAPI 密文和 credential reference 混写。
+
+### 3.2 `approvalProvider`
+
+写操作使用两阶段 `issue/consume/revoke`：
+
+```text
+issue(action, finalPayload) -> oneTimeGrant
+consume(grantId, action) -> finalPayload
+revoke(grantId)
+```
+
+DSH 在 `issue` 阶段调用 `ctx.approval.request`，只有一次性批准结果才生成本地 grant。`consume` 只接受未过期、未使用且 action 一致的 grant。没有 approval 服务时，Host 不注册 14 个写工具，只保留 13 个只读工具。
+
+面板是用户直接操作面，因此仍保留页面内参数确认；模型侧工具必须额外经过宿主 approval。两类确认不能互相替代。
+
+### 3.3 `sessionAuditProvider`
+
+Core 的 SVN 审查读取中性会话字段：messages、file changes、turn timestamps 和 touched files，不消费 Codex `items`、`fileChange` 或 DSH `Session.events` 原始结构。
+
+Codex 已提供对应 reader。DSH 初版没有会话语义审查 provider，使用 null provider 并明确降级为人工审核。该降级不影响 SVN 机械检查、不可变快照、提交前复检、显式路径 commit 和日志对账。
+
+## 4. 会话和项目目录
+
+项目绑定和会话绑定故意分离：
+
+| 数据 | 权威来源 | 本地映射 | 用途 |
+| --- | --- | --- | --- |
+| 项目目录候选 | DSH `workspaceRegistry` | `issue-workspaces.json` | 新会话工作目录、Skill 作用域、SVN 工作副本 |
+| 会话候选 | DSH `sessionQuery` | `issue-bindings.json` | 打开会话、会话浮窗、Jira 与会话一对一关联 |
+
+一个 Jira 可绑定多个项目目录，并选择一个 SVN 主目录；一个 Jira 同时只关联一个 DSH 会话。解除会话关联不会删除项目目录。两个 store 都使用 revision CAS，客户端基于旧 revision 的覆盖或删除会被拒绝。
+
+“新建并绑定”按以下顺序执行：
+
+1. 读取当前 Jira 父子上下文、附件、模板和所选项目 Skill。
+2. 通过 DSH Host 在所选项目创建正式会话。
+3. 发送首条只读分析消息；Skill 可用时以 Skill 约束为准，模板补充 Jira 上下文。
+4. Host 接受消息后才使用预期 revision 保存绑定。
+5. 绑定成功后由 DSH 原生 session API 打开会话。
+
+创建成功但 CAS 冲突时保留已创建会话，并明确返回“已创建但未绑定”，不会静默覆盖另一客户端的新绑定。
+
+## 5. 工具与安全边界
+
+DSH 当前共有 27 个工具：13 个只读工具和 14 个受审批写工具。实际清单由 Core tool definitions 生成，DSH adapter 不维护第二份工具实现。
+
+- Jira 只提供受控状态流转，不提供修改摘要、描述、评论或附件的工具。
+- SVN commit 只接受审核快照中的显式相对文件路径，不接受整个工作副本 `.`。
+- 未纳管、冲突、switched、external、缺失和超限文件不会被自动修复或自动加入版本控制。
+- SVN 命令结束后读取日志核对 revision；结果不明确时进入人工核对状态，禁止自动重试。
+- 项目、Filter、Sheet、Skill 和会话候选都实时读取权威数据源，不在 Client 中硬编码默认 ID 或本机路径。
+
+DSH 初版不提供 Codex 专属的自动 Bug 后台调度、企业微信自动分析推送、GitHub 自更新、App Server 或 CDP 桌面跳转。
+
+## 6. Bundle 与安装模型
+
+`@jira-workbench/dsh` 的 `package.json` 声明：
+
+```json
+{
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    }
+  }
 }
 ```
 
-- Codex 实现（缺省）：`dpapiSecretStore`，现状 `protectWithDpapi` / `unprotectWithDpapi` 原样搬入。
-- DSH 实现：`dshCredentialSecretStore`，`protect` 存 `CredentialRef`（环境变量名），`unprotect` 调 `ctx.credentials.resolve(ref)`。
+因此 `dsh plugin --profile web add @jira-workbench/dsh` 会在安装依赖后自动把 `@jira-workbench/dsh` 加入 `dsh.profile.bundles`。bundle patch 插入 Host 和 Client 两行；用户不需要编辑 DSH 源码或手工维护这两行。
 
-语义要点：
+三个 Jira Workbench 包以同一版本发布到 npm；普通用户只安装 Host，精确依赖会带上 Core 与 Client。源码开发或离线环境仍可通过同一 checkout 的三个本地 `link:` spec 安装。统一版本和完整步骤见 [INSTALL.md](INSTALL.md)。
 
-- `unprotect` 每次调用都 resolve，不跨操作缓存 —— 与 DSH credentials 的 per-operation 语义一致，token 轮换下次操作生效。
-- config.json 里 token 字段的存储形态由 `mode` 决定：`dpapi` 存密文，`credential-ref` 存引用名。
+## 7. 当前状态与后续边界
 
-**共享数据文件的约束（决策点 1）**：core 与 Codex 共享 `%LOCALAPPDATA%\jira-workbench\config.json`。若 DSH 把 token 写成 credential ref，Codex 壳读同一份文件会拿到「引用而非密文」→ 读侧 `secretStore` 也必须一致。因此 token 存储模式是**部署级**而非**宿主级**：同一份数据文件必须始终用同一个 `secretStore` 实现。DSH 若需独立数据目录，用 `JIRA_WORKBENCH_CONFIG_FILE` 覆盖，而非在同一文件里混用两种存储形态。
+以下迁移已经完成：
 
-### 5.2 `approvalProvider` — 敏感操作确认
+- Core 工具定义与 MCP 注册解耦。
+- secret store 可注入，DSH credentials 已接入。
+- approval provider 两阶段化，Jira 流转和 SVN 最终提交已接入 DSH approval。
+- Core 会话审查数据字段已经宿主中立化。
+- 项目目录和会话绑定已经分离，并接入 DSH 原生目录服务。
+- DSH 原生新建分析会话、模板/Skill、父子 Jira 上下文与图片附件链路已经接通。
+- DSH Client 已提供设置、中心工作区和会话 Jira 浮窗。
 
-core 现有两处「两阶段确认」：Jira 流转在 MCP 工具层走 `createActionConfirmationStore`（`issue` → 返回 `confirmationId` → `consume`），SVN commit 在 `svn-review-manager` 内部 `confirmations` Map（`confirmReview` 生成 token → `commitReview` 校验）——后者已内建在服务层，无需抽象。
+明确暂缓的能力只有两类：
 
-**已定稿（决策点 2，方案 B）**：`approvalProvider` 采用**两阶段 `issue`/`consume`**（形状同现有 `createActionConfirmationStore`），而非单阶段 `request`。理由：
+1. DSH 会话语义审查 provider：需要一个明确的 DSH 审查执行者和会话事件映射，当前人工审核是安全降级。
+2. DSH 自动更新和后台 Bug 调度：生命周期与守护进程归 DSH 部署所有，不能复用 Codex 的 Windows updater 或后台服务。
 
-- `prepare`/`confirm` 工具本身就是「最终参数复核」（issueKey、transitionId、expectedTargetStatus 均已确定），所以「issue 时审批」审批的正是最终参数——方案 i 的「审批时刻偏早」缺点实际不存在。
-- 「grant 跨 tool 调用存活」封装在各宿主 `approvalProvider` 实现内部（DSH 侧本地 grant store + ALS 传 agent），不污染 core。
-- core 独立服务缺省实现（`createLocalApprovalProvider` = `createActionConfirmationStore`）行为零变化，Codex 侧 216+ 测试不动。
-
-```
-approvalProvider = {
-  issue(action, payload)  → Promise<{ confirmationId, action, expiresAt }>,
-  consume(confirmationId, action) → Promise<payload>,   // 无效/过期抛 ActionConfirmationError
-  revoke(confirmationId) → boolean
-}
-```
-
-- `action` 是业务动作名（如 `jira-transition`），`payload` 是纯 JSON 业务参数 —— 不含 DSH 的 `agent`/`callId`/`toolName` 符号。
-- DSH 实现（`dshApprovalProvider`）：`issue` 里从 AsyncLocalStorage 读 agent，`await ctx.approval.request({ agent, toolName, reason })`，`allowed-once` 才委托本地 grant store 签发；`consume`/`revoke` 只委托本地 store。审批发生在「复核」工具调用内（open turn 内），满足 `ctx.approval.request` 的 turn-enclosed 前置。
-- Codex 实现：`createLocalApprovalProvider`（现状缺省），两阶段确认仍在 MCP Apps UI 驱动。
-
-### 5.3 `sessionAuditProvider` — 会话审查数据源
-
-core 的 `createSvnReviewManager` 已接受 `turnReader` / `sessionReader` 注入（§3.2），无需改契约签名，只需把返回形状中立化。中立化做的是：去掉 `local:` 前缀、去掉 Codex turn 的 `items` / `fileChange` 专属结构，换成中性「会话审查」形状。
-
-目标形状（F 阶段定稿）：
-
-```
-sessionAuditProvider = {
-  readThread(threadId, { includeTurns }) → thread | null,
-    // thread.turns[]: { turnId, startedAt, completedAt, messages: [{ role, text }], fileChanges: [{ path, observedAt }] }
-  readTurnResult(threadId, turnId) → turnResult | null,
-  readContext(threadId) → context | null,
-  readReviewTurn(threadId, options) → reviewTurn | null,
-  findReviewTurn({ ...lookupOptions, threadId }) → reviewTurn | null,
-  readConversationContext(threadId) → conversation | null,
-  readTouchedFiles(threadId, { after, cwd }) → [{ path, observedAt }]
-}
-```
-
-- Codex 实现：`codex-session-reader`（读 `.jsonl`，已中性）+ `codex-neutral-turn-reader`（F 阶段新增，把 App Server `thread/read` 原始形状映射成中性形状，`local:` 剥离在此下放）。
-- DSH 实现：`dshSessionAuditProvider`，把 `Session.events`（turn/start、tool 调用结果、touched files）映射成中性形状。**推迟**：DSH 侧 SVN 审查当前走人工审核（`createCoreService` 用 null provider，`codexReviewEnabled` 缺省 false），「DSH agent 跑审查」需要 subagent 编排，尚无 Consumer——按「require a current owner and need」不提前写映射。
-- 缺省：`createNullReviewAuditProvider`（现状，全返回空，SVN 审核降级人工）。
-
-红线：中性形状里 `threadId` 不带 `local:` 前缀（剥离逻辑下放到 Codex 适配层，core 只保留「比较两边 threadId 时归一化」的防御）；`fileChanges` 的 path 是绝对路径（DSH 侧自行 resolve 相对路径）。
-
-## 6. 关键差异与约束
-
-### 6.1 schema 库
-
-core 用 `zod/v4`（`import * as z from "zod/v4"`），DSH 用 `@deepseek-ai/schemastery`。工具面解耦（A 阶段）时须定死「schema 归属库」：建议 core 工具面继续用 zod（Codex 的 MCP 层零改动），DSH 适配层写一个 `zod → schemastery` 薄转换。避免两边各写一份 schema。
-
-### 6.2 缺省实现的完整性
-
-`bin/serve.mjs`（core 独立服务）不带任何宿主 provider 时：`secretStore` 用 DPAPI、`approvalProvider` 用本地令牌（`createActionConfirmationStore` 等价物）、`sessionAuditProvider` 用 `createNullReviewAuditProvider`。缺省不伪装可用 —— 审查降级人工、确认仍走一次性令牌、密钥仍 DPAPI。这正是「宿主无关」的验证基准：core 独立服务跑得起来，行为与今天一致。
-
-## 7. 迁移里程碑（每步可独立验证、可独立提交）
-
-1. **A（工具面解耦）**：把 19 个工具从 `McpServer.registerTool` 抽成 host-agnostic 结构（`名称 → { title, description, inputSchema, handler }`）；Codex 侧遍历回 MCP server。215 测试锁住行为零回归。**无新功能，纯重构。**
-2. **B（secretStore 接口引入）**：`secretStore` 接口（`{ mode, credentialStorage, protect, unprotect }`），Codex 实现 = `dpapiSecretStore`（现状缺省），`createConfigStore` 兼容旧的裸 `protect`/`unprotect` 参数。approvalProvider（E）与 sessionAuditProvider 中立化（F）都推迟到各自 Consumer 落地的阶段，避免「改接口形状却没有第二个 Consumer 验证」。
-3. **C（DSH 进程内 host）**：`packages/dsh` 写纯 JS function plugin（`plugin.mjs`，`name: jira-workbench`、`inject: ['tools']`），`apply` 里组装 core 服务、遍历 `buildToolDefinitions` 用 `ctx.tools.register` 注册，工具名无 `mcp__` 前缀。✅ 已实现并**通过真实 DSH 集成验证**：`@jira-workbench/core` 与 `jira-workbench-dsh` 经 junction 接入 `$DSH_HOME/profiles/node_modules`，独立 profile `jira-test`（bundle = dsh-base + jira-workbench-dsh）boot 后 `ctx.tools.schemas()` 列出 19 个 jira/svn 工具（8 Jira + 11 SVN，无缺失无多余）。集成验证暴露并修复：zod v4 `toJSONSchema` 输出根对象带 non-enumerable `~standard` 品牌属性，DSH 的 `snapshotJsonValue` 拒绝，需 JSON round-trip 剥离。
-4. **D（dshCredentialSecretStore）**：`packages/dsh/lib/dsh-credential-secret-store.mjs` 提供 `createDshCredentialSecretStore(credentials)`，`protect` 调 `ctx.credentials.set(ref, value)` 存真值、返回引用名；`unprotect` 每次 `ctx.credentials.resolve(ref)`。`config-store.mjs` 的 `protect/unprotect` 增加第二个 key 参数（`"token"` / `"wecomWebhook"`），DPAPI 忽略、credential-ref 用它派生引用名；`createCoreService` 透传 `secretStore`。✅ 已实现（226 测试全绿）。
-5. **E（approvalProvider 两阶段化）**：Jira 流转确认抽象为 `approvalProvider`（`issue`/`consume`/`revoke`，决策点 2 方案 B），core 独立服务缺省 `createLocalApprovalProvider`（= 现有 `createActionConfirmationStore`，行为零变化）；DSH 实现 `dshApprovalProvider` 在 `issue` 里 `await ctx.approval.request(...)`（通过 ALS 传 agent），`consume` 只校验本地 grant。SVN commit 确认已内建服务层，不动。✅ 已实现（231 测试全绿）。
-6. **F（sessionAuditProvider 中立化）**：core 的 `svn-review-manager` 改为消费中性形状（`turns[].messages` / `turns[].fileChanges`，去掉 `items` / `fileChange` / `userMessage` / `agentMessage` 解析，入参 `local:` strip 下放到适配层）；Codex 适配层新增 `codex-neutral-turn-reader` 把 App Server `thread/read` 原始形状映射成中性形状。✅ 中立化已完成（234 测试全绿）。**`dshSessionAuditProvider` 推迟**：DSH 侧 SVN 审查当前走人工审核（null provider），「DSH agent 跑审查」需要 subagent 编排，尚无 Consumer。
-
-## 8. 已决策项
-
-1. **token 共享数据文件**（§5.1）：token 存储模式是**部署级**配置 —— 同一份 `config.json` 必须始终用同一个 `secretStore` 实现，不允许 Codex（DPAPI）与 DSH（credential-ref）混写同一文件。DSH 如需独立数据目录，用 `JIRA_WORKBENCH_CONFIG_FILE` 覆盖到独立路径，而不是在同一文件里切换存储形态。
-2. **approvalProvider 方案 B**（§5.2）：两阶段 `issue`/`consume`/`revoke`，形状同现有 `createActionConfirmationStore`；`issue` 由宿主审批栈（DSH 的 `ctx.approval`，或 Codex 的 MCP Apps UI）在签发前把关，`consume` 只校验本地 grant。DSH 实现通过 ALS 把 `exec.agent` 传入 `issue`。此决策在 E 阶段落地。
-3. **schema 归属库**（§6.1）：core 工具面继续用 `zod/v4`（Codex MCP 层零改动）；DSH 适配层写一个 `zod → schemastery` 薄转换，不双写 schema。
-4. **工作台 UI（方向 C，未排入里程碑）**：先薄封装（Slot 里 iframe 加载 `task-board.html`，数据仍走 MCP 工具），后视需要 React 重写。依赖 1–3 落地后另行评估。
+新增能力时继续遵循本文件的宿主边界，不把 DSH `ctx.*`、Codex App Server 字段或浏览器状态写入 Core 数据模型。

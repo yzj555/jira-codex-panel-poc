@@ -14,12 +14,26 @@ for (const relative of [
   "package-lock.json",
   "packages/core/package.json",
   "packages/codex/package.json",
-  "packages/dsh/package.json"
+  "packages/dsh/package.json",
+  "packages/dsh-client/package.json"
 ]) {
   const path = join(root, relative);
   const value = JSON.parse(await readFile(path, "utf8"));
   value.version = version;
   if (value.packages?.[""]) value.packages[""].version = version;
+  if (relative === "packages/dsh/package.json") {
+    value.dependencies["@jira-workbench/core"] = version;
+    value.dependencies["@jira-workbench/dsh-client"] = version;
+  }
+  if (relative === "package-lock.json") {
+    for (const entry of Object.values(value.packages || {})) {
+      if (["@jira-workbench/core", "@jira-workbench/dsh-client", "@jira-workbench/dsh"].includes(entry?.name)) {
+        entry.version = version;
+      }
+      if (entry?.dependencies?.["@jira-workbench/core"]) entry.dependencies["@jira-workbench/core"] = version;
+      if (entry?.dependencies?.["@jira-workbench/dsh-client"]) entry.dependencies["@jira-workbench/dsh-client"] = version;
+    }
+  }
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
@@ -29,6 +43,8 @@ for (const [relative, pattern, replacement] of [
   ["packages/codex/inject/client.js", /const VERSION = "[^"]+";/, `const VERSION = "${version}";`],
   ["packages/core/bin/serve.mjs", /const VERSION = "[^"]+";/, `const VERSION = "${version}";`],
   ["packages/core/index.mjs", /  version = "[^"]+"/, `  version = "${version}"`],
+  ["packages/dsh/plugin.mjs", /    version: config\.version \|\| "[^"]+"/, `    version: config.version || "${version}"`],
+  ["packages/dsh/README.md", /> 当前 Jira Workbench 版本：`[^`]+`/, `> 当前 Jira Workbench 版本：\`${version}\``],
   ["README.md", /> 当前版本：`[^`]+`/, `> 当前版本：\`${version}\``]
 ]) {
   const path = join(root, relative);

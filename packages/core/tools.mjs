@@ -9,6 +9,10 @@ export const JIRA_SHEET_ISSUES_TOOL = "jira_get_sheet_issues";
 export const JIRA_LIST_TRANSITIONS_TOOL = "jira_list_transitions";
 export const JIRA_PREPARE_TRANSITION_TOOL = "jira_prepare_transition";
 export const JIRA_EXECUTE_TRANSITION_TOOL = "jira_execute_transition";
+export const JIRA_GET_WORKSPACES_TOOL = "jira_get_issue_workspaces";
+export const JIRA_LIST_AVAILABLE_WORKSPACES_TOOL = "jira_list_available_workspaces";
+export const JIRA_BIND_WORKSPACE_TOOL = "jira_bind_issue_workspace";
+export const JIRA_UNBIND_WORKSPACE_TOOL = "jira_unbind_issue_workspace";
 export const CODEX_LIST_THREADS_TOOL = "codex_list_bindable_threads";
 export const CODEX_BIND_ISSUE_TOOL = "codex_bind_issue_to_thread";
 export const CODEX_CLEAR_BINDING_TOOL = "codex_clear_issue_binding";
@@ -94,7 +98,7 @@ function bindingFor(bindingState, issueKey) {
   const defaultProjectScopeId = String(workspace.defaultProjectScopeId || rawScopes[0]?.id || "");
   return {
     threadId: String(binding.threadId),
-    title: String(binding.title || binding.threadTitle || "已关联 Codex 会话"),
+    title: String(binding.title || binding.threadTitle || "已关联会话"),
     runtimeOwner: String(binding.runtimeOwner || DESKTOP_APP_SERVER_RUNTIME_OWNER),
     updatedAt: String(binding.updatedAt || binding.boundAt || ""),
     projectScopes: rawScopes.map((scope, index) => ({
@@ -280,7 +284,14 @@ export function buildSheetIssuesSnapshot(result, { limit = MAX_LIMIT_PER_TYPE } 
     total: Number(result?.total || (result?.issues || []).length),
     issues: (result?.issues || [])
       .slice(0, safeLimit)
-      .map((issue) => normalizeTask(issue, result?.bindingState))
+      .map((issue) => ({
+        ...normalizeTask(issue, result?.bindingState),
+        projectName: String(issue?.projectName || ""),
+        fixVersions: (issue?.fixVersions || []).map(String),
+        collaborators: (issue?.collaborators || []).map((person) => ({
+          displayName: String(person?.displayName || person?.name || "未知用户")
+        }))
+      }))
       .filter((issue) => issue.key)
   };
 }
@@ -322,12 +333,14 @@ export function buildToolDefinitions({
   service,
   conversations,
   svn,
+  workspaces,
   automation,
   updates,
   desktop,
   approvalProvider = createLocalApprovalProvider()
 } = {}) {
   const definitions = [];
+  const desktopHostName = String(desktop?.hostName || "Codex Desktop").trim() || "Codex Desktop";
   function define(name, options, handler) {
     definitions.push({ name, ...options, handler });
   }
@@ -684,25 +697,117 @@ export function buildToolDefinitions({
     );
   }
 
+  if (typeof workspaces?.listAvailable === "function") {
+    define(
+      JIRA_LIST_AVAILABLE_WORKSPACES_TOOL,
+      {
+        title: "查看宿主项目列表",
+        description: "读取当前宿主已经添加的项目或工作区，供用户选择 Jira 的项目目录绑定。只读，不扫描会话，也不接受任意路径输入。",
+        inputSchema: {},
+        annotations: readOnlyAnnotations(),
+        _meta: uiMeta("正在读取宿主项目列表…", "宿主项目列表已读取")
+      },
+      async () => {
+        const result = await workspaces.listAvailable();
+        return {
+          structuredContent: { view: "availableWorkspaces", ...result },
+          content: [{ type: "text", text: `当前宿主提供 ${result.workspaces.length} 个可选项目。` }]
+        };
+      }
+    );
+  }
+
+  if (typeof workspaces?.get === "function") {
+    define(
+      JIRA_GET_WORKSPACES_TOOL,
+      {
+        title: "查看 Jira 绑定的项目目录",
+        description: "读取指定 Jira 当前绑定的一个或多个本机项目目录。该绑定独立于 Codex/DSH 会话，供 SVN 操作选择范围。只读。",
+        inputSchema: { issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/) },
+        annotations: readOnlyAnnotations(),
+        _meta: uiMeta("正在读取项目目录…", "项目目录已读取")
+      },
+      async ({ issueKey }) => {
+        const result = await workspaces.get(issueKey);
+        return {
+          structuredContent: { view: "workspaceBindings", ...result },
+          content: [{ type: "text", text: `${String(issueKey).toUpperCase()} 当前绑定 ${(result.binding?.workspace?.projectScopes || []).length} 个项目目录。` }]
+        };
+      }
+    );
+  }
+
+  if (typeof workspaces?.bind === "function") {
+    define(
+      JIRA_BIND_WORKSPACE_TOOL,
+      {
+        title: "绑定 Jira 项目目录",
+        description: "把用户明确选择的本机绝对目录绑定到 Jira。可追加多个目录并指定默认目录；不会创建或切换会话。",
+        inputSchema: {
+          issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
+          cwd: z.string().min(1).max(4_000),
+          projectId: z.string().max(500).optional().default(""),
+          projectLabel: z.string().max(500).optional().default(""),
+          makeDefault: z.boolean().optional().default(true),
+          replaceExisting: z.boolean().optional().default(false),
+          expectedRevision: z.number().int().min(0)
+        },
+        annotations: localMutationAnnotations(),
+        _meta: uiMeta("正在绑定项目目录…", "项目目录已绑定")
+      },
+      async (input) => {
+        const result = await workspaces.bind(input);
+        return {
+          structuredContent: { view: "workspaceBindings", ...result },
+          content: [{ type: "text", text: `${result.issueKey} 已绑定项目目录。` }]
+        };
+      }
+    );
+  }
+
+  if (typeof workspaces?.unbind === "function") {
+    define(
+      JIRA_UNBIND_WORKSPACE_TOOL,
+      {
+        title: "解除 Jira 项目目录绑定",
+        description: "解除指定项目目录；projectScopeId 为空时解除该 Jira 的全部项目目录。不会删除目录或修改工作副本。",
+        inputSchema: {
+          issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
+          projectScopeId: z.string().max(1_000).optional().default(""),
+          expectedRevision: z.number().int().min(0)
+        },
+        annotations: localDestructiveAnnotations(),
+        _meta: uiMeta("正在解除项目绑定…", "项目绑定已解除")
+      },
+      async (input) => {
+        const result = await workspaces.unbind(input);
+        return {
+          structuredContent: { view: "workspaceBindings", ...result },
+          content: [{ type: "text", text: `${result.issueKey} 的项目目录绑定已更新。` }]
+        };
+      }
+    );
+  }
+
   if (typeof conversations?.listThreads === "function") {
     define(
       CODEX_LIST_THREADS_TOOL,
       {
-        title: "查看可关联的 Codex 会话",
-        description: "通过官方 App Server 列出当前用户可读取的 Codex 会话，供人工选择 Jira 关联目标。只读。",
+        title: "查看可关联的宿主会话",
+        description: "通过当前宿主的官方会话目录列出用户可读取的会话，供人工选择 Jira 关联目标。只读。",
         inputSchema: {
           searchTerm: z.string().max(200).optional().default(""),
           cwd: z.string().max(2_000).optional().default(""),
           limit: z.number().int().min(1).max(200).optional().default(50)
         },
         annotations: readOnlyAnnotations(),
-        _meta: uiMeta("正在读取 Codex 会话…", "Codex 会话已读取")
+        _meta: uiMeta("正在读取宿主会话…", "宿主会话已读取")
       },
       async ({ searchTerm, cwd, limit }) => {
         const result = await conversations.listThreads({ searchTerm, cwd, limit });
         return {
           structuredContent: { view: "threads", ...result },
-          content: [{ type: "text", text: `已读取 ${result.total} 个可关联的 Codex 会话。` }]
+          content: [{ type: "text", text: `已读取 ${result.total} 个可关联的宿主会话。` }]
         };
       }
     );
@@ -732,17 +837,22 @@ export function buildToolDefinitions({
     define(
       CODEX_CREATE_ISSUE_ANALYSIS_TOOL,
       {
-        title: "新建并关联 Jira 分析会话",
-        description: "在当前 Codex Desktop 窗口创建新会话、发送只读首轮分析消息并关联 Jira。首轮仅理解和分析，不修改项目文件。",
+        title: `新建并关联 Jira 分析会话（${desktopHostName}）`,
+        description: `在 ${desktopHostName} 创建新会话、发送只读首轮分析消息并关联 Jira。首轮仅理解和分析，不修改项目文件。`,
         inputSchema: {
           issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
-          supplementalDescription: z.string().max(4_000).optional().default("")
+          supplementalDescription: z.string().max(4_000).optional().default(""),
+          expectedRevision: z.number().int().nonnegative().optional(),
+          projectScopeId: z.string().max(1_000).optional().default("")
         },
         annotations: externalMutationAnnotations(),
-        _meta: uiMeta("正在新建 Codex 分析会话…", "Codex 分析会话已创建并关联")
+        _meta: uiMeta(`正在新建 ${desktopHostName} 分析会话…`, `${desktopHostName} 分析会话已创建并关联`)
       },
-      async ({ issueKey, supplementalDescription }) => {
-        const result = await desktop.createIssueAnalysis(issueKey, supplementalDescription);
+      async ({ issueKey, supplementalDescription, expectedRevision, projectScopeId }) => {
+        const result = await desktop.createIssueAnalysis(issueKey, supplementalDescription, {
+          expectedRevision,
+          projectScopeId
+        });
         return {
           structuredContent: { view: "desktopAnalysis", ...result },
           content: [{ type: "text", text: `${String(issueKey).toUpperCase()} 的只读分析会话已创建并关联。` }]
@@ -755,8 +865,8 @@ export function buildToolDefinitions({
     define(
       CODEX_BIND_ISSUE_TOOL,
       {
-        title: "关联 Jira 与 Codex 会话",
-        description: "仅在用户已在交互面板中选择目标会话并明确确认后，保存 Jira 与现有 Codex 会话的本地关联。不会发送消息或修改会话内容。",
+        title: "关联 Jira 与宿主会话",
+        description: "仅在用户已在交互面板中选择目标会话并明确确认后，保存 Jira 与当前宿主会话的本地关联。不会发送消息或修改会话内容。",
         inputSchema: {
           issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
           threadId: z.string().min(1).max(1_000),
@@ -778,7 +888,7 @@ export function buildToolDefinitions({
             ...result,
             issueSnapshot: issueResult ? buildIssueDetailSnapshot(issueResult) : null
           },
-          content: [{ type: "text", text: `${result.issueKey} 已关联现有 Codex 会话；未发送任何消息。` }]
+          content: [{ type: "text", text: `${result.issueKey} 已关联现有宿主会话；未发送任何消息。` }]
         };
       }
     );
@@ -789,7 +899,7 @@ export function buildToolDefinitions({
       CODEX_CLEAR_BINDING_TOOL,
       {
         title: "解除 Jira 会话关联",
-        description: "仅在用户明确确认后清除 Jira 与 Codex 会话的本地关联；不会删除或修改 Codex 会话。",
+        description: "仅在用户明确确认后清除 Jira 与当前宿主会话的本地关联；不会删除或修改该会话。",
         inputSchema: {
           issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
           expectedRevision: z.number().int().nonnegative()
@@ -809,7 +919,7 @@ export function buildToolDefinitions({
             ...result,
             issueSnapshot: issueResult ? buildIssueDetailSnapshot(issueResult) : null
           },
-          content: [{ type: "text", text: `${result.issueKey} 的本地会话关联已解除；Codex 会话未被删除。` }]
+          content: [{ type: "text", text: `${result.issueKey} 的本地会话关联已解除；宿主会话未被删除。` }]
         };
       }
     );

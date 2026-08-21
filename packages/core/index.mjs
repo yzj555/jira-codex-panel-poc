@@ -5,6 +5,8 @@ import { createConfigStore } from "./config-store.mjs";
 import { createJiraClient } from "./jira-client.mjs";
 import { createJxlClient } from "./jxl-client.mjs";
 import { createIssueBindingStore } from "./lib/issue-binding-store.mjs";
+import { createIssueWorkspaceStore } from "./lib/issue-workspace-store.mjs";
+import { createIssueWorkspaceService } from "./lib/issue-workspace-service.mjs";
 import { createJiraWorkbenchService } from "./lib/jira-workbench-service.mjs";
 import { buildSvnCommitMessage, createSvnReviewManager } from "./lib/svn-review-manager.mjs";
 import { createSvnWorkbenchService } from "./lib/svn-workbench-service.mjs";
@@ -17,6 +19,8 @@ export * from "./config-store.mjs";
 export * from "./jira-client.mjs";
 export * from "./jxl-client.mjs";
 export { createIssueBindingStore, IssueBindingStoreError, normalizeBindingWorkspace } from "./lib/issue-binding-store.mjs";
+export { createIssueWorkspaceStore, IssueWorkspaceStoreError } from "./lib/issue-workspace-store.mjs";
+export { createIssueWorkspaceService } from "./lib/issue-workspace-service.mjs";
 export { createLocalApprovalProvider, ActionConfirmationError } from "./lib/approval-provider.mjs";
 export { createJiraWorkbenchService } from "./lib/jira-workbench-service.mjs";
 export { buildSvnCommitMessage, createSvnReviewManager, SvnReviewError } from "./lib/svn-review-manager.mjs";
@@ -44,20 +48,28 @@ function userDataRoot() {
  * 降级，SVN 提交仍走机械检查、一次性确认与提交对账。
  */
 export function createCoreService({
-  configFile = process.env.JIRA_WORKBENCH_CONFIG_FILE || join(userDataRoot(), "config.json"),
-  bindingsFile = process.env.JIRA_WORKBENCH_BINDINGS_FILE || join(userDataRoot(), "issue-bindings.json"),
-  baselineFile = process.env.JIRA_WORKBENCH_SVN_BASELINES_FILE || join(userDataRoot(), "svn-baselines.json"),
-  reviewStateFile = process.env.JIRA_WORKBENCH_SVN_REVIEWS_FILE || join(userDataRoot(), "svn-reviews.json"),
+  dataRoot = userDataRoot(),
+  configFile = process.env.JIRA_WORKBENCH_CONFIG_FILE || join(dataRoot, "config.json"),
+  bindingsFile = process.env.JIRA_WORKBENCH_BINDINGS_FILE || join(dataRoot, "issue-bindings.json"),
+  workspacesFile = process.env.JIRA_WORKBENCH_WORKSPACES_FILE || join(dataRoot, "issue-workspaces.json"),
+  baselineFile = process.env.JIRA_WORKBENCH_SVN_BASELINES_FILE || join(dataRoot, "svn-baselines.json"),
+  reviewStateFile = process.env.JIRA_WORKBENCH_SVN_REVIEWS_FILE || join(dataRoot, "svn-reviews.json"),
   reviewArtifactsRoot = process.env.JIRA_WORKBENCH_SVN_REVIEW_ARTIFACTS_DIR
-    || join(userDataRoot(), "attachments", "svn-reviews"),
+    || join(dataRoot, "attachments", "svn-reviews"),
   secretStore,
+  workspaceCatalog,
   approvalProvider,
-  version = "0.32.3"
+  version = "0.33.2"
 } = {}) {
   const configStore = createConfigStore({ configFile, ...(secretStore ? { secretStore } : {}) });
   const jira = createJiraClient();
   const jxl = createJxlClient();
   const issueBindings = createIssueBindingStore({ file: bindingsFile });
+  const issueWorkspaces = createIssueWorkspaceStore({ file: workspacesFile });
+  const workspaceBindings = createIssueWorkspaceService({
+    store: issueWorkspaces,
+    ...(workspaceCatalog ? { catalog: workspaceCatalog } : {})
+  });
   const attachmentCacheRoot = join(dirname(configStore.configFile), "attachments");
   const taskBoardLoader = createTaskBoardLoader({ jira, configStore, attachmentCacheRoot });
 
@@ -84,6 +96,7 @@ export function createCoreService({
     resolveConfig: taskBoardLoader.resolveCollaboratorFieldConfig,
     jira,
     issueBindings,
+    issueWorkspaces,
     reviews: svnReviews,
     buildCommitMessage: buildSvnCommitMessage
   });
@@ -91,15 +104,19 @@ export function createCoreService({
   const handleMcp = createJiraTaskBoardMcpHttpHandler({
     workbench: jiraWorkbench,
     svn: svnWorkbench,
+    workspaces: workspaceBindings,
     version,
     ...(approvalProvider ? { approvalProvider } : {})
   });
 
   return {
+    dataRoot,
     configStore,
     jira,
     jxl,
     issueBindings,
+    issueWorkspaces,
+    workspaceBindings,
     taskBoardLoader,
     jiraWorkbench,
     svnReviews,

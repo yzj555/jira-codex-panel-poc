@@ -52,3 +52,24 @@ jobs:
             gh release create $tag @assets --verify-tag --generate-notes --title $tag --latest
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  publish-npm:
+    name: Publish npm packages
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - name: Use a Trusted Publishing capable npm CLI
+        run: npm install --global npm@11
+      - run: npm ci
+      - run: npm run test:dsh-client
+      - run: npm run release:npm:verify
+      - name: Publish missing packages with provenance
+        run: npm run release:npm:publish -- --if-missing --provenance

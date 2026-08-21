@@ -1,9 +1,25 @@
 {
   "name": "@jira-workbench/core",
-  "version": "0.32.3",
-  "private": true,
+  "version": "0.33.2",
   "type": "module",
   "description": "Host-agnostic Jira/JXL/SVN business core shared by the Codex adapter and the DSH adapter.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yzj555/jira-workbench.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/yzj555/jira-workbench#readme",
+  "bugs": {
+    "url": "https://github.com/yzj555/jira-workbench/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
     "jira-workbench-core": "bin/serve.mjs"
   },
@@ -22,6 +38,14 @@
   "scripts": {
     "serve": "node bin/serve.mjs"
   },
+  "files": [
+    "bin/**/*.mjs",
+    "*.mjs",
+    "lib/**/*.mjs",
+    "mcp/**/*.mjs",
+    "mcp/ui/*.html",
+    "public/**/*.js"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"

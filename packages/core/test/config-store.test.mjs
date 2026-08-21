@@ -328,3 +328,64 @@ test("secretStore 接口：mode/credentialStorage 反映到公开配置，provid
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("凭据引用更新可原子保存 DSH 的任务来源、模板与 Skill", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-dsh-preferences-"));
+  const configFile = join(directory, "config.json");
+  const secrets = new Map([["JIRA_WORKBENCH_TOKEN", "secret-token"]]);
+  const store = createConfigStore({
+    configFile,
+    secretStore: {
+      mode: "credential-ref",
+      credentialStorage: "DSH credentials",
+      async protect(value, key) {
+        const ref = key === "token" ? "JIRA_WORKBENCH_TOKEN" : "JIRA_WORKBENCH_WECOM_WEBHOOK";
+        secrets.set(ref, value);
+        return ref;
+      },
+      async unprotect(ref) {
+        return secrets.get(ref) || "";
+      }
+    }
+  });
+  try {
+    const publicConfig = await store.updateCredentialReference({
+      baseUrl: "http://jira.example:8080",
+      tokenReference: "JIRA_WORKBENCH_TOKEN",
+      boardSources: {
+        projectKey: "GAME",
+        requirement: { mode: "custom", jql: "project = GAME AND issuetype = Story" },
+        bug: { mode: "filter", filterIds: ["42"] }
+      },
+      promptTemplates: {
+        requirement: { customized: false, content: "ignored", skill: null },
+        bug: {
+          customized: true,
+          content: "诊断 {{key}}",
+          skill: { name: "ct-devops-tracer", path: "", scope: "dsh" }
+        }
+      }
+    });
+    assert.equal(publicConfig.boardSources.projectKey, "GAME");
+    assert.deepEqual(publicConfig.boardSources.bug.filterIds, ["42"]);
+    assert.equal(publicConfig.promptTemplates.requirement.content, DEFAULT_REQUIREMENT_MESSAGE_TEMPLATE);
+    assert.deepEqual(publicConfig.promptTemplates.bug.skill, {
+      name: "ct-devops-tracer",
+      path: "",
+      scope: "dsh"
+    });
+    const reloadedConfig = await store.getPublic();
+    assert.deepEqual(reloadedConfig.promptTemplates.bug.skill, {
+      name: "ct-devops-tracer",
+      path: "",
+      scope: "dsh"
+    });
+    const record = JSON.parse(await readFile(configFile, "utf8"));
+    assert.equal(record.tokenProtected, "JIRA_WORKBENCH_TOKEN");
+    assert.equal(record.promptTemplates.bug.content, "诊断 {{key}}");
+    assert.equal("content" in record.promptTemplates.requirement, false);
+  } finally {
+    await store.clear();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

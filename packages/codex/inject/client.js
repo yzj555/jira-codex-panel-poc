@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = "0.32.3";
+  const VERSION = "0.33.2";
   const INJECTION_REVISION = String(window.__JIRA_WORKBENCH_POC_INJECTION_REVISION__ || VERSION);
   const ENTRY_ID = "jira-workbench-poc-entry";
   const PAGE_ID = "jira-workbench-poc-page";

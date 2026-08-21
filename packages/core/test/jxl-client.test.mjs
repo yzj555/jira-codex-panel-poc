@@ -55,6 +55,14 @@ test("JXL Directory 从项目属性读取真实 Sheet、解压分块并过滤访
         rules: [{ access: "edit", holder: { type: "user", id: "JIRAUSER9" } }]
       }
     },
+    "app.jxl.sheet.modern": {
+      title: "新版权限 Sheet",
+      scope: { type: "jql", value: "project = CT AND labels = modern" },
+      access: {
+        default: { sheetAccess: "edit", issueAccess: "edit", issueCreate: true },
+        rules: []
+      }
+    },
     "app.jxl.sheet.chunked": chunked[0],
     "app.jxl.sheet.chunked.2": chunked[1]
   };
@@ -72,7 +80,7 @@ test("JXL Directory 从项目属性读取真实 Sheet、解压分块并过滤访
       }
       if (url.pathname === "/rest/api/2/project/10101/properties") {
         return json({
-          keys: ["public", "private", "chunked"].map((id) => ({ key: `app.jxl.sheet.${id}` }))
+          keys: ["public", "private", "modern", "chunked"].map((id) => ({ key: `app.jxl.sheet.${id}` }))
         });
       }
       const propertyPrefix = "/rest/api/2/project/10101/properties/";
@@ -85,8 +93,8 @@ test("JXL Directory 从项目属性读取真实 Sheet、解压分块并过滤访
   });
 
   const directory = await client.listSheets(config);
-  assert.equal(directory.total, 2);
-  assert.deepEqual(new Set(directory.sheets.map((sheet) => sheet.title)), new Set(["公开 Sheet", "分块 Sheet"]));
+  assert.equal(directory.total, 3);
+  assert.deepEqual(new Set(directory.sheets.map((sheet) => sheet.title)), new Set(["公开 Sheet", "新版权限 Sheet", "分块 Sheet"]));
   assert.equal(directory.sheets.some((sheet) => sheet.title.includes("私有")), false);
   const decoded = directory.sheets.find((sheet) => sheet.id === "chunked");
   assert.equal(decoded.queryable, true);
@@ -104,6 +112,15 @@ test("JXL Directory 从项目属性读取真实 Sheet、解压分块并过滤访
 test("JXL 访问规则与 Data Center 用户 key、用户名和用户组匹配", () => {
   assert.equal(canViewJxlSheet({ access: { default: "edit", rules: [] } }, currentUser), true);
   assert.equal(canViewJxlSheet({ access: { default: "view", rules: [] } }, currentUser), true);
+  assert.equal(canViewJxlSheet({
+    access: { default: { sheetAccess: "edit", issueAccess: "edit", issueCreate: true }, rules: [] }
+  }, currentUser), true);
+  assert.equal(canViewJxlSheet({
+    access: { default: { sheetAccess: "view", issueAccess: "view", issueCreate: false }, rules: [] }
+  }, currentUser), true);
+  assert.equal(canViewJxlSheet({
+    access: { default: { sheetAccess: "none", issueAccess: "view", issueCreate: false }, rules: [] }
+  }, currentUser), false);
   assert.equal(canViewJxlSheet({
     access: { default: "none", rules: [{ access: "edit", holder: { type: "user", id: "tester" } }] }
   }, currentUser), true);

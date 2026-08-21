@@ -178,7 +178,11 @@ export function createJiraWorkbenchService({
         upstreamStatus: 415
       });
     }
-    const attachment = await jiraClient.fetchAttachment(config, id, { thumbnail: true });
+    // The workbench preview is also used by the full-screen lightbox. Jira's
+    // thumbnail endpoint is intentionally low resolution, so using it here
+    // makes both the inline preview and the enlarged view permanently blurry.
+    // Fetch the original attachment after the ownership/type checks above.
+    const attachment = await jiraClient.fetchAttachment(config, id, { thumbnail: false });
     if (!/^image\//i.test(String(attachment.contentType || ""))) {
       await attachment.body?.cancel?.().catch(() => {});
       throw new JiraApiError("Jira 返回的附件内容不是图片，已拒绝内嵌。", {

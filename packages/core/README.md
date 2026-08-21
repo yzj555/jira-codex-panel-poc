@@ -1,6 +1,6 @@
 # @jira-workbench/core
 
-宿主无关的 Jira/JXL/SVN 业务核，由 Codex 适配层（`jira-workbench-codex`）与 DSH 适配层（`jira-workbench-dsh`）共享。
+宿主无关的 Jira/JXL/SVN 业务核，由 Codex 适配层（`jira-workbench-codex`）与 DSH 适配层（`@jira-workbench/dsh`）共享。
 
 ## 定位
 
@@ -15,6 +15,7 @@
 - `lib/task-board-loader.mjs` — 任务看板数据装配（查询、协同字段解析、Filter 校验、附件物化）
 - `lib/action-confirmation-store.mjs` — 短时、一次性人工确认凭据
 - `lib/issue-binding-store.mjs` — 会话绑定唯一存储，负责 revision 并发校验
+- `lib/issue-workspace-store.mjs` / `issue-workspace-service.mjs` — Jira 与一个或多个项目目录的宿主无关绑定，不要求会话 ID
 - `lib/null-review-audit-provider.mjs` — 无宿主审查能力时的降级 reader
 - `mcp/jira-task-board-mcp.mjs` — MCP 工具与 HTTP handler（依赖条件注册）
 
@@ -30,13 +31,13 @@ node bin/serve.mjs        # 默认 127.0.0.1:47823
 - `POST /mcp` — MCP 端点（streamable-http）
 - `GET /mcp-app.html` — 工作台 UI 预览
 
-组装逻辑收敛在 `index.mjs` 的 `createCoreService`。数据文件默认复用 `%LOCALAPPDATA%\jira-workbench\`（与 Codex 适配层共享同一份数据），可用 `JIRA_WORKBENCH_CONFIG_FILE` / `JIRA_WORKBENCH_BINDINGS_FILE` 等环境变量覆盖。
+组装逻辑收敛在 `index.mjs` 的 `createCoreService`。`dataRoot` 由宿主注入：Codex 默认 `%LOCALAPPDATA%\jira-workbench\`，DSH 默认 `$DSH_HOME/jira-workbench/`。可用 `JIRA_WORKBENCH_CONFIG_FILE`、`JIRA_WORKBENCH_BINDINGS_FILE`、`JIRA_WORKBENCH_WORKSPACES_FILE` 等环境变量逐项覆盖。
 
-独立服务暴露 19 个工具：8 个 Jira 只读/流转工具 + 11 个 SVN 审核工具，不暴露任何宿主专属能力（会话列表、桌面操作、自动 Bug 分析、GitHub 更新）。
+独立服务暴露 22 个工具：Jira/JXL、独立项目目录绑定和 11 个 SVN 审核工具，不暴露宿主专属的会话列表、桌面操作、自动 Bug 分析或 GitHub 更新。DSH 正式适配不连接该独立服务，而是在 DSH 进程内调用 `createCoreService` 并注册 13 个只读工具；DSH approval 可用时再补齐 14 个写工具。
 
 ## 依赖注入约定
 
-所有宿主能力都通过构造参数注入。审查审计使用 `createNullReviewAuditProvider()` 时，SVN 审核降级为人工审核；Codex 适配层注入真实 `turnReader` / `sessionReader` / `runtime` 获得完整 Codex 审查。
+所有宿主能力都通过构造参数注入。Codex 注入 DPAPI、App Server、桌面导航和真实会话审查 reader；DSH 注入 credentials、approval、workspace registry、session query 和原生会话创建。审查审计使用 `createNullReviewAuditProvider()` 时，SVN 审核降级为人工审核；DSH 初版使用该安全降级。
 
 ## 核心业务能力
 
@@ -79,15 +80,15 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 业务核没有修改摘要、描述、评论或附件的接口。
 
-### 会话绑定
+### 会话与项目目录绑定
 
-每个 Jira Issue 保存一个会话绑定。一个绑定可包含多个项目目录并指定一个主目录；主目录用于新建会话的初始工作目录，全部已选目录共同构成该任务允许使用的项目范围。旧版本只绑定一个项目的记录自动迁移成单项目范围。
+会话绑定和项目目录绑定是两个数据源：会话绑定属于宿主适配层；项目目录绑定属于 Core。一个 Jira 可绑定多个目录并指定默认范围，SVN 只依赖项目目录。旧会话记录中的 workspace 会一次性迁移或作为兼容读取源，解除会话不会删除项目目录绑定。
 
 绑定保存使用 revision 并发校验，不依赖浏览器 `localStorage`；升级后只读取一次旧 `localStorage` 绑定并导入服务端，成功后立即删除旧值。每位 Windows 用户彼此独立。
 
 ### SVN 审核与提交
 
-每个提交草稿固定关联一个 Jira Issue、一个会话和一个 SVN 工作副本。同一 Jira 可以多次提交；提交成功只保存一条 revision 历史，不会结束会话，也不会自动流转 Jira 状态。核心规则：
+每个提交草稿固定关联一个 Jira Issue 和一个明确选择的 SVN 工作副本；Codex 审查启用时才额外关联审查会话。同一 Jira 可以多次提交；提交成功只保存一条 revision 历史，不会结束会话，也不会自动流转 Jira 状态。核心规则：
 
 1. 候选集由绑定时的 dirty 基线、结构化文件改动和当前 SVN 状态生成；最终选择始终以人工判断为准。绑定前改动、未纳管文件、目录和冲突等阻断项不会进入初始勾选。
 2. 只读检查 `svn info`、`svn status --xml` 与所选路径的 `svn diff`，覆盖冲突、缺失、阻塞、switched、混合版本、属性改动、未纳管文件、二进制差异及项目范围中的其他改动。
@@ -100,19 +101,22 @@ Issue 类型名称包含 `Bug`、`Defect`、`缺陷` 或 `故障` 时归为 Bug�
 
 未纳管文件不会被自动 `svn add`；只接受具体文件路径，不处理冲突、switched/external 路径或合并多个工作副本。超过 50 MB 的单个文件会被阻断。审核记录原子写入 `svn-reviews.json`，服务重启后恢复未过期审核与提交历史。
 
-### 自动 Bug 监控
+### 自动 Bug 监控（当前由 Codex 适配层挂载）
 
 自动分析开关默认关闭。开启后：当前待修复/处理中的 Bug 加入队列，后续新 Bug 被周期检测，串行创建分析并挂载附件、发送只读诊断消息；每个 Bug 在当前监控记录中只处理一次。分析结果可通过企业微信群机器人 Webhook 推送。关闭开关后不再创建新的自动分析任务。
 
+后台调度器属于宿主生命周期能力，不是 Core 独立服务的默认组件。Codex 当前提供该调度器；DSH 初版不挂载，避免在 DSH 进程内引入第二套后台任务与更新生命周期。
+
 ### 配置
 
-配置保存在本地数据目录，Jira PAT 与企业微信 Webhook 使用 Windows DPAPI 加密，公开配置接口不会返回这两个密钥。数据同步（自动同步、返回时同步、Sheets 同步）只读取 Jira 数据，请求重叠时跳过后续请求，失败保留上一次成功数据。
+配置保存在宿主数据目录。缺省 Windows 独立服务使用 DPAPI；宿主也可注入 credential-reference secretStore。公开配置接口不会返回 Jira PAT 或企业微信 Webhook。数据同步只读取 Jira，请求重叠时跳过后续请求，失败保留上一次成功数据。
 
 ## 数据文件
 
-| 内容 | 默认位置 |
+| 内容 | 独立服务/Codex 默认位置（DSH 使用 `$DSH_HOME/jira-workbench` 下的同名文件） |
 | --- | --- |
 | 用户配置 | `%LOCALAPPDATA%\jira-workbench\config.json` |
 | 会话绑定 | `%LOCALAPPDATA%\jira-workbench\issue-bindings.json` |
+| 项目目录绑定 | `%LOCALAPPDATA%\jira-workbench\issue-workspaces.json` |
 | Jira 附件缓存 | `%LOCALAPPDATA%\jira-workbench\attachments` |
 | SVN 基线与审核状态 | `%LOCALAPPDATA%\jira-workbench\svn-baselines.json`、`svn-reviews.json` |

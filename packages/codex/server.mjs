@@ -39,6 +39,8 @@ import {
   IssueBindingStoreError,
   normalizeBindingWorkspace
 } from "@jira-workbench/core/lib/issue-binding-store.mjs";
+import { createIssueWorkspaceStore } from "@jira-workbench/core/lib/issue-workspace-store.mjs";
+import { createIssueWorkspaceService } from "@jira-workbench/core/lib/issue-workspace-service.mjs";
 import { createJiraWorkbenchService } from "@jira-workbench/core/lib/jira-workbench-service.mjs";
 import {
   buildSvnCommitMessage,
@@ -50,7 +52,7 @@ import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "@ji
 import { buildIssuePrompt, isBugIssue } from "@jira-workbench/core/public/prompt-builder.js";
 import { attachmentCanOpenLocally } from "@jira-workbench/core/public/issue-views.js";
 
-const VERSION = "0.32.3";
+const VERSION = "0.33.2";
 const host = process.env.JIRA_WORKBENCH_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_WORKBENCH_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -83,6 +85,11 @@ const issueBindings = createIssueBindingStore({
   file: process.env.JIRA_WORKBENCH_BINDINGS_FILE
     || join(dirname(configStore.configFile), "issue-bindings.json")
 });
+const issueWorkspaces = createIssueWorkspaceStore({
+  file: process.env.JIRA_WORKBENCH_WORKSPACES_FILE
+    || join(dirname(configStore.configFile), "issue-workspaces.json")
+});
+const workspaceBindings = createIssueWorkspaceService({ store: issueWorkspaces });
 const desktopCommands = createDesktopCommandBroker();
 const jira = createJiraClient();
 const taskBoardLoader = createTaskBoardLoader({
@@ -283,10 +290,33 @@ const svnWorkbench = createSvnWorkbenchService({
   resolveConfig: taskBoardLoader.resolveCollaboratorFieldConfig,
   jira,
   issueBindings,
+  issueWorkspaces,
   reviews: svnReviews,
   runtime: codexRuntime,
   buildCommitMessage: buildSvnCommitMessage
 });
+
+async function syncConversationWorkspaces(bindings) {
+  const candidates = Object.fromEntries(Object.entries(bindings || {}).flatMap(([issueKey, binding]) => (
+    binding?.workspace
+      ? [[issueKey, { workspace: binding.workspace, source: "conversation-binding-sync", updatedAt: binding.updatedAt }]]
+      : []
+  )));
+  if (!Object.keys(candidates).length) return;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const state = await issueWorkspaces.snapshot();
+    try {
+      await issueWorkspaces.applyMutations({ upserts: candidates, expectedRevision: state.revision });
+      return;
+    } catch (error) {
+      if (error?.code !== "ISSUE_WORKSPACES_REVISION_CONFLICT" || attempt === 2) throw error;
+    }
+  }
+}
+
+void issueBindings.snapshot()
+  .then((state) => issueWorkspaces.importConversationBindings(state))
+  .catch((error) => console.warn(`[jira-workbench] 项目绑定迁移跳过：${error?.message || error}`));
 
 async function openIssueConversation(issueKey, { targetClientId = "" } = {}) {
   const key = String(issueKey || "").trim().toUpperCase();
@@ -316,6 +346,7 @@ function scheduleIssueBaselines({ issueKey, threadId, boundAt } = {}) {
 
 async function bindIssueConversation(input) {
   const result = await codexConversations.bindIssue(input);
+  await syncConversationWorkspaces({ [result.issueKey]: result.binding });
   scheduleIssueBaselines({
     issueKey: result.issueKey,
     threadId: result.binding?.threadId,
@@ -431,6 +462,7 @@ async function createIssueAnalysis(issueKey, supplementalDescription = "", {
       }
     );
   }
+  await syncConversationWorkspaces({ [key]: next.bindings?.[key] || binding });
   scheduleIssueBaselines({ threadId, issueKey: key, boundAt });
   return {
     issueKey: key,
@@ -453,6 +485,7 @@ const mcpOptions = {
     bindIssue: bindIssueConversation
   },
   svn: svnWorkbench,
+  workspaces: workspaceBindings,
   automation: {
     getStatus: () => bugMonitor.getStatus(),
     setEnabled: async (enabled) => {
@@ -498,10 +531,13 @@ const handleMcp = createJiraTaskBoardMcpHttpHandler((request) => {
     ...mcpOptions,
     desktop: {
       openIssueConversation: (issueKey) => openIssueConversation(issueKey, { targetClientId: requireDesktopTarget() }),
-      createIssueAnalysis: (issueKey, supplementalDescription) => createIssueAnalysis(
+      createIssueAnalysis: (issueKey, supplementalDescription, options = {}) => createIssueAnalysis(
         issueKey,
         supplementalDescription,
-        { targetClientId: requireDesktopTarget() }
+        {
+          targetClientId: requireDesktopTarget(),
+          ...(options.expectedRevision == null ? {} : { expectedRevision: options.expectedRevision })
+        }
       )
     }
   };
@@ -684,6 +720,18 @@ async function handleApi(request, response, url) {
     return json(response, 200, await codexConversations.getBindings());
   }
 
+  if (request.method === "GET" && url.pathname === "/api/workspaces") {
+    return json(response, 200, await workspaceBindings.get(url.searchParams.get("issueKey") || ""));
+  }
+
+  if (request.method === "PUT" && url.pathname === "/api/workspaces") {
+    return json(response, 200, await workspaceBindings.bind(await readJson(request)));
+  }
+
+  if (request.method === "DELETE" && url.pathname === "/api/workspaces") {
+    return json(response, 200, await workspaceBindings.unbind(await readJson(request)));
+  }
+
   if (request.method === "PUT" && url.pathname === "/api/bindings/import") {
     const input = await readJson(request, { maxBytes: 1024 * 1024 });
     return json(response, 200, await issueBindings.importBindings(input.bindings));
@@ -691,7 +739,9 @@ async function handleApi(request, response, url) {
 
   if (request.method === "PUT" && url.pathname === "/api/bindings/mutations") {
     const input = await readJson(request, { maxBytes: 1024 * 1024 });
-    return json(response, 200, await issueBindings.compareAndSwap(input));
+    const result = await issueBindings.compareAndSwap(input);
+    await syncConversationWorkspaces(input.upserts);
+    return json(response, 200, result);
   }
 
   if (request.method === "GET" && url.pathname === "/api/codex/conversations") {

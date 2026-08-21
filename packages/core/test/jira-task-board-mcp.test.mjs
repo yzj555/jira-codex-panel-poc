@@ -301,6 +301,9 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   assert.equal(sheets.structuredContent.total, 1);
   const sheet = await client.callTool({ name: JIRA_SHEET_ISSUES_TOOL, arguments: { projectId: "101", sheetId: "sheet-a" } });
   assert.equal(sheet.structuredContent.issues.length, 2);
+  assert.equal(sheet.structuredContent.issues[0].projectName, "测试项目");
+  assert.deepEqual(sheet.structuredContent.issues[0].fixVersions, ["DevelopV4"]);
+  assert.equal(sheet.structuredContent.issues[0].collaborators[0].displayName, "协同用户");
   const transitions = await client.callTool({ name: JIRA_LIST_TRANSITIONS_TOOL, arguments: { issueKey: "CT-1" } });
   assert.equal(transitions.structuredContent.transitions[0].to.name, "程序处理");
   const prepared = await client.callTool({ name: JIRA_PREPARE_TRANSITION_TOOL, arguments: { issueKey: "CT-1", transitionId: "4", expectedTargetStatus: "程序处理" } });
@@ -352,4 +355,23 @@ test("本机 /mcp 可通过 Streamable HTTP 调用完整工作台", async () => 
   assert.equal(listed.tools.length, 30);
   const result = await client.callTool({ name: JIRA_TASK_BOARD_TOOL, arguments: {} });
   assert.equal(result.structuredContent.counts.active, 2);
+});
+
+test("Core MCP 拒绝错误 Content-Type 与跨站浏览器来源", async () => {
+  const handler = createJiraTaskBoardMcpHttpHandler({ workbench: workbench() });
+  const httpServer = createServer((request, response) => handler(request, response).catch((error) => response.writeHead(500).end(error.message)));
+  opened.push({ close: () => new Promise((resolve) => httpServer.close(resolve)) });
+  await new Promise((resolve, reject) => { httpServer.once("error", reject); httpServer.listen(0, "127.0.0.1", resolve); });
+  const address = httpServer.address();
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+
+  const wrongType = await fetch(endpoint, { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" });
+  assert.equal(wrongType.status, 415);
+
+  const crossSite = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "https://evil.example" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} })
+  });
+  assert.equal(crossSite.status, 403);
 });

@@ -1,7 +1,6 @@
 {
-  "name": "jira-workbench-dsh",
-  "version": "0.32.3",
-  "private": true,
+  "name": "@jira-workbench/dsh",
+  "version": "0.33.2",
   "type": "module",
   "main": "plugin.mjs",
   "exports": {
@@ -9,20 +8,40 @@
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "description": "DeepSeek Harness adapter: hosts the Jira/SVN core in-process as a Cordis function plugin.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yzj555/jira-workbench.git",
+    "directory": "packages/dsh"
+  },
+  "homepage": "https://github.com/yzj555/jira-workbench#readme",
+  "bugs": {
+    "url": "https://github.com/yzj555/jira-workbench/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "dsh": {
     "bundle": {
       "patch": "cordis.patch.yml"
     }
   },
   "dependencies": {
-    "schemastery": "^3.18.0"
+    "@jira-workbench/core": "0.33.2",
+    "@jira-workbench/dsh-client": "0.33.2",
+    "schemastery": "^3.18.0",
+    "zod": "^4.4.3"
   },
-  "peerDependencies": {
-    "@jira-workbench/core": "*"
-  },
-  "peerDependenciesMeta": {
-    "@jira-workbench/core": {
-      "optional": true
-    }
-  }
+  "files": [
+    "plugin.mjs",
+    "cordis.patch.yml",
+    "lib/**/*.mjs",
+    "INSTALL.md",
+    "DESIGN.md",
+    "PUBLISHING.md"
+  ]
 }

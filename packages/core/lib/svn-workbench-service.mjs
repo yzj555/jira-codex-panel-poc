@@ -83,6 +83,7 @@ export function createSvnWorkbenchService({
   resolveConfig = async (config) => config,
   jira,
   issueBindings,
+  issueWorkspaces,
   reviews,
   runtime,
   buildCommitMessage
@@ -91,6 +92,9 @@ export function createSvnWorkbenchService({
   const resolve = requireFunction(resolveConfig, "resolveConfig");
   const jiraClient = requireObject(jira, "jira");
   const bindings = requireObject(issueBindings, "issueBindings");
+  const workspaceBindings = issueWorkspaces && typeof issueWorkspaces.snapshot === "function"
+    ? issueWorkspaces
+    : null;
   const manager = requireObject(reviews, "reviews");
   const commitMessage = requireFunction(buildCommitMessage, "buildCommitMessage");
 
@@ -122,16 +126,30 @@ export function createSvnWorkbenchService({
 
   async function boundContext(issueKey) {
     const key = normalizeIssueKey(issueKey);
-    const bindingState = await bindings.snapshot();
+    const [bindingState, workspaceState] = await Promise.all([
+      bindings.snapshot(),
+      workspaceBindings ? workspaceBindings.snapshot() : Promise.resolve({ revision: 0, workspaces: {} })
+    ]);
     const binding = bindingState.bindings?.[key] || null;
-    const threadId = normalizedThreadId(binding?.threadId);
-    if (!threadId) {
-      const error = new Error(`${key} 尚未关联 Codex 会话，无法确定 SVN 项目范围。`);
+    const workspaceBinding = workspaceState.workspaces?.[key] || null;
+    const conversationThreadId = normalizedThreadId(binding?.threadId);
+    if (!conversationThreadId && !workspaceBinding?.workspace) {
+      const error = new Error(`${key} 尚未绑定项目目录，无法确定 SVN 操作范围。`);
       error.code = "SVN_ISSUE_NOT_BOUND";
       error.statusCode = 409;
       throw error;
     }
-    return { issueKey: key, threadId, binding, bindingsRevision: Number(bindingState.revision || 0) };
+    return {
+      issueKey: key,
+      // review manager 需要稳定的上下文键，但 Core/DSH 的 SVN 操作不应要求
+      // Codex thread。无会话时使用 Jira 级合成键；它不会被当成真实会话读取。
+      threadId: conversationThreadId || `workspace:${key}`,
+      conversationThreadId,
+      binding,
+      workspaceBinding,
+      bindingsRevision: Number(bindingState.revision || 0),
+      workspacesRevision: Number(workspaceState.revision || 0)
+    };
   }
 
   async function operationContext(issueKey, requestedThreadId = "", requestedProjectScopeId = "", {
@@ -139,17 +157,17 @@ export function createSvnWorkbenchService({
   } = {}) {
     const bound = await boundContext(issueKey);
     const requested = normalizedThreadId(requestedThreadId);
-    if (requested && requested.replace(/^local:/i, "").toLowerCase()
-      !== bound.threadId.replace(/^local:/i, "").toLowerCase()) {
+    if (requested && bound.conversationThreadId && requested.replace(/^local:/i, "").toLowerCase()
+      !== bound.conversationThreadId.replace(/^local:/i, "").toLowerCase()) {
       const error = new Error(`${bound.issueKey} 当前绑定会话已发生变化，请刷新后重新操作。`);
       error.code = "SVN_BOUND_THREAD_CHANGED";
       error.statusCode = 409;
       throw error;
     }
-    let workspace = workspaceFromBinding(bound.binding);
-    if (!workspace && typeof runtime?.readThread === "function") {
+    let workspace = workspaceFromBinding(bound.workspaceBinding) || workspaceFromBinding(bound.binding);
+    if (!workspace && bound.conversationThreadId && typeof runtime?.readThread === "function") {
       try {
-        const result = await runtime.readThread(bound.threadId, { includeTurns: false });
+        const result = await runtime.readThread(bound.conversationThreadId, { includeTurns: false });
         const thread = result?.thread || result?.result?.thread || result;
         const cwd = String(thread?.cwd || "").trim();
         if (cwd) {
@@ -207,6 +225,9 @@ export function createSvnWorkbenchService({
     const issue = await fetchIssue(key);
     if (!operation.workspaceContext && operation.projectScopes.length > 1) {
       return {
+        capabilities: {
+          codexReview: Boolean(operation.conversationThreadId && typeof runtime?.startReadOnlyTurn === "function")
+        },
         scopeSelectionRequired: true,
         projectScopes: operation.projectScopes,
         defaultProjectScopeId: operation.defaultProjectScopeId,
@@ -223,6 +244,9 @@ export function createSvnWorkbenchService({
       workspaceContext: operation.workspaceContext
     });
     return {
+      capabilities: {
+        codexReview: Boolean(operation.conversationThreadId && typeof runtime?.startReadOnlyTurn === "function")
+      },
       scopeSelectionRequired: false,
       projectScopes: operation.projectScopes,
       defaultProjectScopeId: operation.defaultProjectScopeId,
@@ -342,6 +366,22 @@ export function createSvnWorkbenchService({
   } = {}) {
     const key = normalizeIssueKey(issueKey);
     const operation = await operationContext(key, threadId, projectScopeId);
+    if (codexReviewEnabled === true
+      && (!operation.conversationThreadId || typeof runtime?.startReadOnlyTurn !== "function")) {
+      throw new SvnReviewError(
+        operation.conversationThreadId
+          ? "当前宿主不支持 Codex 辅助审查，请改用人工审核。"
+          : `${key} 尚未关联 Codex 会话，无法启动辅助审查；可直接改用人工审核。`,
+        {
+          code: "SVN_CODEX_REVIEW_UNAVAILABLE",
+          statusCode: 409,
+          details: {
+            conversationBound: Boolean(operation.conversationThreadId),
+            runtimeAvailable: typeof runtime?.startReadOnlyTurn === "function"
+          }
+        }
+      );
+    }
     const resolvedThreadId = operation.threadId;
     const issue = await fetchIssue(key);
     const created = await manager.createReview({

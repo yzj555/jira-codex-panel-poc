@@ -79,11 +79,84 @@ test("config.json 用 credential-ref 存储时只存引用名，不含明文/密
   }
 });
 
-test("缺少 credentials 服务时构造报错", () => {
-  assert.throws(
-    () => createDshCredentialSecretStore(undefined),
+test("DSH 首次配置会验证凭据引用并原子关联 Jira 地址", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-dsh-link-"));
+  const configFile = join(directory, "config.json");
+  const credentials = mockCredentials({ [CREDENTIAL_REFS.token]: "linked-token" });
+  const store = createConfigStore({
+    configFile,
+    secretStore: createDshCredentialSecretStore(credentials)
+  });
+
+  try {
+    const result = await store.updateCredentialReference({
+      baseUrl: "http://jira.example:8080/",
+      tokenReference: CREDENTIAL_REFS.token
+    });
+    assert.equal(result.configured, true);
+    assert.equal(result.baseUrl, "http://jira.example:8080");
+
+    const raw = JSON.parse(await readFile(configFile, "utf8"));
+    assert.equal(raw.tokenProtected, CREDENTIAL_REFS.token);
+    assert.equal(JSON.stringify(raw).includes("linked-token"), false);
+    assert.equal((await store.load()).token, "linked-token");
+  } finally {
+    await store.clear();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("DSH 首次配置在 Token 引用不存在时拒绝落盘", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jira-workbench-dsh-missing-link-"));
+  const configFile = join(directory, "config.json");
+  const store = createConfigStore({
+    configFile,
+    secretStore: createDshCredentialSecretStore(mockCredentials())
+  });
+
+  try {
+    await assert.rejects(
+      () => store.updateCredentialReference({
+        baseUrl: "http://jira.example:8080",
+        tokenReference: CREDENTIAL_REFS.token
+      }),
+      (error) => error?.code === "TOKEN_REFERENCE_UNAVAILABLE" && error?.statusCode === 428
+    );
+    await assert.rejects(() => readFile(configFile, "utf8"), { code: "ENOENT" });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("缺少 credentials 服务时 protect/unprotect 抛错（延迟取服务）", async () => {
+  // 构造接受 getter 或 undefined：apply 时 credentials 可能还没就绪，构造不
+  // 立即抛错，改为真正读写凭据时（protect/unprotect）才校验。
+  const secretStore = createDshCredentialSecretStore(() => undefined);
+  await assert.rejects(
+    () => secretStore.unprotect(CREDENTIAL_REFS.token, "token"),
     /需要 DSH 的 credentials 服务/
   );
+  await assert.rejects(
+    () => secretStore.protect("value", "token"),
+    /需要 DSH 的 credentials 服务/
+  );
+});
+
+test("credentials 后置就绪：getter 在读写时解析，避开 apply 时序竞态", async () => {
+  // 模拟 credentials 在 apply 后才 ACTIVE：构造时 getter 返回 undefined，
+  // 稍后服务就绪，protect/unprotect 就能正常工作。
+  let ready = false;
+  const credentials = mockCredentials({ [CREDENTIAL_REFS.token]: "late-token" });
+  const secretStore = createDshCredentialSecretStore(() => (ready ? credentials : undefined));
+
+  // 未就绪：读写都抛
+  await assert.rejects(() => secretStore.unprotect(CREDENTIAL_REFS.token, "token"), /需要 DSH 的 credentials 服务/);
+
+  // 就绪后：正常
+  ready = true;
+  assert.equal(await secretStore.unprotect(CREDENTIAL_REFS.token, "token"), "late-token");
+  assert.equal(await secretStore.protect("new-token", "token"), CREDENTIAL_REFS.token);
+  assert.equal(credentials._store.get(CREDENTIAL_REFS.token), "new-token");
 });
 
 test("无效引用名在 protect 时抛错", async () => {

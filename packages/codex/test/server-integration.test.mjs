@@ -28,7 +28,10 @@ async function availablePort() {
 }
 
 async function waitForServer(url, child, stderr) {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  // The full test suite starts many Node workers in parallel on Windows. Give
+  // the spawned integration server enough time to finish cold-start module
+  // loading instead of treating scheduler contention as a product failure.
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`测试服务提前退出：${stderr.join("")}`);
     try {
       const response = await fetch(url);
@@ -61,7 +64,7 @@ async function completeDesktopCommand(baseUrl, command, result) {
 
 test("本地 API 使用 DPAPI 保存配置并返回真实 Jira 数据", {
   skip: process.platform !== "win32",
-  timeout: 20_000
+  timeout: 30_000
 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), "jira-workbench-integration-"));
   const configFile = join(directory, "config.json");

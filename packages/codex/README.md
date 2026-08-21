@@ -95,7 +95,7 @@ Plugin、MCP、本地服务、App Server Adapter 和最小 CDP 适配层都属�
 
 维护者先把版本改动合入 `main`，然后在本目录执行 `npm run version:set -- <版本>`，确认根 `package.json`、锁文件、各 workspace 包的 `package.json`、`server.mjs`、`inject/client.js` 和仓库根 README 已同步。仓库根 `npm test` 与本目录 `npm run release:verify -- v<版本>` 通过后，提交并推送 `main`，再创建并推送同名 tag。
 
-tag 会触发 `.github/workflows/release.yml`：在 Windows runner 重跑全量测试、为 Release 包刷新 Plugin cachebuster、生成 ZIP / `update-manifest.json` / `SHA256SUMS.txt`，并为 ZIP 生成 artifact attestation。流水线创建并直接发布 GitHub Release（若已存在同名 Draft Release 则上传资产并改为发布）；维护者应在发布后核对版本、变更说明、三个资产和 attestation。
+tag 会触发 `.github/workflows/release.yml`：在 Windows runner 重跑全量测试、构建 DSH 浏览器端、为 Release 包刷新 Plugin cachebuster，再生成统一 ZIP / `update-manifest.json` / `SHA256SUMS.txt`，并为 ZIP 生成 artifact attestation。统一 ZIP 同时包含 Core、Codex、DSH Host 与 DSH 浏览器适配层；Codex 自动更新仍只安装自己的受管组件，DSH 用户按 [`packages/dsh/INSTALL.md`](../dsh/INSTALL.md) 把同一 ZIP 中的三个匹配包安装到目标 profile。流水线创建并直接发布 GitHub Release（若已存在同名 Draft Release 则上传资产并改为发布）；维护者应在发布后核对版本、变更说明、三个资产和 attestation。
 
 ## 开发运行
 
@@ -144,7 +144,8 @@ codex plugin add jira-workbench-assistant@jira-workbench-local
 | `lib/codex-app-server-client.mjs` | App Server JSON-RPC 客户端、npm CLI 自动发现、只读能力探测及降级状态 |
 | `lib/codex-runtime-gateway.mjs` | 面向面板业务的稳定 Runtime 能力接口 |
 | `lib/codex-application-commands.mjs` | Application Commands、浏览器 App Server Adapter、Runtime 能力选择 |
-| `lib/issue-binding-store.mjs` | 服务端会话绑定唯一存储，revision 并发校验和旧 `localStorage` 一次性迁移 |
+| Core `issue-binding-store.mjs` | 服务端会话绑定唯一存储，revision 并发校验和旧 `localStorage` 一次性迁移 |
+| Core `issue-workspace-store.mjs` | 独立的 Jira→项目目录绑定；SVN 不再要求会话存在 |
 | `lib/codex-session-reader.mjs` | 兼容读取迁移前的本地会话目录、文件操作证据和旧审核 turn |
 | `lib/bug-monitor-service.mjs` | 服务端 Bug 发现、去重队列、App Server 分析调度和重启恢复 |
 | `lib/automation-manager.mjs` | 自动分析任务状态、结果跟踪和企业微信推送 |

@@ -12,6 +12,10 @@ import {
   JIRA_LIST_TRANSITIONS_TOOL,
   JIRA_PREPARE_TRANSITION_TOOL,
   JIRA_EXECUTE_TRANSITION_TOOL,
+  JIRA_GET_WORKSPACES_TOOL,
+  JIRA_LIST_AVAILABLE_WORKSPACES_TOOL,
+  JIRA_BIND_WORKSPACE_TOOL,
+  JIRA_UNBIND_WORKSPACE_TOOL,
   CODEX_LIST_THREADS_TOOL,
   CODEX_BIND_ISSUE_TOOL,
   CODEX_CLEAR_BINDING_TOOL,
@@ -52,6 +56,10 @@ export {
   JIRA_LIST_TRANSITIONS_TOOL,
   JIRA_PREPARE_TRANSITION_TOOL,
   JIRA_EXECUTE_TRANSITION_TOOL,
+  JIRA_GET_WORKSPACES_TOOL,
+  JIRA_LIST_AVAILABLE_WORKSPACES_TOOL,
+  JIRA_BIND_WORKSPACE_TOOL,
+  JIRA_UNBIND_WORKSPACE_TOOL,
   CODEX_LIST_THREADS_TOOL,
   CODEX_BIND_ISSUE_TOOL,
   CODEX_CLEAR_BINDING_TOOL,
@@ -87,6 +95,7 @@ export function createJiraTaskBoardMcpServer({
   workbench,
   conversations,
   svn,
+  workspaces,
   automation,
   updates,
   desktop,
@@ -130,6 +139,7 @@ export function createJiraTaskBoardMcpServer({
     service,
     conversations,
     svn,
+    workspaces,
     automation,
     updates,
     desktop,
@@ -172,6 +182,20 @@ function loopbackRequest(request) {
   }
 }
 
+function trustedBrowserOrigin(request) {
+  const origin = String(request.headers?.origin || "").trim();
+  if (!origin) return true;
+  try {
+    const originUrl = new URL(origin);
+    const requestHost = String(request.headers?.host || "").trim().toLowerCase();
+    const hostname = originUrl.hostname.toLowerCase();
+    return originUrl.host.toLowerCase() === requestHost
+      && (hostname === "localhost" || hostname === "::1" || hostname.startsWith("127."));
+  } catch {
+    return false;
+  }
+}
+
 async function readRequestBody(request, maxBytes = 1024 * 1024) {
   const chunks = [];
   let size = 0;
@@ -190,6 +214,12 @@ export function createJiraTaskBoardMcpHttpHandler(options = {}) {
   return async function handleJiraTaskBoardMcp(request, response) {
     if (!loopbackRequest(request)) return jsonRpcError(response, 403, "Jira MCP 仅允许本机访问。");
     if (request.method !== "POST") return jsonRpcError(response, 405, "此无状态 MCP 端点仅接受 POST。");
+    if (!String(request.headers?.["content-type"] || "").toLowerCase().startsWith("application/json")) {
+      return jsonRpcError(response, 415, "MCP 请求必须使用 application/json。");
+    }
+    if (!trustedBrowserOrigin(request)) {
+      return jsonRpcError(response, 403, "MCP 写入来源与当前本地服务不一致。");
+    }
 
     const requestOptions = resolveOptions(request) || {};
     const server = createJiraTaskBoardMcpServer({ ...requestOptions, approvalProvider });
@@ -208,7 +238,7 @@ export function createJiraTaskBoardMcpHttpHandler(options = {}) {
       await server.connect(transport);
       await transport.handleRequest(request, response, body);
     } catch (error) {
-      if (!response.headersSent) jsonRpcError(response, 500, error instanceof Error ? error.message : "MCP 请求失败。");
+      if (!response.headersSent) jsonRpcError(response, error instanceof SyntaxError ? 400 : 500, error instanceof Error ? error.message : "MCP 请求失败。");
     }
   };
 }

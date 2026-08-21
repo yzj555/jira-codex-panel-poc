@@ -7,38 +7,39 @@
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f5f6f7; --panel: #fff; --card: #fff; --line: #e1e5e9; --line-strong: #cbd2d9;
-      --soft: #f0f2f4; --hover: #f4f6f8; --text: #1f2328; --muted: #818a95; --accent: #356bc6;
-      --req: #356bc6; --bug: #bc4b40; --ok: #2f865b; --warn: #b7791f;
-      --shadow: 0 10px 30px rgb(16 24 40 / 12%);
+      --bg: #f6f7f9; --panel: #fff; --card: #fff; --line: #e4e7eb; --line-strong: #cfd5dc;
+      --soft: #f0f3f7; --hover: #edf2fb; --text: #20242a; --muted: #737d89; --accent: #5272d2;
+      --accent-hover: #4665bf; --accent-soft: #edf1fd; --req: #5c73c9; --bug: #c8675d; --ok: #438e6b; --warn: #b88135;
+      --shadow: 0 16px 42px rgb(25 35 55 / 14%);
     }
     @media (prefers-color-scheme: dark) {
       :root {
         --bg: #181a1d; --panel: #202328; --card: #24282d; --line: #32373e; --line-strong: #48505a;
-        --soft: #2a2f35; --hover: #2d3238; --text: #f2f3f5; --muted: #9099a4; --accent: #79aaff;
-        --req: #79aaff; --bug: #ff8c82; --ok: #62cf91; --warn: #f1b35d; --shadow: 0 14px 38px rgb(0 0 0 / 34%);
+        --soft: #2a2f35; --hover: #303846; --text: #f2f3f5; --muted: #9aa3ad; --accent: #82a9ff;
+        --accent-hover: #9abaff; --accent-soft: #293752; --req: #82a9ff; --bug: #ff8f84; --ok: #68d097; --warn: #efb25c; --shadow: 0 18px 46px rgb(0 0 0 / 38%);
       }
     }
     :root[data-theme="dark"] {
       --bg: #181a1d; --panel: #202328; --card: #24282d; --line: #32373e; --line-strong: #48505a;
-      --soft: #2a2f35; --hover: #2d3238; --text: #f2f3f5; --muted: #9099a4; --accent: #79aaff;
-      --req: #79aaff; --bug: #ff8c82; --ok: #62cf91; --warn: #f1b35d; --shadow: 0 14px 38px rgb(0 0 0 / 34%);
+      --soft: #2a2f35; --hover: #303846; --text: #f2f3f5; --muted: #9aa3ad; --accent: #82a9ff;
+      --accent-hover: #9abaff; --accent-soft: #293752; --req: #82a9ff; --bug: #ff8f84; --ok: #68d097; --warn: #efb25c; --shadow: 0 18px 46px rgb(0 0 0 / 38%);
     }
     :root[data-theme="light"] {
-      --bg: #f5f6f7; --panel: #fff; --card: #fff; --line: #e1e5e9; --line-strong: #cbd2d9;
-      --soft: #f0f2f4; --hover: #f4f6f8; --text: #1f2328; --muted: #818a95; --accent: #356bc6;
-      --req: #356bc6; --bug: #bc4b40; --ok: #2f865b; --warn: #b7791f;
-      --shadow: 0 10px 30px rgb(16 24 40 / 12%);
+      --bg: #f6f7f9; --panel: #fff; --card: #fff; --line: #e4e7eb; --line-strong: #cfd5dc;
+      --soft: #f0f3f7; --hover: #edf2fb; --text: #20242a; --muted: #737d89; --accent: #5272d2;
+      --accent-hover: #4665bf; --accent-soft: #edf1fd; --req: #5c73c9; --bug: #c8675d; --ok: #438e6b; --warn: #b88135;
+      --shadow: 0 16px 42px rgb(25 35 55 / 14%);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 12px; background: var(--bg); color: var(--text); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { display: flex; height: 100vh; min-height: 0; margin: 0; padding: 12px; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, var(--bg)) 0, var(--bg) 146px); color: var(--text); font: 13px/1.5 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", ui-sans-serif, system-ui, sans-serif; flex-direction: column; }
     button, select, input { color: inherit; font: inherit; }
-    button { min-height: 34px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 6px; outline: 0; background: var(--panel); cursor: pointer; font-weight: 620; transition: color .11s ease, border-color .11s ease, background-color .11s ease, opacity .11s ease; }
-    button:hover { border-color: color-mix(in srgb, var(--accent) 48%, var(--line-strong)); background: var(--hover); color: var(--accent); }
-    button:active:not(:disabled) { background: var(--soft); }
-    button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+    button { min-height: 34px; padding: 0 12px; border: 0; border-radius: 8px; outline: 0; background: var(--soft); cursor: pointer; font-weight: 600; transition: color .16s ease, background-color .16s ease, opacity .16s ease, transform .16s ease; }
+    button:hover { background: var(--hover); color: var(--accent); }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
     button:disabled { opacity: .52; cursor: not-allowed; }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+    .app-header { position: relative; display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 2px 4px 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent); }
+    .app-header::before { position: absolute; top: 4px; bottom: 12px; left: 0; width: 3px; border-radius: 3px; background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 38%, var(--req))); content: ""; }
     h1, h2, p { margin: 0; }
     h1 { font-size: 17px; }
     .app-title-row { display: flex; align-items: center; gap: 8px; }
@@ -52,27 +53,31 @@
     #local-close { width: 34px; padding: 0; font-size: 20px; line-height: 1; }
     .monitor { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
     .monitor button[aria-pressed="true"] { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
-    nav { display: flex; gap: 18px; margin-bottom: 12px; padding: 0; border-bottom: 1px solid var(--line); background: transparent; }
+    nav { display: flex; flex: 0 0 auto; gap: 18px; margin-bottom: 12px; padding: 0; border-bottom: 1px solid var(--line); background: transparent; }
     nav button { position: relative; flex: 1; border: 0; border-radius: 0; background: transparent; }
     nav button::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; border-radius: 2px; background: transparent; content: ""; }
     nav button.active { background: transparent; color: var(--text); box-shadow: none; font-weight: 680; }
     nav button.active::after { background: var(--accent); }
-    #error { display: none; margin-bottom: 10px; padding: 9px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bug) 16%, transparent); color: var(--bug); }
+    #error { display: none; flex: 0 0 auto; margin-bottom: 10px; padding: 9px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bug) 16%, transparent); color: var(--bug); }
     #loading { display: none; position: fixed; inset: 0; z-index: 30; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 72%, transparent); backdrop-filter: blur(2px); }
     #loading.visible { display: flex; }
     .loader { display: flex; align-items: center; gap: 9px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
     .spinner { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-    section, .sheet-panel, .detail { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-    .section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 650; }
+    #board-view, #sheets-view, #detail-view, #svn-view { min-height: 0; overflow: hidden; flex: 1; }
+    .columns { display: grid; height: 100%; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .columns > section, .sheets-layout > section, .sheet-panel, .detail { min-width: 0; padding: 10px; border: 1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--panel) 96%, var(--accent-soft)); box-shadow: 0 7px 22px rgb(28 38 58 / 5%); }
+    .columns > section { display: flex; min-height: 0; overflow: hidden; flex-direction: column; }
+    .columns > section.requirement { border-top: 2px solid color-mix(in srgb, var(--req) 66%, var(--line)); }
+    .columns > section.bug { border-top: 2px solid color-mix(in srgb, var(--bug) 62%, var(--line)); }
+    .section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent); font-weight: 650; }
     .section-title .count { min-width: 25px; padding: 1px 7px; border-radius: 5px; color: var(--muted); background: var(--soft); text-align: center; font-size: 11px; }
     .status-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 9px; }
     .status-filter { min-height: 27px; padding: 0 8px; border-radius: 5px; color: var(--muted); font-size: 11px; }
     .status-filter.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--accent); }
     .requirement .section-title strong { color: var(--req); }
     .bug .section-title strong { color: var(--bug); }
-    .list { display: grid; gap: 0; }
+    .list { display: grid; min-height: 0; overflow: auto; align-content: start; gap: 0; flex: 1; scrollbar-gutter: stable; }
     article { min-width: 0; padding: 10px 9px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; box-shadow: none; cursor: pointer; transition: background-color .11s ease, box-shadow .11s ease; }
     article:last-child { border-bottom: 0; }
     article:hover { border-color: var(--line); background: var(--hover); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 58%, transparent); }
@@ -81,59 +86,226 @@
     .key { color: var(--accent); font-weight: 700; }
     .title { margin: 5px 0; overflow-wrap: anywhere; font-weight: 600; }
     .pill { display: inline-flex; align-items: center; max-width: 140px; padding: 1px 6px; border-radius: 4px; background: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pill.status-todo, .detail-status.status-todo { background: color-mix(in srgb, var(--muted) 9%, var(--panel)); color: var(--muted); }
+    .pill.status-doing, .detail-status.status-doing { background: color-mix(in srgb, var(--accent) 11%, var(--panel)); color: var(--accent); }
+    .pill.status-done, .detail-status.status-done { background: color-mix(in srgb, var(--ok) 12%, var(--panel)); color: var(--ok); }
     .bound { color: var(--ok); }
     .empty { padding: 24px 8px; color: var(--muted); text-align: center; }
-    .sheets-layout { display: grid; grid-template-columns: minmax(190px, 34%) minmax(0, 1fr); gap: 10px; }
-    .sheet-list { display: grid; gap: 6px; max-height: 500px; overflow: auto; }
-    .sheet-item { width: 100%; min-height: 48px; text-align: left; }
-    .sheet-item.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
-    .sheet-item small { display: block; color: var(--muted); }
-    .sheet-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
-    .sheet-toolbar input, .sheet-toolbar select { min-height: 34px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 9px; }
-    .sheet-toolbar input { flex: 1; }
-    .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
-    .back { min-width: 36px; padding: 0 9px; }
-    .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 30%); gap: 10px; }
-    .description { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; border-radius: 8px; background: var(--bg); }
-    .parent-context { margin-top: 12px; padding: 11px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 9px; background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+    body.sheets-active #sheets-view { min-height: 0; flex: 1; overflow: hidden; }
+    .sheets-layout { display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(180px, 220px) minmax(0, 1fr); gap: 12px; }
+    .sheet-directory { display: flex; min-width: 0; min-height: 0; padding: 11px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--panel) 96%, var(--accent-soft)); box-shadow: 0 7px 22px rgb(28 38 58 / 5%); flex-direction: column; }
+    .sheet-list { display: grid; min-height: 0; overflow: auto; align-content: start; gap: 2px; padding-right: 2px; scrollbar-gutter: stable; }
+    .sheet-item { width: 100%; min-height: 46px; padding: 7px 9px; border-radius: 7px; background: transparent; text-align: left; }
+    .sheet-item:hover { background: var(--hover); }
+    .sheet-item.active { background: color-mix(in srgb, var(--accent) 13%, var(--panel)); color: var(--accent); }
+    .sheet-item strong, .sheet-item small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sheet-item small { margin-top: 2px; color: var(--muted); font-size: 10px; font-weight: 500; }
+    .sheet-panel { display: flex; min-width: 0; min-height: 0; padding: 0 !important; overflow: hidden; flex-direction: column; }
+    .sheet-panel-head { display: grid; gap: 9px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
+    .sheet-title-row { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .sheet-title-row h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sheet-visible-count { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+    .sheet-toolbar { display: flex; align-items: center; gap: 8px; }
+    .sheet-toolbar input { min-width: 0; min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; outline: 0; background: var(--panel); flex: 1; }
+    .sheet-toolbar input:focus { border-color: color-mix(in srgb, var(--accent) 58%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+    .sheet-reset { min-height: 34px; background: var(--soft); color: var(--muted); }
+    .sheet-table-wrap { min-height: 0; overflow: auto; flex: 1; scrollbar-gutter: stable; }
+    .sheet-table { width: 100%; min-width: 1080px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+    .sheet-table th, .sheet-table td { padding: 8px 9px; border-right: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-bottom: 1px solid var(--line); overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+    .sheet-table th:last-child, .sheet-table td:last-child { border-right: 0; }
+    .sheet-table thead { position: sticky; z-index: 4; top: 0; }
+    .sheet-table thead th { padding: 0; background: color-mix(in srgb, var(--soft) 78%, var(--panel)); color: var(--muted); font-size: 11px; font-weight: 650; }
+    .sheet-sort { width: 100%; min-height: 34px; justify-content: space-between; padding: 0 9px; border-radius: 0; background: transparent; color: inherit; text-align: left; }
+    .sheet-sort:hover, .sheet-sort.active { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); color: var(--accent); }
+    .sheet-sort-mark { margin-left: 5px; font-size: 10px; }
+    .sheet-filter-row { position: sticky; z-index: 3; top: 34px; }
+    .sheet-filter-row th { padding: 5px 6px; background: var(--panel); }
+    .sheet-filter { width: 100%; min-width: 0; height: 29px; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; outline: 0; background: var(--panel); color: var(--text); font: inherit; font-size: 10px; }
+    .sheet-filter:focus, .sheet-filter.active { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: var(--accent-soft); }
+    .sheet-row { cursor: pointer; }
+    .sheet-row:hover, .sheet-row:focus-visible { outline: 0; background: var(--hover); }
+    .sheet-row:hover td:first-child, .sheet-row:focus-visible td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 65%, transparent); }
+    .sheet-key strong { margin-left: 6px; color: var(--accent); }
+    .sheet-type-mark { display: inline-flex; padding: 1px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-size: 10px; }
+    .sheet-type-mark.bug { background: color-mix(in srgb, var(--bug) 12%, var(--panel)); color: var(--bug); }
+    .sheet-status-mark { display: inline-flex; max-width: 100%; padding: 2px 6px; border-radius: 5px; background: var(--soft); overflow: hidden; text-overflow: ellipsis; }
+    .sheet-no-results td { padding: 28px 12px; color: var(--muted); text-align: center; }
+    body.detail-active #detail-view { min-height: 0; flex: 1; }
+    .detail-shell { position: relative; display: grid; height: 100%; min-height: 0; padding: 0; overflow: hidden; grid-template-rows: auto minmax(0, 1fr); }
+    .detail-head { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 14px; margin: 0; padding: 15px 18px 14px; border-bottom: 1px solid var(--line); }
+    .detail-head > div { min-width: 0; }
+    .detail-head h2 { margin-top: 3px; overflow: hidden; font-size: 17px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+    .detail-title-meta { display: flex; align-items: center; gap: 8px; }
+    .detail-status { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
+    .detail-status::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
+    .back { flex: 0 0 auto; display: inline-flex; min-width: 0; min-height: 38px; align-items: center; gap: 7px; padding: 0 13px 0 10px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); font-weight: 650; }
+    .back:hover { background: color-mix(in srgb, var(--accent) 19%, var(--panel)); color: var(--accent); transform: translateX(-1px); }
+    .back-icon { font-size: 17px; font-weight: 500; line-height: 1; }
+    .detail-body { position: relative; min-height: 0; overflow: hidden; }
+    .detail-scroll { height: 100%; min-height: 0; padding: 18px 20px 28px; overflow: auto; overscroll-behavior: contain; }
+    .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 31%); gap: 26px; }
+    .detail-side-rail { position: sticky; top: 0; display: grid; min-width: 0; align-self: start; gap: 14px; }
+    .description { padding: 13px 14px; border-radius: 9px; background: color-mix(in srgb, var(--soft) 70%, var(--panel)); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+    .parent-context { margin-top: 16px; padding: 13px 15px; border: 0; border-left: 3px solid color-mix(in srgb, var(--accent) 72%, transparent); border-radius: 0 9px 9px 0; background: color-mix(in srgb, var(--accent-soft) 52%, var(--panel)); }
     .parent-context-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
     .parent-context-head span { color: var(--muted); font-size: 11px; }
     .parent-context-head a { color: var(--accent); text-decoration: none; }
-    .parent-context h3 { margin: 0 0 7px; font-size: 14px; }
-    .parent-context .description { background: color-mix(in srgb, var(--bg) 72%, transparent); }
-    .scope-note { margin-top: 9px; color: var(--muted); font-size: 11px; line-height: 1.5; }
-    .facts { display: grid; gap: 6px; }
-    .fact { display: grid; grid-template-columns: 65px minmax(0,1fr); gap: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+    .parent-context h3 { margin: 0 0 8px; font-size: 14px; }
+    .parent-context .description { padding: 11px 12px; background: color-mix(in srgb, var(--panel) 62%, transparent); }
+    .scope-note { margin-top: 9px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .facts { display: grid; align-content: start; gap: 0; padding: 2px 0 2px 18px; border-left: 1px solid var(--line); }
+    .fact { display: grid; grid-template-columns: 72px minmax(0,1fr); gap: 10px; padding: 8px 0; }
     .fact span:first-child { color: var(--muted); }
-    .subsection { margin-top: 12px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-    .chip { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
-    .attachments { display: grid; gap: 6px; margin-top: 6px; }
-    .attachment { padding: 8px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
-    .attachment small { display: block; color: var(--muted); }
-    .attachment button { width: 100%; min-height: 0; padding: 0; border: 0; background: transparent; text-align: left; }
-    .attachment-preview { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+    .fact strong { overflow-wrap: anywhere; font-weight: 600; }
+    .subsection { margin-top: 18px; }
+    .subsection > strong { font-size: 13px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .chip { padding: 4px 8px; border-radius: 7px; background: var(--soft); color: var(--text); }
+    .attachments { display: grid; gap: 0; margin-top: 7px; border-top: 1px solid var(--line); }
+    .attachment { padding: 9px 4px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+    .attachment small { display: block; margin-top: 2px; color: var(--muted); }
+    .attachment button { width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: left; }
+    .attachment button:hover { background: transparent; }
+    .attachment-preview { margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--soft); }
     .attachment-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .attachment-preview-nav { display: inline-flex; align-items: center; gap: 5px; }
-    .attachment-preview-nav button { width: 30px; min-height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); text-align: center; }
+    .attachment-preview-nav button { width: 30px; min-height: 28px; padding: 0; background: var(--panel); color: var(--text); text-align: center; }
     .attachment-preview-nav button:disabled { opacity: .35; cursor: default; }
     .attachment-preview-nav small { color: var(--muted); white-space: nowrap; }
-    .attachment-preview img { display: block; max-width: 100%; max-height: 440px; margin: 6px auto 0; border-radius: 7px; object-fit: contain; }
-    .transition-box { margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
-    .transition-box select { width: 100%; min-height: 34px; margin: 7px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 8px; }
-    .transition-box button { width: 100%; background: var(--panel); }
-    .transition-hint { margin-top: 5px; color: var(--muted); font-size: 11px; }
-    .binding-box { margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
-    .binding-box select { width: 100%; min-height: 34px; margin: 7px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 8px; }
-    .binding-actions { display: flex; gap: 6px; margin-top: 7px; }
-    .binding-actions button { flex: 1; min-width: 0; }
-    #open-bound-thread, #create-analysis { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); color: var(--accent); }
-    #open-bound-thread:hover, #create-analysis:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--panel)); }
-    #confirm-binding, #confirm-create-analysis, #execute-transition { border-color: var(--accent); background: var(--accent); color: #fff; }
-    #confirm-binding:hover, #confirm-create-analysis:hover, #execute-transition:hover { border-color: color-mix(in srgb, var(--accent) 78%, #000); background: color-mix(in srgb, var(--accent) 88%, #000); color: #fff; }
-    .binding-actions .danger { border-color: color-mix(in srgb, var(--bug) 45%, var(--line)); color: var(--bug); }
+    .attachment-preview-stage { position: relative; display: grid; width: 100%; height: clamp(320px, 52vh, 680px); min-height: 0; margin-top: 8px; padding: 12px; overflow: hidden; border-radius: 8px; background: color-mix(in srgb, var(--panel) 86%, var(--soft)); cursor: zoom-in; place-items: center; }
+    .attachment-preview-stage:hover { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+    .attachment-preview-stage img { display: block; width: 100%; height: 100%; min-height: 0; margin: 0; border-radius: 6px; object-fit: contain; image-rendering: auto; }
+    .attachment-preview-zoom { position: absolute; right: 12px; bottom: 10px; padding: 4px 8px; border-radius: 6px; background: rgb(20 27 38 / 70%); color: #fff; font-size: 10px; font-weight: 600; opacity: .82; pointer-events: none; }
+    .attachment-lightbox { position: fixed; z-index: 80; inset: 0; display: grid; padding: 18px; background: rgb(10 14 22 / 88%); backdrop-filter: blur(5px); grid-template-rows: auto minmax(0, 1fr); }
+    .attachment-lightbox-head { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; padding: 0 2px 12px; color: #fff; }
+    .attachment-lightbox-head > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .attachment-lightbox-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; }
+    .attachment-lightbox-actions button { min-width: 38px; min-height: 38px; background: rgb(255 255 255 / 13%); color: #fff; }
+    .attachment-lightbox-actions button:hover { background: rgb(255 255 255 / 22%); color: #fff; }
+    .attachment-lightbox-actions button:disabled { opacity: .32; }
+    .attachment-lightbox-counter { min-width: 48px; color: rgb(255 255 255 / 72%); text-align: center; font-size: 11px; }
+    .attachment-lightbox-stage { display: grid; min-width: 0; min-height: 0; overflow: hidden; place-items: center; }
+    .attachment-lightbox-stage img { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; image-rendering: auto; }
+    .binding-box { margin-top: 10px; padding: 11px; border-radius: 9px; background: var(--soft); }
+    .binding-box select { width: 100%; min-height: 36px; margin: 7px 0; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; outline: 0; background: var(--panel); }
+    .analysis-project-field { display: grid !important; gap: 5px !important; }
+    .analysis-project-field > span { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .analysis-project-field select { margin: 0; }
+    .binding-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+    .binding-actions button { min-width: 0; flex: 1; }
+    .binding-actions .danger { background: transparent; color: var(--bug); }
     .binding-current { margin-top: 5px; overflow-wrap: anywhere; font-weight: 600; }
-    .binding-hint { margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .workspace-scope-list { display: grid; gap: 4px; margin-top: 7px; }
+    .workspace-scope-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 7px 8px; border-radius: 7px; background: var(--panel); }
+    .workspace-scope-row span { min-width: 0; }
+    .workspace-scope-row strong, .workspace-scope-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .workspace-scope-row small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .workspace-scope-row button { padding: 4px 7px; background: transparent; color: var(--bug); }
+    .workspace-binding-form { display: grid; gap: 6px; margin-top: 8px; }
+    .workspace-binding-form input[type="text"] { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 8px; outline: 0; background: var(--panel); color: var(--text); font: inherit; }
+    .workspace-binding-options { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
+    .binding-hint, .transition-hint { margin-top: 6px; color: var(--muted); font-size: 11px; }
+    .button-primary, #confirm-binding, #confirm-create-analysis, #execute-transition, .association-foot-actions .primary { background: var(--accent); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 20%, transparent); }
+    .button-primary:hover, #confirm-binding:hover, #confirm-create-analysis:hover, #execute-transition:hover, .association-foot-actions .primary:hover { background: var(--accent-hover); color: #fff; }
+    .button-tonal { background: var(--accent-soft); color: var(--accent); }
+    .button-tonal:hover { background: color-mix(in srgb, var(--accent) 17%, var(--panel)); color: var(--accent); }
+    .button-quiet { background: transparent; color: var(--muted); }
+    .button-quiet:hover { background: var(--hover); color: var(--text); }
+    .button-danger { background: transparent; color: var(--bug); }
+    .button-danger:hover { background: color-mix(in srgb, var(--bug) 10%, transparent); color: var(--bug); }
+    .detail-command-panel { display: grid; min-width: 0; gap: 14px; padding: 14px; border-left: 3px solid color-mix(in srgb, var(--accent) 72%, transparent); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--accent-soft) 48%, var(--panel)); }
+    .context-summary { display: grid; min-width: 0; gap: 4px; }
+    .context-summary-head { display: flex; min-width: 0; align-items: center; gap: 7px; }
+    .context-state { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; color: var(--ok); font-size: 11px; font-weight: 600; }
+    .context-state::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ""; }
+    .context-state.unbound { color: var(--muted); }
+    .context-summary strong { min-width: 0; overflow: hidden; font-size: 13px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+    .context-summary-detail { min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+    .context-manage { flex: 0 0 auto; min-width: 78px; min-height: 32px; margin-left: auto; padding: 0 11px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--accent); font-size: 11px; }
+    .context-manage:hover { background: color-mix(in srgb, var(--accent) 23%, var(--panel)); color: var(--accent); }
+    .command-actions { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .command-actions button { width: 100%; min-width: 0; min-height: 40px; padding: 0 9px; white-space: nowrap; }
+    .command-actions .button-primary, .command-actions > :only-child { grid-column: 1 / -1; }
+    .command-actions #open-svn { background: color-mix(in srgb, var(--accent) 15%, var(--panel)); color: var(--accent); }
+    .command-actions #open-svn:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); color: var(--accent); }
+    .command-actions #open-transition-panel { background: color-mix(in srgb, var(--warn) 12%, var(--panel)); color: color-mix(in srgb, var(--warn) 76%, var(--text)); }
+    .command-actions #open-transition-panel:hover { background: color-mix(in srgb, var(--warn) 19%, var(--panel)); color: color-mix(in srgb, var(--warn) 84%, var(--text)); }
+    .detail-modal-layer { position: absolute; inset: 0; z-index: 12; display: grid; padding: 22px; place-items: center; background: rgb(20 27 38 / 34%); backdrop-filter: blur(2px); animation: modal-backdrop-in .16s ease-out; }
+    .detail-modal-layer > * { animation: modal-surface-in .18s ease-out; }
+    .detail-modal-layer.modal-refresh, .detail-modal-layer.modal-refresh > * { animation: none; }
+    @keyframes modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes modal-surface-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    .association-dialog, .transition-workspace { display: flex; width: min(820px, 100%); max-height: 100%; min-height: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel); box-shadow: 0 24px 70px rgb(15 23 38 / 28%); flex-direction: column; }
+    .association-dialog { height: min(560px, 100%); }
+    .transition-workspace { width: min(580px, 100%); }
+    .association-head, .association-foot, .transition-workspace-head { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 14px 17px; }
+    .association-head, .transition-workspace-head { border-bottom: 1px solid var(--line); }
+    .association-head h3, .transition-workspace-head h3 { margin: 0; font-size: 15px; }
+    .association-head p, .transition-workspace-head p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+    .association-head .modal-close, .transition-workspace-head .modal-close { width: 32px; min-height: 32px; padding: 0; border-radius: 50%; background: var(--soft); color: var(--muted); font-size: 18px; font-weight: 400; }
+    .association-head .modal-close:hover, .transition-workspace-head .modal-close:hover { background: var(--hover); color: var(--text); }
+    .association-grid { display: grid; min-height: 0; overflow: auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .association-section { min-width: 0; padding: 16px 18px; }
+    .association-section + .association-section { border-left: 1px solid var(--line); }
+    .association-section-head { margin-bottom: 10px; }
+    .association-section-head strong, .association-section-head small { display: block; }
+    .association-section-head small { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .association-workspaces, .association-conversations { display: grid; gap: 4px; }
+    .association-workspace-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 48px; padding: 7px 9px; border-radius: 8px; }
+    .association-workspace-row:hover, .association-workspace-row.selected { background: var(--accent-soft); }
+    .association-workspace-choice { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; cursor: pointer; }
+    .association-workspace-copy strong, .association-workspace-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .association-workspace-copy small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .association-default-choice { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; cursor: pointer; }
+    .association-default-choice:has(input:checked) { color: var(--accent); }
+    .association-conversation-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 9px; padding: 9px; border-radius: 8px; cursor: pointer; }
+    .association-conversation-option:hover, .association-conversation-option.selected { background: var(--accent-soft); }
+    .association-conversation-option input, .association-workspace-row input { accent-color: var(--accent); }
+    .association-conversation-option input { margin-top: 3px; }
+    .association-conversation-option strong, .association-conversation-option small { display: block; }
+    .association-conversation-option small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .association-fields { display: grid; gap: 7px; margin-top: 10px; }
+    .association-fields textarea { width: 100%; min-height: 88px; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 8px; outline: 0; background: var(--panel); color: var(--text); font: inherit; resize: vertical; }
+    .association-thread-picker { display: grid; gap: 7px; }
+    .association-thread-search { position: relative; display: block; }
+    .association-thread-search::before { position: absolute; top: 50%; left: 10px; width: 12px; height: 12px; border: 1.5px solid var(--muted); border-radius: 50%; content: ""; transform: translateY(-60%); pointer-events: none; }
+    .association-thread-search::after { position: absolute; top: calc(50% + 4px); left: 20px; width: 5px; height: 1.5px; background: var(--muted); content: ""; transform: rotate(45deg); pointer-events: none; }
+    .association-thread-search input { width: 100%; min-height: 36px; padding: 7px 10px 7px 32px; border: 1px solid var(--line-strong); border-radius: 8px; outline: 0; background: var(--soft); color: var(--text); font: inherit; }
+    .association-thread-search input:focus, .association-fields textarea:focus, .workspace-binding-form input:focus { border-color: var(--accent); background: var(--panel); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+    .association-thread-list { display: grid; gap: 2px; max-height: 220px; overflow: auto; padding: 3px; background: var(--soft); border-radius: 8px; }
+    .association-thread-group { padding: 7px 7px 3px; color: var(--muted); font-size: 10px; font-weight: 700; }
+    .association-thread-row { display: grid; width: 100%; min-height: 46px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; background: transparent; color: var(--text); text-align: left; }
+    .association-thread-row:hover { background: var(--panel); }
+    .association-thread-row.selected { background: var(--accent-soft); color: var(--text); }
+    .association-thread-row strong, .association-thread-row small { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .association-thread-row small { margin-top: 2px; color: var(--muted); font-size: 10px; font-weight: 500; }
+    .association-thread-check { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: transparent; font-size: 11px; }
+    .association-thread-row.selected .association-thread-check { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .association-thread-empty { padding: 18px 10px; color: var(--muted); text-align: center; }
+    .association-danger { margin-top: 10px; }
+    .association-danger button { min-height: 30px; padding: 0; background: transparent; color: var(--bug); }
+    .association-foot { border-top: 1px solid var(--line); }
+    .association-foot-note { color: var(--muted); font-size: 11px; }
+    .association-foot-actions { display: flex; gap: 7px; margin-left: auto; }
+    .association-foot-actions .primary { min-width: 116px; }
+    .transition-workspace-body { display: grid; width: 100%; min-height: 0; overflow: auto; align-content: start; gap: 12px; padding: 22px; }
+    .transition-workspace-body > strong { font-size: 14px; }
+    .transition-workspace-body #execute-transition { justify-self: start; min-width: 132px; }
+    .transition-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .transition-option { display: grid; min-height: 50px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 11px; border: 1px solid transparent; background: var(--soft); color: var(--text); text-align: left; }
+    .transition-option:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 24%, var(--line)); background: var(--hover); color: var(--text); }
+    .transition-option.selected { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); background: var(--accent-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }
+    .transition-option strong, .transition-option small { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .transition-option strong { font-size: 12px; }
+    .transition-option small { margin-top: 2px; color: var(--muted); font-size: 10px; font-weight: 500; }
+    .transition-option-mark { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: transparent; font-size: 11px; }
+    .transition-option.selected .transition-option-mark { border-color: var(--accent); background: var(--accent); color: #fff; }
+    body.detail-embed:not(.workspace-embed) { min-height: 100vh; padding: 0; background: var(--panel); }
+    body.detail-embed:not(.workspace-embed) > header, body.detail-embed:not(.workspace-embed) > nav { display: none !important; }
+    body.detail-embed:not(.workspace-embed) #error { position: absolute; z-index: 20; top: 10px; right: 18px; left: 18px; margin: 0; }
+    body.detail-embed:not(.workspace-embed) .detail { border: 0; border-radius: 0; }
+    body.detail-embed:not(.workspace-embed) .detail-head { display: none; }
+    body.detail-embed .detail-grid { grid-template-columns: minmax(0, 1fr) minmax(270px, 31%); gap: 26px; }
     .svn { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
     .svn-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, 34%); gap: 10px; }
     .svn-card { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
@@ -259,6 +431,8 @@
     body.svn-mode #loading { top: 57px; }
     [hidden] { display: none !important; }
     @media (max-width: 1080px) {
+      .detail-grid { grid-template-columns: minmax(0, 1fr) minmax(250px, 34%); gap: 20px; }
+      .detail-command-panel { padding: 13px; }
       .svn-workbench-grid { grid-template-columns: minmax(250px, 34%) minmax(0, 1fr); }
       .svn-workbench-side { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
       .svn-review-stack { display: contents; }
@@ -271,6 +445,20 @@
     }
     @media (max-width: 660px) {
       .columns, .sheets-layout, .detail-grid, .svn-grid, .svn-workbench-grid, .svn-workbench-side { grid-template-columns: 1fr; }
+      .columns { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+      body.sheets-active .sheets-layout { grid-template-rows: minmax(120px, 220px) minmax(0, 1fr); }
+      body.detail-embed .detail-grid, .association-grid { grid-template-columns: 1fr; }
+      .detail-scroll { padding: 14px 15px 22px; }
+      .detail-side-rail { position: static; gap: 12px; }
+      .facts { margin-top: 4px; padding: 14px 0 0; border-top: 1px solid var(--line); border-left: 0; }
+      .detail-command-panel { border-top: 3px solid color-mix(in srgb, var(--accent) 72%, transparent); border-left: 0; border-radius: 0 0 10px 10px; }
+      .association-section + .association-section { border-top: 1px solid var(--line); border-left: 0; }
+      .detail-modal-layer { padding: 10px; }
+      .association-dialog { height: min(620px, 100%); }
+      .association-foot { align-items: stretch; flex-direction: column; }
+      .association-foot-actions { width: 100%; margin-left: 0; }
+      .association-foot-actions button { flex: 1; }
+      .transition-options { grid-template-columns: 1fr; }
       .sheet-list { max-height: 220px; }
       .svn-workbench-side { display: grid; grid-column: auto; }
       .svn-workbench-header { align-items: flex-start; gap: 8px; }
@@ -279,6 +467,8 @@
       .svn-context-bar { grid-template-columns: 1fr; }
       .svn-project-scope-list { grid-template-columns: 1fr; }
       body.svn-mode .svn-files, body.svn-mode .svn-diff { max-height: 360px; }
+      .attachment-preview-stage { height: clamp(260px, 46vh, 480px); }
+      .attachment-lightbox { padding: 10px; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
@@ -286,9 +476,9 @@
   </style>
 </head>
 <body>
-  <header>
+  <header class="app-header">
     <div><div class="app-title-row"><h1>Jira 任务工作台</h1><button id="version-status" type="button" title="当前安装版本">v__JIRA_WORKBENCH_VERSION__</button></div><div id="meta">等待任务数据…</div></div>
-    <div class="toolbar"><div class="monitor"><span id="monitor-meta">自动 Bug 监控：读取中</span><button id="monitor-toggle" type="button" aria-pressed="false">开启</button></div><button id="settings" type="button">设置</button><button id="refresh" type="button">刷新</button><button id="local-close" type="button" aria-label="返回 Codex" title="返回 Codex" hidden>×</button></div>
+    <div class="toolbar"><div class="monitor" id="monitor"><span id="monitor-meta">自动 Bug 监控：读取中</span><button id="monitor-toggle" type="button" aria-pressed="false">开启</button></div><button id="settings" type="button" hidden>设置</button><button id="refresh" type="button">刷新</button><button id="local-close" type="button" aria-label="关闭工作台" title="关闭工作台" hidden>×</button></div>
   </header>
   <nav aria-label="工作台页签">
     <button type="button" data-tab="active" class="active">待我处理</button>
@@ -304,8 +494,8 @@
   </div>
   <div id="sheets-view" hidden>
     <div class="sheets-layout">
-      <section><div class="section-title"><strong>可用 Sheets</strong><span id="sheet-count" class="count">0</span></div><div id="sheet-list" class="sheet-list"><div class="empty">点击页签读取</div></div></section>
-      <section class="sheet-panel"><div class="sheet-toolbar"><input id="sheet-search" type="search" placeholder="筛选当前 Sheet"><select id="sheet-sort"><option value="updated">按更新时间</option><option value="key">按单号</option><option value="title">按标题</option><option value="status">按状态</option></select></div><h2 id="sheet-title">请选择 Sheet</h2><div id="sheet-issues" class="list"><div class="empty">从左侧选择一个 Sheet</div></div></section>
+      <aside class="sheet-directory"><div class="section-title"><strong>可用 Sheets</strong><span id="sheet-count" class="count">0</span></div><div id="sheet-list" class="sheet-list"><div class="empty">点击页签读取</div></div></aside>
+      <section class="sheet-panel"><div class="sheet-panel-head"><div class="sheet-title-row"><h2 id="sheet-title">请选择 Sheet</h2><span id="sheet-visible-count" class="sheet-visible-count">0 项</span></div><div class="sheet-toolbar"><input id="sheet-search" type="search" placeholder="搜索单号、标题、状态或处理人"><button id="sheet-reset" class="sheet-reset" type="button" hidden>重置筛选</button></div></div><div id="sheet-table-wrap" class="sheet-table-wrap"><div class="empty">从左侧选择一个 Sheet</div></div></section>
     </div>
   </div>
   <div id="detail-view" hidden></div>
@@ -313,17 +503,51 @@
   <div id="loading"><div class="loader"><span class="spinner"></span><span id="loading-text">正在读取…</span></div></div>
   <script>
     const APP_VERSION = "__JIRA_WORKBENCH_VERSION__";
-    const TOOLS = { board: "jira_list_my_tasks", issue: "jira_get_issue", attachmentPreview: "jira_preview_issue_attachment", sheets: "jira_list_sheets", sheet: "jira_get_sheet_issues", transitions: "jira_list_transitions", prepareTransition: "jira_prepare_transition", executeTransition: "jira_execute_transition", threads: "codex_list_bindable_threads", bindIssue: "codex_bind_issue_to_thread", clearBinding: "codex_clear_issue_binding", openBoundThread: "codex_open_bound_issue_thread", createAnalysis: "codex_create_and_bind_issue_analysis", automationStatus: "jira_get_bug_monitor_status", automationToggle: "jira_set_bug_monitor_enabled", updateStatus: "jira_get_update_status", updateDownload: "jira_download_update", updateCancel: "jira_cancel_update_download", updateRestart: "jira_restart_to_complete_update", svnInspect: "svn_inspect_issue_changes", svnDiff: "svn_preview_issue_diff", svnExternalDiff: "svn_open_issue_external_diff", svnCreateReview: "svn_create_issue_review", svnGetReview: "svn_get_issue_review", svnCancelReview: "svn_cancel_issue_review", svnConfirmReview: "svn_confirm_issue_review", svnCommit: "svn_commit_issue_review", svnReconcile: "svn_reconcile_issue_commit", svnConfirmCommitted: "svn_confirm_issue_committed", svnAbandon: "svn_abandon_issue_review" };
+    // 设置入口是宿主相关地址。占位符用拼接构造，避免宿主在 serve 时 replaceAll
+    // 替换 `__JIRA_WORKBENCH_SETTINGS_URL__` 把本判断里的字面量也一并替换掉：
+    // 拼接后的运行时值等于占位符，源码文本却不含连续的占位符串，不会命中替换。
+    // 占位符未被替换（Codex 侧直接 stream 原始 HTML）时回退到 Codex 面板设置页，
+    // 保持原有行为；DSH 侧替换为空则隐藏按钮。
+    const SETTINGS_URL = "__JIRA_WORKBENCH_SETTINGS_URL__";
+    const SETTINGS_URL_PLACEHOLDER = "__JIRA_WORKBENCH_SETTINGS_URL" + "__";
+    const EFFECTIVE_SETTINGS_URL = SETTINGS_URL === SETTINGS_URL_PLACEHOLDER
+      ? "http://127.0.0.1:47823/#settings"
+      : SETTINGS_URL;
+    const HOST_KIND_VALUE = "__JIRA_WORKBENCH_HOST_KIND__";
+    const HOST_KIND_PLACEHOLDER = "__JIRA_WORKBENCH_HOST_KIND" + "__";
+    const HOST_KIND = HOST_KIND_VALUE === HOST_KIND_PLACEHOLDER ? "codex" : HOST_KIND_VALUE;
+    const SESSION_HOST_NAME = HOST_KIND === "dsh" ? "DSH" : "Codex";
+    const TOOLS = { board: "jira_list_my_tasks", issue: "jira_get_issue", attachmentPreview: "jira_preview_issue_attachment", sheets: "jira_list_sheets", sheet: "jira_get_sheet_issues", transitions: "jira_list_transitions", prepareTransition: "jira_prepare_transition", executeTransition: "jira_execute_transition", workspaceGet: "jira_get_issue_workspaces", workspaceList: "jira_list_available_workspaces", workspaceBind: "jira_bind_issue_workspace", workspaceUnbind: "jira_unbind_issue_workspace", threads: "codex_list_bindable_threads", bindIssue: "codex_bind_issue_to_thread", clearBinding: "codex_clear_issue_binding", openBoundThread: "codex_open_bound_issue_thread", createAnalysis: "codex_create_and_bind_issue_analysis", automationStatus: "jira_get_bug_monitor_status", automationToggle: "jira_set_bug_monitor_enabled", updateStatus: "jira_get_update_status", updateDownload: "jira_download_update", updateCancel: "jira_cancel_update_download", updateRestart: "jira_restart_to_complete_update", svnInspect: "svn_inspect_issue_changes", svnDiff: "svn_preview_issue_diff", svnExternalDiff: "svn_open_issue_external_diff", svnCreateReview: "svn_create_issue_review", svnGetReview: "svn_get_issue_review", svnCancelReview: "svn_cancel_issue_review", svnConfirmReview: "svn_confirm_issue_review", svnCommit: "svn_commit_issue_review", svnReconcile: "svn_reconcile_issue_commit", svnConfirmCommitted: "svn_confirm_issue_committed", svnAbandon: "svn_abandon_issue_review" };
+    const LAUNCH_PARAMS = new URLSearchParams(window.location.search);
     const DESKTOP_BRIDGE_TRANSPORT = document.documentElement.dataset.transport === "desktop-bridge";
     const LOCAL_TRANSPORT = DESKTOP_BRIDGE_TRANSPORT
-      || new URLSearchParams(window.location.search).get("transport") === "http";
+      || LAUNCH_PARAMS.get("transport") === "http";
+    const EMBED_DETAIL_MODE = LOCAL_TRANSPORT && LAUNCH_PARAMS.get("embed") === "detail";
+    const WORKSPACE_EMBED_MODE = LOCAL_TRANSPORT && LAUNCH_PARAMS.get("workspace") === "1";
+    const CURRENT_HOST_SESSION_ID = String(LAUNCH_PARAMS.get("currentSession") || "").trim();
     const LOCAL_STATE_KEY = "jira-workbench-mcp-app:widget-state:v1";
+    const SHEET_COLUMNS = [
+      { key: "issue", label: "Issue", width: 118, filter: "text", placeholder: "Key" },
+      { key: "type", label: "类型", width: 72, filter: "type" },
+      { key: "title", label: "标题", width: 260, filter: "text", placeholder: "标题" },
+      { key: "status", label: "状态", width: 112, filter: "status" },
+      { key: "priority", label: "优先级", width: 84, filter: "text", placeholder: "优先级" },
+      { key: "assignee", label: "负责人", width: 100, filter: "text", placeholder: "负责人" },
+      { key: "collaborators", label: "协同处理人", width: 150, filter: "text", placeholder: "协同人" },
+      { key: "project", label: "项目 / 版本", width: 170, filter: "text", placeholder: "项目或版本" },
+      { key: "attachments", label: "附件", width: 70, filter: "attachments" },
+      { key: "updated", label: "更新时间", width: 145, filter: "text", placeholder: "日期或时间" }
+    ];
     const pending = new Map();
-    const cache = { board: null, sheets: null, sheet: null, issue: null, attachmentPreview: null, transitions: null, pendingTransition: null, threads: null, automation: null, update: null, createAnalysisIssueKey: "", svnContext: null, svnPreview: null, svnReview: null, svnConfirmation: null };
+    const cache = { board: null, sheets: null, sheet: null, issue: null, workspaces: null, availableWorkspaces: null, attachmentPreview: null, transitions: null, pendingTransition: null, threads: null, automation: null, update: null, createAnalysisIssueKey: "", svnContext: null, svnPreview: null, svnReview: null, svnConfirmation: null };
+    let workspaceToolAvailable = null;
+    let availableTools = null;
     let requestId = 1;
     let activeTab = "active";
     let previousView = "board";
     let selectedSheet = null;
+    let sheetSort = { column: "", direction: "" };
+    let sheetFilters = Object.fromEntries(SHEET_COLUMNS.map((column) => [column.key, ""]));
     let statusFilters = {};
     let svnSelectedPaths = new Set();
     let svnPollTimer = null;
@@ -332,6 +556,16 @@
     let svnCategoryFilter = "all";
     let svnDraftSummary = "";
     let svnDraftCodexReview = false;
+    let associationOpen = false;
+    let associationConversationMode = "keep";
+    let associationSelectedWorkspaceIds = new Set();
+    let associationDefaultWorkspaceId = "";
+    let associationThreadId = "";
+    let associationThreadSearch = "";
+    let associationSupplement = "";
+    let transitionPanelOpen = false;
+    let transitionSelectedId = "";
+    let attachmentLightboxOpen = false;
     let busy = false;
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -436,7 +670,7 @@
 
     const RETRYABLE_LOCAL_TOOLS = new Set([
       TOOLS.board, TOOLS.issue, TOOLS.attachmentPreview, TOOLS.sheets, TOOLS.sheet,
-      TOOLS.transitions, TOOLS.threads, TOOLS.automationStatus,
+      TOOLS.transitions, TOOLS.workspaceGet, TOOLS.workspaceList, TOOLS.threads, TOOLS.automationStatus,
       TOOLS.svnDiff, TOOLS.svnGetReview
     ]);
     const SVN_REVIEW_REFRESH_ON_FAILURE = new Set([
@@ -494,6 +728,16 @@
       window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
       return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
     }
+    async function loadCapabilities() {
+      try {
+        const result = await request("tools/list", {});
+        availableTools = new Set((result?.tools || []).map((tool) => String(tool?.name || "")).filter(Boolean));
+      } catch {
+        // 旧宿主可能不向 UI 暴露 tools/list；保持 null 时沿用调用后降级。
+        availableTools = null;
+      }
+    }
+    function hasTool(name) { return availableTools === null || availableTools.has(name); }
     function notify(method, params) {
       if (!LOCAL_TRANSPORT) window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
     }
@@ -508,6 +752,7 @@
       return request("ui/open-link", { url });
     }
     async function callTool(name, args = {}, options = {}) {
+      if (!hasTool(name)) return null;
       const busyText = name === TOOLS.issue ? "正在读取任务详情…"
         : name === TOOLS.attachmentPreview ? "正在读取附件预览…"
         : name === TOOLS.sheets ? "正在读取 Sheets…"
@@ -515,11 +760,15 @@
         : name === TOOLS.transitions ? "正在读取可用状态…"
         : name === TOOLS.prepareTransition ? "正在复核状态流转…"
         : name === TOOLS.executeTransition ? "正在提交 Jira 状态流转…"
-        : name === TOOLS.threads ? "正在读取 Codex 会话…"
+        : name === TOOLS.workspaceGet ? "正在读取项目目录…"
+        : name === TOOLS.workspaceList ? "正在读取 DSH 项目列表…"
+        : name === TOOLS.workspaceBind ? "正在绑定项目目录…"
+        : name === TOOLS.workspaceUnbind ? "正在解除项目目录…"
+        : name === TOOLS.threads ? `正在读取 ${SESSION_HOST_NAME} 会话…`
         : name === TOOLS.bindIssue ? "正在保存会话关联…"
         : name === TOOLS.clearBinding ? "正在解除会话关联…"
-        : name === TOOLS.openBoundThread ? "正在打开 Codex 会话…"
-        : name === TOOLS.createAnalysis ? "正在当前 Codex 窗口创建分析会话…"
+        : name === TOOLS.openBoundThread ? `正在打开 ${SESSION_HOST_NAME} 会话…`
+        : name === TOOLS.createAnalysis ? `正在 ${SESSION_HOST_NAME} 创建分析会话并发送首条消息…`
         : name === TOOLS.automationStatus ? "正在读取自动监控状态…"
         : name === TOOLS.automationToggle ? "正在更新自动监控…"
         : name === TOOLS.updateStatus ? "正在检查 GitHub 更新…"
@@ -544,11 +793,19 @@
       try {
         const result = await request("tools/call", { name, arguments: args });
         const output = result?.structuredContent;
-        if (!output) throw new Error("工具没有返回结构化结果。");
+        if (!output) {
+          // 工具未注册（宿主未提供该可选能力）与结构化结果缺失要区分：前者
+          // 静默降级（返回 null，不报错），后者才是真正的错误。
+          const notFound = result?.isError === true
+            && Array.isArray(result?.content)
+            && result.content.some((block) => typeof block?.text === "string" && /-32602|not found/i.test(block.text));
+          if (!notFound) throw new Error("工具没有返回结构化结果。");
+          return null;
+        }
         if (options.accept !== false) acceptResult(output);
         return output;
       } catch (error) {
-        if (!background) showError(error);
+        if (!background && options.silent !== true) showError(error);
         if (!background && SVN_REVIEW_REFRESH_ON_FAILURE.has(name)) {
           await refreshSvnReviewAfterFailure(error);
         }
@@ -583,8 +840,14 @@
       }
       window.openai?.setWidgetState?.({ privateContent: state });
     }
+    function statusTone(statusName) {
+      const value = String(statusName || "").trim().toLowerCase();
+      if (/(完成|关闭|解决|done|closed|resolved)/.test(value)) return "done";
+      if (/(待|未|新建|todo|backlog|open)/.test(value)) return "todo";
+      return "doing";
+    }
     function taskHtml(task) {
-      return `<article data-key="${esc(task.key)}" tabindex="0"><div class="task-head"><span class="key">${esc(task.key)}</span><span class="pill">${esc(task.statusName)}</span></div><div class="title">${esc(task.title)}</div><div class="task-foot"><span>${esc(task.priority)} · ${esc(task.assignee)}${task.parentKey ? ` · 父级 ${esc(task.parentKey)}` : ""}</span><span>${task.attachmentCount ? `📎 ${task.attachmentCount}` : ""}${task.binding ? ` <span class="bound">● 已关联</span>` : ""}</span></div></article>`;
+      return `<article data-key="${esc(task.key)}" tabindex="0"><div class="task-head"><span class="key">${esc(task.key)}</span><span class="pill status-${statusTone(task.statusName)}">${esc(task.statusName)}</span></div><div class="title">${esc(task.title)}</div><div class="task-foot"><span>${esc(task.priority)} · ${esc(task.assignee)}${task.parentKey ? ` · 父级 ${esc(task.parentKey)}` : ""}</span><span>${task.attachmentCount ? `📎 ${task.attachmentCount}` : ""}${task.binding ? ` <span class="bound">● 已关联</span>` : ""}</span></div></article>`;
     }
     function renderList(id, tasks) { $(id).innerHTML = tasks.length ? tasks.map(taskHtml).join("") : '<div class="empty">暂无任务</div>'; }
     function renderStatusFilters(kind, tasks) {
@@ -674,17 +937,328 @@
       $("sheet-list").innerHTML = snapshot.sheets.length ? snapshot.sheets.map((sheet) => `<button type="button" class="sheet-item ${selectedSheet?.id === sheet.id && selectedSheet?.projectId === sheet.projectId ? "active" : ""}" data-project="${esc(sheet.projectId)}" data-sheet="${esc(sheet.id)}"><strong>${esc(sheet.title)}</strong><small>${esc(sheet.projectName)}${sheet.queryable ? "" : " · 仅可在 Jira 打开"}</small></button>`).join("") : '<div class="empty">暂无可用 Sheet</div>';
       $("meta").textContent = `Jira Sheets · ${fmtTime(snapshot.fetchedAt)}`;
     }
+    function resetSheetTableState({ clearSearch = true } = {}) {
+      sheetSort = { column: "", direction: "" };
+      sheetFilters = Object.fromEntries(SHEET_COLUMNS.map((column) => [column.key, ""]));
+      if (clearSearch && $("sheet-search")) $("sheet-search").value = "";
+    }
+    function sheetCollaborators(issue) {
+      const names = (issue?.collaborators || []).map((person) => String(person?.displayName || person || "")).filter(Boolean);
+      return names.join("、") || (issue?.collaboratorCount ? `${issue.collaboratorCount} 人` : "—");
+    }
+    function sheetProject(issue) {
+      const versions = (issue?.fixVersions || []).filter(Boolean).join("、");
+      return [issue?.projectName, versions].filter(Boolean).join(" · ") || "—";
+    }
+    function sheetColumnValue(issue, column) {
+      if (column === "issue") return issue?.key || "";
+      if (column === "type") return issue?.typeName || (issue?.type === "bug" ? "Bug" : "需求");
+      if (column === "title") return issue?.title || "";
+      if (column === "status") return issue?.statusName || issue?.status || "";
+      if (column === "priority") return issue?.priority || "";
+      if (column === "assignee") return issue?.assignee || "";
+      if (column === "collaborators") return sheetCollaborators(issue);
+      if (column === "project") return sheetProject(issue);
+      if (column === "attachments") return Number(issue?.attachmentCount || 0);
+      if (column === "updated") return Date.parse(issue?.updated || "") || 0;
+      return "";
+    }
+    function sheetUpdatedSearchText(value) {
+      const raw = String(value || "");
+      const date = new Date(raw);
+      return Number.isNaN(date.getTime()) ? raw : `${raw} ${date.toLocaleString()} ${date.toLocaleDateString()}`;
+    }
+    function sheetMatchesFilters(issue) {
+      for (const column of SHEET_COLUMNS) {
+        const filter = String(sheetFilters[column.key] || "").trim().toLowerCase();
+        if (!filter) continue;
+        if (column.filter === "type" && issue?.type !== filter) return false;
+        if (column.filter === "status" && String(issue?.statusName || issue?.status || "") !== sheetFilters[column.key]) return false;
+        if (column.filter === "attachments") {
+          const count = Number(issue?.attachmentCount || 0);
+          if ((filter === "with" && count === 0) || (filter === "without" && count > 0)) return false;
+          continue;
+        }
+        const value = column.key === "updated" ? sheetUpdatedSearchText(issue?.updated) : sheetColumnValue(issue, column.key);
+        if (!String(value || "").toLowerCase().includes(filter)) return false;
+      }
+      return true;
+    }
+    function sheetFilterControl(column, statusChoices) {
+      const value = String(sheetFilters[column.key] || "");
+      if (column.filter === "type") return `<select class="sheet-filter ${value ? "active" : ""}" data-sheet-filter="${column.key}" aria-label="筛选${column.label}"><option value="">全部</option><option value="requirement" ${value === "requirement" ? "selected" : ""}>需求</option><option value="bug" ${value === "bug" ? "selected" : ""}>Bug</option></select>`;
+      if (column.filter === "status") return `<select class="sheet-filter ${value ? "active" : ""}" data-sheet-filter="${column.key}" aria-label="筛选${column.label}"><option value="">全部</option>${statusChoices.map((status) => `<option value="${esc(status)}" ${value === status ? "selected" : ""}>${esc(status)}</option>`).join("")}</select>`;
+      if (column.filter === "attachments") return `<select class="sheet-filter ${value ? "active" : ""}" data-sheet-filter="${column.key}" aria-label="筛选${column.label}"><option value="">全部</option><option value="with" ${value === "with" ? "selected" : ""}>有</option><option value="without" ${value === "without" ? "selected" : ""}>无</option></select>`;
+      return `<input class="sheet-filter ${value ? "active" : ""}" data-sheet-filter="${column.key}" type="search" value="${esc(value)}" placeholder="${esc(column.placeholder || "筛选")}" aria-label="筛选${column.label}">`;
+    }
+    function renderSheetTableShell(snapshot) {
+      const tableKey = `${snapshot.sheet?.projectId || ""}:${snapshot.sheet?.id || ""}`;
+      const wrap = $("sheet-table-wrap");
+      if (wrap.dataset.sheetKey === tableKey && $("sheet-issues")) return;
+      const statusChoices = Array.from(new Set((snapshot.issues || []).map((issue) => issue.statusName || issue.status || "").filter(Boolean))).sort((left, right) => left.localeCompare(right, "zh-CN"));
+      wrap.dataset.sheetKey = tableKey;
+      wrap.innerHTML = `<table class="sheet-table"><colgroup>${SHEET_COLUMNS.map((column) => `<col style="width:${column.width}px">`).join("")}</colgroup><thead><tr>${SHEET_COLUMNS.map((column) => `<th scope="col" data-sheet-sort-cell="${column.key}" aria-sort="none"><button type="button" class="sheet-sort" data-sheet-sort="${column.key}"><span>${column.label}</span><span class="sheet-sort-mark" aria-hidden="true">↕</span></button></th>`).join("")}</tr><tr class="sheet-filter-row">${SHEET_COLUMNS.map((column) => `<th>${sheetFilterControl(column, statusChoices)}</th>`).join("")}</tr></thead><tbody id="sheet-issues"></tbody></table>`;
+    }
+    function sheetRow(issue) {
+      const typeName = issue.typeName || (issue.type === "bug" ? "Bug" : "需求");
+      return `<tr class="sheet-row" data-key="${esc(issue.key)}" tabindex="0"><td class="sheet-key"><span class="sheet-type-mark ${issue.type === "bug" ? "bug" : ""}">${issue.type === "bug" ? "B" : "R"}</span><strong>${esc(issue.key)}</strong></td><td><span class="sheet-type-mark ${issue.type === "bug" ? "bug" : ""}">${esc(typeName)}</span></td><td title="${esc(issue.title)}"><strong>${esc(issue.title)}</strong></td><td><span class="sheet-status-mark">${esc(issue.statusName)}</span></td><td>${esc(issue.priority || "—")}</td><td>${esc(issue.assignee || "—")}</td><td title="${esc(sheetCollaborators(issue))}">${esc(sheetCollaborators(issue))}</td><td title="${esc(sheetProject(issue))}">${esc(sheetProject(issue))}</td><td>${issue.attachmentCount ? `${issue.attachmentCount} 个` : "—"}</td><td title="${esc(fmtTime(issue.updated))}">${esc(fmtTime(issue.updated))}</td></tr>`;
+    }
+    function syncSheetTableControls() {
+      document.querySelectorAll("[data-sheet-sort]").forEach((button) => {
+        const active = button.dataset.sheetSort === sheetSort.column;
+        button.classList.toggle("active", active);
+        const mark = button.querySelector(".sheet-sort-mark");
+        if (mark) mark.textContent = active ? sheetSort.direction === "asc" ? "↑" : "↓" : "↕";
+        button.closest("th")?.setAttribute("aria-sort", active ? sheetSort.direction === "asc" ? "ascending" : "descending" : "none");
+      });
+      document.querySelectorAll("[data-sheet-filter]").forEach((control) => {
+        control.classList.toggle("active", Boolean(String(sheetFilters[control.dataset.sheetFilter] || "").trim()));
+      });
+      const hasState = Boolean($("sheet-search")?.value.trim()) || Boolean(sheetSort.column) || Object.values(sheetFilters).some((value) => String(value || "").trim());
+      $("sheet-reset").hidden = !hasState;
+    }
     function renderSheetIssues() {
       const snapshot = cache.sheet;
       if (!snapshot) return;
       const term = $("sheet-search").value.trim().toLowerCase();
-      const sort = $("sheet-sort").value;
-      const issues = (snapshot.issues || []).filter((issue) => !term || `${issue.key} ${issue.title} ${issue.statusName} ${issue.assignee}`.toLowerCase().includes(term));
-      issues.sort((a, b) => sort === "key" ? a.key.localeCompare(b.key) : sort === "title" ? a.title.localeCompare(b.title, "zh-CN") : sort === "status" ? a.statusName.localeCompare(b.statusName, "zh-CN") : String(b.updated || "").localeCompare(String(a.updated || "")));
-      $("sheet-title").textContent = `${snapshot.sheet?.title || "Sheet"}（${issues.length}/${snapshot.total}）`;
-      renderList("sheet-issues", issues);
+      const indexed = (snapshot.issues || []).map((issue, index) => ({ issue, index })).filter(({ issue }) => {
+        const searchable = `${issue.key} ${issue.title} ${issue.typeName} ${issue.statusName} ${issue.priority} ${issue.assignee} ${sheetCollaborators(issue)} ${sheetProject(issue)}`.toLowerCase();
+        return (!term || searchable.includes(term)) && sheetMatchesFilters(issue);
+      });
+      if (sheetSort.column) indexed.sort((left, right) => {
+        const leftValue = sheetColumnValue(left.issue, sheetSort.column);
+        const rightValue = sheetColumnValue(right.issue, sheetSort.column);
+        const comparison = typeof leftValue === "number" && typeof rightValue === "number"
+          ? leftValue - rightValue
+          : String(leftValue).localeCompare(String(rightValue), "zh-CN", { numeric: true, sensitivity: "base" });
+        return comparison === 0 ? left.index - right.index : comparison * (sheetSort.direction === "desc" ? -1 : 1);
+      });
+      const issues = indexed.map(({ issue }) => issue);
+      $("sheet-title").textContent = snapshot.sheet?.title || "Sheet";
+      $("sheet-visible-count").textContent = `${issues.length}/${snapshot.total} 项${snapshot.truncated ? " · 已截断" : ""}`;
+      renderSheetTableShell(snapshot);
+      $("sheet-issues").innerHTML = issues.length ? issues.map(sheetRow).join("") : `<tr class="sheet-no-results"><td colspan="${SHEET_COLUMNS.length}">${term || Object.values(sheetFilters).some(Boolean) ? "没有符合筛选条件的任务" : "当前 Sheet 暂无任务"}</td></tr>`;
+      syncSheetTableControls();
     }
-    function renderDetail() {
+    function workspaceIdentity(entry) {
+      const cwd = String(entry?.cwd || entry?.workspaceRoots?.[0] || "").trim().replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
+      if (cwd) return `path:${cwd}`;
+      const projectId = String(entry?.projectId || entry?.id || "").trim().toLowerCase();
+      return projectId ? `project:${projectId}` : "";
+    }
+    function associationWorkspaceEntries(workspaceScopes, availableWorkspaces) {
+      const entries = new Map();
+      for (const workspace of availableWorkspaces || []) {
+        const identity = workspaceIdentity(workspace);
+        if (!identity) continue;
+        entries.set(identity, { identity, ...workspace, scope: null, available: true });
+      }
+      for (const scope of workspaceScopes || []) {
+        const identity = workspaceIdentity(scope);
+        if (!identity) continue;
+        const current = entries.get(identity) || {};
+        entries.set(identity, {
+          ...current,
+          identity,
+          cwd: scope.cwd || current.cwd || "",
+          projectId: scope.projectId || current.projectId || "",
+          projectLabel: scope.projectLabel || current.projectLabel || scope.cwd || "项目目录",
+          scope,
+          available: current.available === true
+        });
+      }
+      return Array.from(entries.values()).sort((left, right) => {
+        if (left.scope && !right.scope) return -1;
+        if (!left.scope && right.scope) return 1;
+        return String(left.projectLabel || left.cwd).localeCompare(String(right.projectLabel || right.cwd), "zh-CN");
+      });
+    }
+    function initializeAssociationDraft(task, workspaceScopes, defaultProjectScopeId) {
+      associationOpen = true;
+      associationConversationMode = task.binding ? "keep" : CURRENT_HOST_SESSION_ID ? "current" : hasTool(TOOLS.createAnalysis) ? "new" : "existing";
+      associationSelectedWorkspaceIds = new Set(workspaceScopes.map(workspaceIdentity).filter(Boolean));
+      const defaultScope = workspaceScopes.find((scope) => scope.id === defaultProjectScopeId) || workspaceScopes[0] || null;
+      associationDefaultWorkspaceId = workspaceIdentity(defaultScope);
+      associationThreadId = task.binding?.threadId || "";
+      associationThreadSearch = "";
+      associationSupplement = "";
+    }
+    function captureAssociationDraft() {
+      const supplement = $("association-supplement");
+      const threadSearch = $("association-thread-search");
+      if (supplement) associationSupplement = supplement.value;
+      if (threadSearch) associationThreadSearch = threadSearch.value;
+    }
+    function associationThreadListHtml(threads, issueKey, search = associationThreadSearch) {
+      const needle = String(search || "").trim().toLocaleLowerCase("zh-CN");
+      const filtered = (Array.isArray(threads) ? threads : []).filter((thread) => {
+        if (!needle) return true;
+        return [thread.id, thread.title, ...(thread.boundIssueKeys || [])]
+          .some((value) => String(value || "").toLocaleLowerCase("zh-CN").includes(needle));
+      });
+      const groups = [
+        ["当前任务", filtered.filter((thread) => (thread.boundIssueKeys || []).includes(issueKey))],
+        ["可直接关联", filtered.filter((thread) => !(thread.boundIssueKeys || []).length)],
+        ["已关联其他任务", filtered.filter((thread) => (thread.boundIssueKeys || []).length && !(thread.boundIssueKeys || []).includes(issueKey))]
+      ];
+      const html = groups.flatMap(([label, entries]) => {
+        if (!entries.length) return [];
+        return [
+          `<div class="association-thread-group">${label} · ${entries.length}</div>`,
+          ...entries.map((thread) => {
+            const selected = associationThreadId === thread.id;
+            const bindingText = (thread.boundIssueKeys || []).length
+              ? `已关联 ${thread.boundIssueKeys.join("、")}`
+              : `会话 ID · ${thread.id}`;
+            return `<button type="button" class="association-thread-row ${selected ? "selected" : ""}" data-association-thread="${esc(thread.id)}" role="option" aria-selected="${selected}"><span><strong>${esc(thread.title || "未命名会话")}</strong><small>${esc(bindingText)}</small></span><span class="association-thread-check" aria-hidden="true">✓</span></button>`;
+          })
+        ];
+      }).flat().join("");
+      return html || `<div class="association-thread-empty">${needle ? "没有匹配的 DSH 会话" : "DSH 未返回可关联会话"}</div>`;
+    }
+    function syncAssociationThreadPicker() {
+      document.querySelectorAll("[data-association-thread]").forEach((row) => {
+        const selected = row.dataset.associationThread === associationThreadId;
+        row.classList.toggle("selected", selected);
+        row.setAttribute("aria-selected", String(selected));
+      });
+      syncAssociationSaveButton();
+    }
+    function associationDraftCanSave() {
+      return associationConversationMode === "keep"
+        || associationConversationMode === "current" && Boolean(CURRENT_HOST_SESSION_ID)
+        || associationConversationMode === "new" && associationSelectedWorkspaceIds.size > 0
+        || associationConversationMode === "existing" && Boolean(associationThreadId);
+    }
+    function associationPrimaryLabel() {
+      return associationConversationMode === "new" ? "创建并开始分析"
+        : associationConversationMode === "keep" ? "保存处理上下文"
+        : "保存并关联会话";
+    }
+    function syncAssociationSaveButton() {
+      const save = $("save-association");
+      if (!save) return;
+      save.disabled = !associationDraftCanSave();
+      save.textContent = associationPrimaryLabel();
+    }
+    function syncAssociationWorkspacePicker() {
+      document.querySelectorAll("input[data-association-workspace]").forEach((checkbox) => {
+        const identity = checkbox.dataset.associationWorkspace || "";
+        const selected = associationSelectedWorkspaceIds.has(identity);
+        checkbox.checked = selected;
+        checkbox.closest(".association-workspace-row")?.classList.toggle("selected", selected);
+        const defaultChoice = document.querySelector(`input[name="association-default-workspace"][value="${CSS.escape(identity)}"]`);
+        if (defaultChoice) {
+          defaultChoice.disabled = !selected;
+          defaultChoice.checked = selected && associationDefaultWorkspaceId === identity;
+        }
+      });
+      syncAssociationSaveButton();
+    }
+    function syncTransitionChoice() {
+      document.querySelectorAll("[data-transition-choice]").forEach((choice) => {
+        const selected = choice.dataset.transitionChoice === transitionSelectedId;
+        choice.classList.toggle("selected", selected);
+        choice.setAttribute("aria-checked", String(selected));
+      });
+      const execute = $("execute-transition");
+      if (execute) execute.disabled = !transitionSelectedId;
+    }
+    async function persistAssociationWorkspaces(task) {
+      if (!cache.workspaces || workspaceToolAvailable !== true) return true;
+      const currentScopes = cache.workspaces.binding?.workspace?.projectScopes || [];
+      const availableWorkspaces = cache.availableWorkspaces?.workspaces || [];
+      const entries = associationWorkspaceEntries(currentScopes, availableWorkspaces);
+      const selected = new Set(associationSelectedWorkspaceIds);
+      const removals = currentScopes.filter((scope) => !selected.has(workspaceIdentity(scope)));
+      if (currentScopes.length && selected.size === 0
+        && !window.confirm(`这将解除 ${task.key} 的全部项目目录。不会删除目录或还原文件，确认继续吗？`)) return false;
+      for (const scope of removals) {
+        const result = await callTool(TOOLS.workspaceUnbind, {
+          issueKey: task.key,
+          projectScopeId: scope.id,
+          expectedRevision: cache.workspaces.revision
+        });
+        if (!result) return false;
+      }
+      const refreshedScopes = () => cache.workspaces?.binding?.workspace?.projectScopes || [];
+      for (const entry of entries.filter((candidate) => selected.has(candidate.identity))) {
+        const alreadyBound = refreshedScopes().some((scope) => workspaceIdentity(scope) === entry.identity);
+        if (alreadyBound) continue;
+        const result = await callTool(TOOLS.workspaceBind, {
+          issueKey: task.key,
+          cwd: entry.cwd,
+          projectId: entry.projectId || entry.id || "",
+          projectLabel: entry.projectLabel || entry.cwd,
+          makeDefault: entry.identity === associationDefaultWorkspaceId,
+          replaceExisting: false,
+          expectedRevision: cache.workspaces.revision
+        });
+        if (!result) return false;
+      }
+      const finalScopes = refreshedScopes();
+      const currentDefaultScope = finalScopes.find((scope) => scope.id === cache.workspaces?.binding?.workspace?.defaultProjectScopeId) || null;
+      if (associationDefaultWorkspaceId && workspaceIdentity(currentDefaultScope) !== associationDefaultWorkspaceId) {
+        const entry = associationWorkspaceEntries(finalScopes, availableWorkspaces).find((candidate) => candidate.identity === associationDefaultWorkspaceId);
+        if (entry) {
+          const result = await callTool(TOOLS.workspaceBind, {
+            issueKey: task.key,
+            cwd: entry.cwd,
+            projectId: entry.projectId || entry.id || "",
+            projectLabel: entry.projectLabel || entry.cwd,
+            makeDefault: true,
+            replaceExisting: false,
+            expectedRevision: cache.workspaces.revision
+          });
+          if (!result) return false;
+        }
+      }
+      return true;
+    }
+    async function saveDshAssociation() {
+      const task = cache.issue?.issue;
+      if (!task || busy) return;
+      captureAssociationDraft();
+      if (!(await persistAssociationWorkspaces(task))) return;
+      const mode = associationConversationMode;
+      if (mode === "keep") {
+        associationOpen = false;
+        renderDetail({ modalOnly: true, patchSelectors: [".detail-side-rail"] });
+        return;
+      }
+      if (mode === "new") {
+        const scopes = cache.workspaces?.binding?.workspace?.projectScopes || [];
+        const defaultScope = scopes.find((scope) => scope.id === cache.workspaces?.binding?.workspace?.defaultProjectScopeId) || scopes[0];
+        if (!defaultScope) return showError(new Error("请至少选择一个用于新会话的 DSH 项目。"));
+        const result = await callTool(TOOLS.createAnalysis, {
+          issueKey: task.key,
+          supplementalDescription: associationSupplement.trim(),
+          expectedRevision: cache.issue.bindingsRevision,
+          projectScopeId: defaultScope.id
+        });
+        if (result) {
+          associationOpen = false;
+          renderDetail({ modalOnly: true, patchSelectors: [".detail-side-rail"] });
+        }
+        return;
+      }
+      const threadId = mode === "current" ? CURRENT_HOST_SESSION_ID : associationThreadId;
+      if (!threadId) return showError(new Error(`请先选择要关联的 ${SESSION_HOST_NAME} 会话。`));
+      const thread = (cache.threads?.threads || []).find((item) => item.id === threadId);
+      const conflicts = (thread?.boundIssueKeys || []).filter((issueKey) => issueKey !== task.key);
+      if (conflicts.length && !window.confirm(`该会话已关联 ${conflicts.join("、")}。确认解除原关联并改为关联 ${task.key} 吗？`)) return;
+      const result = await callTool(TOOLS.bindIssue, {
+        issueKey: task.key,
+        threadId,
+        expectedRevision: cache.issue.bindingsRevision,
+        replaceExistingThreadBinding: conflicts.length > 0
+      });
+      if (result) {
+        associationOpen = false;
+        renderDetail({ modalOnly: true, patchSelectors: [".detail-side-rail"] });
+      }
+    }
+    function renderDetail(options = {}) {
       const task = cache.issue?.issue;
       if (!task) return;
       const collaborators = task.collaborators?.length ? task.collaborators.map((person) => `<span class="chip">${esc(person.displayName)}</span>`).join("") : '<span class="empty">无协同处理人</span>';
@@ -699,21 +1273,111 @@
       const previousAttachment = currentAttachmentIndex > 0 ? previewableAttachments[currentAttachmentIndex - 1] : null;
       const nextAttachment = currentAttachmentIndex >= 0 && currentAttachmentIndex < previewableAttachments.length - 1 ? previewableAttachments[currentAttachmentIndex + 1] : null;
       const attachmentPreview = cache.attachmentPreview?.preview?.issueKey === task.key
-        ? `<div class="attachment-preview"><div class="attachment-preview-head"><strong>${esc(cache.attachmentPreview.preview.filename)}</strong>${previewableAttachments.length > 1 ? `<div class="attachment-preview-nav"><button type="button" aria-label="上一张图片" data-preview-attachment="${esc(previousAttachment?.id || "")}" ${previousAttachment ? "" : "disabled"}>‹</button><small>${currentAttachmentIndex + 1}/${previewableAttachments.length}</small><button type="button" aria-label="下一张图片" data-preview-attachment="${esc(nextAttachment?.id || "")}" ${nextAttachment ? "" : "disabled"}>›</button></div>` : ""}</div><img src="${esc(cache.attachmentPreview.preview.dataUrl)}" alt="${esc(cache.attachmentPreview.preview.filename)}"></div>`
+        ? `<div class="attachment-preview"><div class="attachment-preview-head"><strong>${esc(cache.attachmentPreview.preview.filename)}</strong>${previewableAttachments.length > 1 ? `<div class="attachment-preview-nav"><button type="button" aria-label="上一张图片" data-preview-attachment="${esc(previousAttachment?.id || "")}" ${previousAttachment ? "" : "disabled"}>‹</button><small>${currentAttachmentIndex + 1}/${previewableAttachments.length}</small><button type="button" aria-label="下一张图片" data-preview-attachment="${esc(nextAttachment?.id || "")}" ${nextAttachment ? "" : "disabled"}>›</button></div>` : ""}</div><button type="button" class="attachment-preview-stage" data-open-attachment-lightbox aria-label="放大预览 ${esc(cache.attachmentPreview.preview.filename)}"><img src="${esc(cache.attachmentPreview.preview.dataUrl)}" alt="${esc(cache.attachmentPreview.preview.filename)}"><span class="attachment-preview-zoom">点击放大</span></button>${attachmentLightboxOpen ? `<div class="attachment-lightbox" role="dialog" aria-modal="true" aria-label="附件图片预览"><div class="attachment-lightbox-head"><strong>${esc(cache.attachmentPreview.preview.filename)}</strong><div class="attachment-lightbox-actions">${previewableAttachments.length > 1 ? `<button type="button" aria-label="上一张图片" data-preview-attachment="${esc(previousAttachment?.id || "")}" ${previousAttachment ? "" : "disabled"}>‹</button><span class="attachment-lightbox-counter">${currentAttachmentIndex + 1}/${previewableAttachments.length}</span><button type="button" aria-label="下一张图片" data-preview-attachment="${esc(nextAttachment?.id || "")}" ${nextAttachment ? "" : "disabled"}>›</button>` : ""}<button type="button" id="close-attachment-lightbox" aria-label="关闭图片预览">×</button></div></div><div class="attachment-lightbox-stage"><img src="${esc(cache.attachmentPreview.preview.dataUrl)}" alt="${esc(cache.attachmentPreview.preview.filename)}"></div></div>` : ""}</div>`
         : "";
       const parentContext = parent ? `<section class="parent-context"><div class="parent-context-head"><span>父级关联单 · 需求上下文</span><a href="${esc(parent.url)}" target="_blank" rel="noreferrer">${esc(parent.key)} ↗</a></div><h3>${esc(parent.title)}</h3><div class="description">${esc(parentUnavailable ? task.parentContext.message || "父单详情暂时无法读取。" : parent.summary)}</div>${parentUnavailable ? "" : `<div class="subsection"><strong>父单附件（${parentAttachments.length}）</strong><div class="attachments">${attachmentHtml(parentAttachments)}</div></div>`}<div class="scope-note">父子单共同提供需求上下文；状态流转、会话关联和 SVN 提交仍只作用于当前执行单 ${esc(task.key)}。</div></section>` : "";
       const transitions = cache.transitions?.issueKey === task.key ? cache.transitions.transitions : null;
       const transitionOptions = transitions?.map((transition) => `<option value="${esc(transition.id)}" ${transition.requiresInput ? "disabled" : ""}>${esc(transition.to.name)}${transition.requiresInput ? "（需在 Jira 填写字段）" : ""}</option>`).join("") || "";
-      const transitionBox = task.status === "done" ? "" : `<div class="transition-box"><strong>状态流转</strong>${transitions ? `<select id="transition-select"><option value="">选择目标状态</option>${transitionOptions}</select><button type="button" id="execute-transition" ${transitions.some((transition) => !transition.requiresInput) ? "" : "disabled"}>确认并流转</button><div class="transition-hint">提交前会再次读取 Jira 当前状态；需要额外字段的流转只能在 Jira 中完成。</div>` : `<button type="button" id="load-transitions">读取可用状态</button>`}</div>`;
+      const selectedTransition = transitions?.find((transition) => transition.id === transitionSelectedId && !transition.requiresInput) || null;
+      const transitionChoices = transitions?.map((transition) => {
+        const selected = selectedTransition?.id === transition.id;
+        return `<button type="button" class="transition-option ${selected ? "selected" : ""}" data-transition-choice="${esc(transition.id)}" role="radio" aria-checked="${selected}" ${transition.requiresInput ? "disabled" : ""}><span><strong>${esc(transition.to.name)}</strong><small>${transition.requiresInput ? "需在 Jira 补充字段" : "可直接流转"}</small></span><span class="transition-option-mark">✓</span></button>`;
+      }).join("") || "";
+      const transitionAvailable = task.status !== "done" && hasTool(TOOLS.transitions);
+      const transitionBox = !transitionAvailable ? "" : `<section class="transition-box"><strong>状态流转</strong>${transitions ? `<select id="transition-select"><option value="">选择目标状态</option>${transitionOptions}</select><button type="button" id="execute-transition" ${transitions.some((transition) => !transition.requiresInput) ? "" : "disabled"}>确认并流转</button><div class="transition-hint">提交前会再次读取 Jira 当前状态；需要额外字段的流转只能在 Jira 中完成。</div>` : `<button type="button" id="load-transitions">读取可用状态</button>`}</section>`;
+      const workspaceState = cache.workspaces?.issueKey === task.key ? cache.workspaces : null;
+      const workspaceScopes = workspaceState?.binding?.workspace?.projectScopes || [];
       const availableThreads = cache.threads?.threads || null;
       const threadOptions = availableThreads?.map((thread) => `<option value="${esc(thread.id)}">${esc(thread.title)}${thread.boundIssueKeys?.length ? ` · 已关联 ${esc(thread.boundIssueKeys.join("、"))}` : ""}</option>`).join("") || "";
       const createMode = cache.createAnalysisIssueKey === task.key;
       const bindingProjectScopes = task.binding?.projectScopes || [];
       const bindingScopeSummary = bindingProjectScopes.length ? `<div class="chips binding-project-scopes">${bindingProjectScopes.map((scope) => `<span class="chip ${scope.primary ? "bound" : ""}" title="${esc(scope.cwd || scope.projectId)}">${scope.primary ? "主 · " : ""}${esc(scope.projectLabel || scope.cwd || scope.projectId)}</span>`).join("")}</div>` : "";
-      const bindingBox = availableThreads ? `<div class="binding-box"><strong>${task.binding ? "更改会话关联" : "关联现有会话"}</strong>${availableThreads.length ? `<select id="binding-thread-select"><option value="">选择 Codex 会话</option>${threadOptions}</select><div class="binding-actions"><button type="button" id="cancel-binding">取消</button><button type="button" id="confirm-binding">确认关联</button></div>` : `<div class="empty">App Server 未返回可关联会话</div><div class="binding-actions"><button type="button" id="cancel-binding">返回</button></div>`}<div class="binding-hint">这里只保存关联，不发送消息，也不修改 Codex 会话内容。</div></div>` : createMode ? `<div class="binding-box"><strong>${task.binding ? "新建会话并重新关联" : "新建会话并关联"}</strong><div class="svn-controls"><textarea id="analysis-supplement" rows="4" maxlength="4000" placeholder="补充 Jira 中缺失的背景、业务规则、环境或复现信息（可选）"></textarea><div class="binding-actions"><button type="button" id="cancel-create-analysis">取消</button><button type="button" id="confirm-create-analysis">新建并发送只读分析消息</button></div></div><div class="binding-hint">首轮消息只允许理解和分析，不会修改项目文件。会话创建成功并取得正式 ID 后才保存关联。</div></div>` : `<div class="binding-box"><strong>Codex 会话</strong><div class="binding-current ${task.binding ? "bound" : ""}">${esc(task.binding?.title || "未关联")}</div>${bindingScopeSummary}${task.binding ? `<div class="binding-actions"><button type="button" id="open-bound-thread">打开会话</button><button type="button" id="create-analysis">新建并重绑</button><button type="button" id="open-binding">绑定已有</button><button type="button" id="clear-binding" class="danger">解除</button></div>` : `<div class="binding-actions"><button type="button" id="create-analysis">新建并绑定</button><button type="button" id="open-binding">绑定已有会话</button></div>`}<div class="binding-hint">会话列表来自 App Server；创建和桌面跳转由最小兼容层执行。</div></div>`;
-      const svnBox = `<div class="binding-box"><strong>代码提交</strong><div class="binding-actions"><button type="button" id="open-svn" ${task.binding ? "" : "disabled"}>审核并提交 SVN</button></div><div class="binding-hint">${task.binding ? "先检查显式文件与风险，真正提交前必须再次人工确认。" : "请先关联 Codex 会话，以确定项目与 SVN 工作副本范围。"}</div></div>`;
-      $("detail-view").innerHTML = `<div class="detail"><div class="detail-head"><div><span class="key">${esc(task.key)}</span><h2>${esc(task.title)}</h2></div><button class="back" type="button" id="back">返回</button></div><div class="detail-grid"><div><div class="description">${esc(task.summary)}</div>${parentContext}<div class="subsection"><strong>协同处理人（${task.collaborators?.length || 0}）</strong><div class="chips">${collaborators}</div></div><div class="subsection"><strong>当前执行单附件（${task.attachments?.length || 0}）</strong><div class="attachments">${attachments}</div>${attachmentPreview}</div></div><aside class="facts"><div class="fact"><span>状态</span><strong>${esc(task.statusName)}</strong></div><div class="fact"><span>优先级</span><strong>${esc(task.priority)}</strong></div><div class="fact"><span>负责人</span><strong>${esc(task.assignee)}</strong></div><div class="fact"><span>类型</span><strong>${esc(task.typeName)}</strong></div><div class="fact"><span>项目</span><strong>${esc(task.projectName)}</strong></div><div class="fact"><span>修复版本</span><strong>${esc(task.fixVersions?.join("、") || "—")}</strong></div><div class="fact"><span>更新时间</span><strong>${esc(fmtTime(task.updated))}</strong></div>${bindingBox}${svnBox}${transitionBox}</aside></div></div>`;
-      $("back").onclick = () => showMain(previousView);
+      const conversationAvailable = hasTool(TOOLS.threads) || hasTool(TOOLS.createAnalysis);
+      const canOpenBoundSession = hasTool(TOOLS.openBoundThread) || HOST_KIND === "dsh";
+      const defaultAnalysisScopeId = String(workspaceState?.binding?.workspace?.defaultProjectScopeId || workspaceScopes[0]?.id || "");
+      const analysisProjectChooser = HOST_KIND === "dsh"
+        ? `<label class="analysis-project-field"><span>会话项目</span><select id="analysis-project-scope" ${workspaceScopes.length ? "" : "disabled"}><option value="">${workspaceScopes.length ? "选择 DSH 项目" : "请先在下方绑定 DSH 项目"}</option>${workspaceScopes.map((scope) => `<option value="${esc(scope.id)}" ${String(scope.id) === defaultAnalysisScopeId ? "selected" : ""}>${esc(scope.projectLabel || scope.cwd || scope.projectId)}</option>`).join("")}</select></label>`
+        : "";
+      const bindingBox = !conversationAvailable ? "" : availableThreads
+        ? `<div class="binding-box"><strong>${task.binding ? "更改会话关联" : "关联现有会话"}</strong>${availableThreads.length ? `<select id="binding-thread-select"><option value="">选择 ${SESSION_HOST_NAME} 会话</option>${threadOptions}</select><div class="binding-actions"><button type="button" id="cancel-binding">取消</button><button type="button" id="confirm-binding">确认关联</button></div>` : `<div class="empty">${SESSION_HOST_NAME} 未返回可关联会话</div><div class="binding-actions"><button type="button" id="cancel-binding">返回</button></div>`}<div class="binding-hint">这里只保存关联，不发送消息，也不修改 ${SESSION_HOST_NAME} 会话内容。</div></div>`
+        : createMode
+          ? `<div class="binding-box"><strong>${task.binding ? "新建会话并重新关联" : "新建会话并关联"}</strong><div class="svn-controls">${analysisProjectChooser}<textarea id="analysis-supplement" rows="4" maxlength="4000" placeholder="补充 Jira 中缺失的背景、业务规则、环境或复现信息（可选）"></textarea><div class="binding-actions"><button type="button" id="cancel-create-analysis">取消</button><button type="button" id="confirm-create-analysis" ${HOST_KIND === "dsh" && !workspaceScopes.length ? "disabled" : ""}>新建并发送只读分析消息</button></div></div><div class="binding-hint">${HOST_KIND === "dsh" ? "会话将在所选 DSH 项目中创建；" : ""}首轮消息只允许理解和分析，不会修改项目文件。会话创建并确认消息已接收后才保存关联。</div></div>`
+          : `<div class="binding-box"><strong>${SESSION_HOST_NAME} 会话</strong><div class="binding-current ${task.binding ? "bound" : ""}">${esc(task.binding?.title || "未关联")}</div>${bindingScopeSummary}${task.binding ? `<div class="binding-actions">${canOpenBoundSession ? '<button type="button" id="open-bound-thread">打开会话</button>' : ""}${hasTool(TOOLS.createAnalysis) ? '<button type="button" id="create-analysis">新建并重绑</button>' : ""}${hasTool(TOOLS.threads) ? '<button type="button" id="open-binding">绑定已有</button>' : ""}${hasTool(TOOLS.clearBinding) ? '<button type="button" id="clear-binding" class="danger">解除</button>' : ""}</div>` : `<div class="binding-actions">${hasTool(TOOLS.createAnalysis) ? '<button type="button" id="create-analysis">新建并绑定</button>' : ""}${hasTool(TOOLS.threads) ? '<button type="button" id="open-binding">绑定已有会话</button>' : ""}</div>`}<div class="binding-hint">会话能力由当前宿主提供；项目目录绑定与会话保持独立。</div></div>`;
+      const workspaceRows = workspaceScopes.map((scope) => `<div class="workspace-scope-row"><span title="${esc(scope.cwd)}"><strong>${scope.id === workspaceState.binding.workspace.defaultProjectScopeId ? "主 · " : ""}${esc(scope.projectLabel || scope.cwd)}</strong><small>${esc(scope.cwd)}</small></span><button type="button" data-unbind-workspace="${esc(scope.id)}">解除</button></div>`).join("");
+      const availableWorkspaceState = cache.availableWorkspaces;
+      const availableWorkspaces = availableWorkspaceState?.workspaces || [];
+      const hostWorkspaceOptions = availableWorkspaces.map((workspace) => {
+        const alreadyBound = workspaceScopes.some((scope) => String(scope.projectId || "") === String(workspace.projectId || workspace.id || "")
+          || String(scope.cwd || "").toLowerCase() === String(workspace.cwd || "").toLowerCase());
+        return `<option value="${esc(workspace.id)}">${esc(workspace.projectLabel || workspace.cwd)} · ${esc(workspace.cwd)}${alreadyBound ? "（已绑定）" : ""}</option>`;
+      }).join("");
+      const hostWorkspaceForm = hasTool(TOOLS.workspaceList)
+        ? `<div class="workspace-binding-form"><select id="workspace-select" ${availableWorkspaces.length ? "" : "disabled"}><option value="">${availableWorkspaces.length ? "选择 DSH 项目" : availableWorkspaceState ? "DSH 中暂无可用项目" : "DSH 项目列表暂不可用"}</option>${hostWorkspaceOptions}</select><label class="workspace-binding-options"><input id="workspace-default" type="checkbox" checked> 作为本次 SVN 操作的默认目录</label><div class="binding-actions"><button type="button" id="bind-workspace" ${availableWorkspaces.length ? "" : "disabled"}>${workspaceScopes.length ? "追加所选项目" : "绑定所选项目"}</button><button type="button" id="refresh-workspace-catalog">刷新项目</button>${workspaceScopes.length ? '<button type="button" id="clear-workspaces" class="danger">全部解除</button>' : ""}</div></div><div class="binding-hint">项目直接来自 DSH 项目列表；请先在 DSH 添加项目，再选择绑定。一个 Jira 仍可关联多个项目。</div>`
+        : `<div class="workspace-binding-form"><input id="workspace-path" type="text" placeholder="本机项目绝对路径，例如 F:\\work\\project"><input id="workspace-label" type="text" maxlength="500" placeholder="目录名称（可选）"><label class="workspace-binding-options"><input id="workspace-default" type="checkbox" checked> 作为本次 SVN 操作的默认目录</label><div class="binding-actions"><button type="button" id="bind-workspace">${workspaceScopes.length ? "追加目录" : "绑定目录"}</button>${workspaceScopes.length ? '<button type="button" id="clear-workspaces" class="danger">全部解除</button>' : ""}</div></div><div class="binding-hint">项目目录绑定独立于会话；一个 Jira 可绑定多个目录，SVN 操作时只处理明确选择的目录。</div>`;
+      const workspaceBox = workspaceToolAvailable === true ? `<div class="binding-box"><strong>项目目录</strong>${workspaceRows ? `<div class="workspace-scope-list">${workspaceRows}</div>` : '<div class="binding-current">尚未绑定</div>'}${hostWorkspaceForm}</div>` : "";
+      const hasSvnWorkspace = workspaceScopes.length > 0 || bindingProjectScopes.length > 0;
+      const svnBox = `<section class="binding-box"><strong>代码提交</strong><div class="binding-actions"><button type="button" id="open-svn" class="button-tonal" ${hasSvnWorkspace ? "" : "disabled"}>审核并提交 SVN</button></div><div class="binding-hint">${hasSvnWorkspace ? "先检查显式文件与风险，真正提交前必须再次人工确认。" : "请先绑定至少一个项目目录，以确定 SVN 工作副本范围。"}</div></section>`;
+      const primaryWorkspace = workspaceScopes.find((scope) => scope.id === workspaceState?.binding?.workspace?.defaultProjectScopeId) || workspaceScopes[0] || null;
+      const currentSessionBound = Boolean(task.binding?.threadId && CURRENT_HOST_SESSION_ID && task.binding.threadId === CURRENT_HOST_SESSION_ID);
+      const sessionLabel = task.binding?.title || "尚未关联";
+      const sessionMeta = currentSessionBound ? "当前会话" : task.binding ? "已关联 DSH 会话" : "开始处理时选择或创建会话";
+      const workspaceLabel = primaryWorkspace?.projectLabel || primaryWorkspace?.cwd || "尚未绑定";
+      const workspaceMeta = primaryWorkspace
+        ? `${workspaceScopes.length > 1 ? `另有 ${workspaceScopes.length - 1} 个项目 · ` : ""}SVN 主目录`
+        : "选择 DSH 项目后才能执行 SVN 操作";
+      const contextConfigured = Boolean(task.binding || workspaceScopes.length);
+      const contextTitle = task.binding ? sessionLabel : workspaceScopes.length ? workspaceLabel : "尚未配置处理上下文";
+      const contextDetail = task.binding && workspaceScopes.length
+        ? `${workspaceLabel}${workspaceScopes.length > 1 ? ` 等 ${workspaceScopes.length} 个项目` : ""} · ${sessionMeta}`
+        : task.binding ? sessionMeta : workspaceScopes.length ? workspaceMeta : "选择项目，并关联当前、已有或新建的 DSH 会话";
+      const associationEntries = associationWorkspaceEntries(workspaceScopes, availableWorkspaces);
+      const associationWorkspaceRows = associationEntries.map((entry) => {
+        const selected = associationSelectedWorkspaceIds.has(entry.identity);
+        return `<div class="association-workspace-row ${selected ? "selected" : ""}"><label class="association-workspace-choice"><input type="checkbox" data-association-workspace="${esc(entry.identity)}" ${selected ? "checked" : ""}><span class="association-workspace-copy"><strong>${esc(entry.projectLabel || entry.cwd || "项目目录")}</strong><small>${esc(entry.cwd || "目录暂不可用")}${entry.available ? "" : " · 当前绑定"}</small></span></label><label class="association-default-choice"><input type="radio" name="association-default-workspace" value="${esc(entry.identity)}" ${associationDefaultWorkspaceId === entry.identity ? "checked" : ""} ${selected ? "" : "disabled"}> SVN 主目录</label></div>`;
+      }).join("");
+      const conversationOptions = [
+        task.binding ? `<label class="association-conversation-option ${associationConversationMode === "keep" ? "selected" : ""}"><input type="radio" name="association-conversation-mode" value="keep" ${associationConversationMode === "keep" ? "checked" : ""}><span><strong>保留当前关联</strong><small>${esc(task.binding.title || task.binding.threadId)}</small></span></label>` : "",
+        CURRENT_HOST_SESSION_ID && !currentSessionBound ? `<label class="association-conversation-option ${associationConversationMode === "current" ? "selected" : ""}"><input type="radio" name="association-conversation-mode" value="current" ${associationConversationMode === "current" ? "checked" : ""}><span><strong>使用当前会话</strong><small>直接关联正在查看的 DSH 会话，不发送新消息</small></span></label>` : "",
+        hasTool(TOOLS.createAnalysis) ? `<label class="association-conversation-option ${associationConversationMode === "new" ? "selected" : ""}"><input type="radio" name="association-conversation-mode" value="new" ${associationConversationMode === "new" ? "checked" : ""}><span><strong>创建新分析会话</strong><small>在 SVN 主目录对应项目中发送只读首轮分析消息</small></span></label>` : "",
+        hasTool(TOOLS.threads) ? `<label class="association-conversation-option ${associationConversationMode === "existing" ? "selected" : ""}"><input type="radio" name="association-conversation-mode" value="existing" ${associationConversationMode === "existing" ? "checked" : ""}><span><strong>选择已有会话</strong><small>只保存关联，不修改已有会话内容</small></span></label>` : ""
+      ].join("");
+      const associationConversationFields = associationConversationMode === "new"
+        ? `<div class="association-fields"><textarea id="association-supplement" maxlength="4000" placeholder="补充 Jira 中缺失的背景、业务规则、环境或复现信息（可选）">${esc(associationSupplement)}</textarea></div>`
+        : associationConversationMode === "existing"
+          ? `<div class="association-fields">${availableThreads ? `<div class="association-thread-picker"><label class="association-thread-search"><input id="association-thread-search" type="search" autocomplete="off" placeholder="搜索会话标题、ID 或 Jira Key" value="${esc(associationThreadSearch)}"></label><div id="association-thread-list" class="association-thread-list" role="listbox" aria-label="选择 DSH 会话">${associationThreadListHtml(availableThreads, task.key)}</div></div>` : '<div class="empty">正在读取可关联会话…</div>'}</div>`
+          : "";
+      const associationCanSave = associationDraftCanSave();
+      const associationManager = associationOpen ? `<div class="detail-modal-layer association-modal-layer"><section class="association-dialog" role="dialog" aria-modal="true" aria-labelledby="association-title"><header class="association-head"><div><h3 id="association-title">处理上下文</h3><p>选择项目与会话，一次完成本任务的处理准备。</p></div><button type="button" id="close-association" class="modal-close" aria-label="关闭处理上下文">×</button></header><div class="association-grid"><section class="association-section"><div class="association-section-head"><strong>项目目录</strong><small>可多选；指定一个目录作为 SVN 和新会话的默认项目。</small></div><div class="association-workspaces">${associationWorkspaceRows || '<div class="empty">DSH 中暂无可用项目，请先在侧边栏添加项目。</div>'}</div></section><section class="association-section"><div class="association-section-head"><strong>DSH 会话</strong><small>保留当前关联，或关联当前、已有及新建会话。</small></div><div class="association-conversations">${conversationOptions || '<div class="empty">当前宿主没有可用的会话关联能力。</div>'}</div>${associationConversationFields}${task.binding && hasTool(TOOLS.clearBinding) ? '<div class="association-danger"><button type="button" id="association-clear-session" class="button-danger">解除当前会话关联</button></div>' : ""}</section></div><footer class="association-foot"><span class="association-foot-note">保存时会校验最新数据，冲突不会覆盖其他操作。</span><div class="association-foot-actions"><button type="button" id="cancel-association" class="button-quiet">取消</button><button type="button" id="save-association" class="primary" ${associationCanSave ? "" : "disabled"}>${associationPrimaryLabel()}</button></div></footer></section></div>` : "";
+      const transitionManager = transitionPanelOpen && transitionAvailable ? `<div class="detail-modal-layer transition-modal-layer"><section class="transition-workspace" role="dialog" aria-modal="true" aria-labelledby="transition-title"><header class="transition-workspace-head"><div><h3 id="transition-title">状态流转</h3><p>当前状态：${esc(task.statusName)}</p></div><button type="button" id="close-transition-panel" class="modal-close" aria-label="关闭状态流转">×</button></header><div class="transition-workspace-body">${transitions ? `<strong>选择目标状态</strong><div class="transition-options" role="radiogroup" aria-label="目标状态">${transitionChoices}</div><button type="button" id="execute-transition" class="button-primary" ${selectedTransition ? "" : "disabled"}>确认并流转</button><div class="transition-hint">提交前会再次读取 Jira 当前状态；需要额外字段的流转只能在 Jira 中完成。</div>` : `<strong>正在准备可用状态</strong><div class="transition-hint">首次打开会读取 Jira 当前状态和可用流转。</div><button type="button" id="load-transitions" class="button-tonal">重新读取</button>`}</div></section></div>` : "";
+      const sideActions = HOST_KIND === "dsh" ? "" : `${bindingBox}${workspaceBox}${svnBox}${transitionBox}`;
+      const primaryCommand = task.binding && !currentSessionBound && canOpenBoundSession
+        ? '<button type="button" id="open-bound-thread" class="button-primary">打开关联会话</button>'
+        : !task.binding ? '<button type="button" id="manage-association" class="button-primary">配置并开始处理</button>' : "";
+      const manageCommand = task.binding ? '<button type="button" id="manage-association" class="context-manage">更改关联</button>' : "";
+      const detailCommandPanel = HOST_KIND === "dsh" ? `<section class="detail-command-panel" aria-label="任务操作"><div class="context-summary"><div class="context-summary-head"><span class="context-state ${contextConfigured ? "" : "unbound"}">${contextConfigured ? "处理上下文已配置" : "处理上下文"}</span>${manageCommand}</div><strong title="${esc(contextTitle)}">${esc(contextTitle)}</strong><span class="context-summary-detail" title="${esc(contextDetail)}">${esc(contextDetail)}</span></div><div class="command-actions">${primaryCommand}<button type="button" id="open-svn" class="button-tonal" ${hasSvnWorkspace ? "" : "disabled"}>审核并提交 SVN</button>${transitionAvailable ? '<button type="button" id="open-transition-panel" class="button-quiet">状态流转</button>' : ""}</div></section>` : "";
+      const detailHtml = `<div class="detail detail-shell"><div class="detail-head"><div><div class="detail-title-meta"><span class="key">${esc(task.key)}</span><span class="detail-status status-${statusTone(task.statusName)}">${esc(task.statusName)}</span></div><h2>${esc(task.title)}</h2></div>${EMBED_DETAIL_MODE && !WORKSPACE_EMBED_MODE ? "" : '<button class="back" type="button" id="back" aria-label="返回任务列表"><span class="back-icon" aria-hidden="true">←</span><span>返回任务列表</span></button>'}</div><div class="detail-body"><div class="detail-scroll"><div class="detail-grid"><div><div class="description">${esc(task.summary)}</div>${parentContext}<div class="subsection"><strong>协同处理人（${task.collaborators?.length || 0}）</strong><div class="chips">${collaborators}</div></div><div class="subsection"><strong>当前执行单附件（${task.attachments?.length || 0}）</strong><div class="attachments">${attachments}</div><div id="attachment-preview-slot">${attachmentPreview}</div></div></div><aside class="detail-side-rail"><div class="facts"><div class="fact"><span>状态</span><strong>${esc(task.statusName)}</strong></div><div class="fact"><span>优先级</span><strong>${esc(task.priority)}</strong></div><div class="fact"><span>负责人</span><strong>${esc(task.assignee)}</strong></div><div class="fact"><span>类型</span><strong>${esc(task.typeName)}</strong></div><div class="fact"><span>项目</span><strong>${esc(task.projectName)}</strong></div><div class="fact"><span>修复版本</span><strong>${esc(task.fixVersions?.join("、") || "—")}</strong></div><div class="fact"><span>更新时间</span><strong>${esc(fmtTime(task.updated))}</strong></div>${sideActions}</div>${detailCommandPanel}</aside></div></div>${associationManager}${transitionManager}</div></div>`;
+      const detailView = $("detail-view");
+      if ((options.modalOnly || options.patchSelectors?.length) && detailView.querySelector(".detail-shell")) {
+        const template = document.createElement("template");
+        template.innerHTML = detailHtml;
+        if (options.modalOnly) {
+          const currentModal = detailView.querySelector(".detail-modal-layer");
+          const nextModal = template.content.querySelector(".detail-modal-layer");
+          if (nextModal && options.animateModal === false) nextModal.classList.add("modal-refresh");
+          if (currentModal && nextModal) currentModal.replaceWith(nextModal);
+          else if (currentModal) currentModal.remove();
+          else if (nextModal) detailView.querySelector(".detail-body")?.append(nextModal);
+        }
+        for (const selector of options.patchSelectors || []) {
+          const current = detailView.querySelector(selector);
+          const next = template.content.querySelector(selector);
+          if (current && next) current.replaceWith(next);
+        }
+        return;
+      }
+      detailView.innerHTML = detailHtml;
+      const back = $("back");
+      if (back) back.onclick = () => void returnToTaskList();
     }
     function svnSelectable(change) { return change?.kind === "file" && !["unversioned", "ignored", "external"].includes(change.item); }
     function svnChangeLabel(change) { return ({ modified: "修改", added: "新增", deleted: "删除", replaced: "替换", missing: "缺失", conflicted: "冲突", unversioned: "未纳管" })[change?.item] || change?.item || "变化"; }
@@ -847,10 +1511,31 @@
       if (!active) return stopSvnPolling();
       if (!svnPollTimer) svnPollTimer = window.setInterval(() => void refreshSvnReviewQuiet(), 3000);
     }
-    function showSvn() { $("board-view").hidden = true; $("sheets-view").hidden = true; $("detail-view").hidden = true; $("svn-view").hidden = false; renderSvn(); }
+    function enterSvnLayout() {
+      document.body.classList.add("svn-mode");
+      document.querySelector("body > header")?.setAttribute("hidden", "");
+      document.querySelector("body > nav")?.setAttribute("hidden", "");
+    }
+    function leaveSvnLayout() {
+      if (svnDedicatedMode) return;
+      document.body.classList.remove("svn-mode");
+      document.querySelector("body > header")?.removeAttribute("hidden");
+      document.querySelector("body > nav")?.removeAttribute("hidden");
+    }
+    function showSvn() {
+      enterSvnLayout();
+      document.body.classList.remove("detail-active", "sheets-active");
+      $("board-view").hidden = true;
+      $("sheets-view").hidden = true;
+      $("detail-view").hidden = true;
+      $("svn-view").hidden = false;
+      renderSvn();
+    }
     function renderSvn() {
       const snapshot = cache.svnContext;
       if (!snapshot) return;
+      const codexReviewAvailable = snapshot.capabilities?.codexReview === true;
+      if (!codexReviewAvailable) svnDraftCodexReview = false;
       const issueKey = snapshot.issueKey;
       const review = cache.svnReview;
       const issueTitle = cache.issue?.issue?.title || "当前 Jira 任务";
@@ -879,7 +1564,10 @@
         const filteredChanges = changes.filter((change) => svnCategoryMatches(change, svnCategoryFilter));
         const files = filteredChanges.length ? svnTreeHtml(filteredChanges) : '<div class="empty">当前分类没有文件</div>';
         const messagePreview = snapshot.message ? `<div id="svn-message-preview" class="svn-message" data-svn-scroll="message">${esc(svnDraftCommitMessage(snapshot.message))}</div>` : '<div class="binding-hint">创建审核快照后将按 Jira 拷贝链接规范生成完整提交信息。</div>';
-        body = `${contextBar}<div class="svn-workbench-grid"><section class="svn-pane"><div class="svn-pane-head"><div><strong>本次提交文件</strong><small>已选 ${svnSelectedPaths.size} / 可选 ${changes.filter(svnSelectable).length}</small></div><div class="svn-pane-actions"><button type="button" id="select-recommended">恢复推荐</button><button type="button" id="clear-svn-selection">清空</button></div></div><div class="svn-categories" aria-label="文件分类">${svnCategoryHtml(changes)}</div><div class="svn-files" data-svn-scroll="files">${changes.length ? files : '<div class="empty">当前项目没有 SVN 本地改动</div>'}</div></section><section class="svn-pane">${svnPreviewHtml(preview)}</section><aside class="svn-workbench-side"><div class="svn-review-stack"><section class="svn-card svn-side-primary"><strong>审核方式</strong><div class="svn-review-mode-options" role="radiogroup" aria-label="审核方式"><label class="svn-review-mode ${svnDraftCodexReview ? "" : "active"}"><input id="svn-manual-review" name="svn-review-mode" type="radio" value="manual" ${svnDraftCodexReview ? "" : "checked"}><span><strong>人工审核（默认）</strong><small>立即生成机械检查快照，由你查看差异、风险和提交信息。</small></span></label><label class="svn-review-mode ${svnDraftCodexReview ? "active" : ""}"><input id="svn-codex-review" name="svn-review-mode" type="radio" value="codex" ${svnDraftCodexReview ? "checked" : ""}><span><strong>Codex 辅助审查</strong><small>可能耗时较长；必须等待完成，或主动取消并降级为人工审核后才能提交。</small></span></label></div></section><section class="svn-card svn-commit-message-card"><div class="svn-message-label"><strong>提交信息</strong><span class="pill">实时预览</span></div><div class="svn-controls"><label class="svn-field" for="svn-summary"><span>补充说明（可选）</span><input id="svn-summary" type="text" maxlength="500" placeholder="简要说明本次改动；提交时自动追加为 --说明" value="${esc(svnDraftSummary)}"></label></div>${messagePreview}<div class="binding-hint">提交正文来自当前 Jira 任务；补充说明会实时追加到末行。创建快照不会执行 svn commit。</div><div class="svn-actions"><button type="button" id="create-svn-review" class="primary" ${svnSelectedPaths.size ? "" : "disabled"}>创建审核快照</button></div></section></div></aside></div>`;
+        const codexReviewOption = codexReviewAvailable
+          ? `<label class="svn-review-mode ${svnDraftCodexReview ? "active" : ""}"><input id="svn-codex-review" name="svn-review-mode" type="radio" value="codex" ${svnDraftCodexReview ? "checked" : ""}><span><strong>Codex 辅助审查</strong><small>可能耗时较长；必须等待完成，或主动取消并降级为人工审核后才能提交。</small></span></label>`
+          : `<div class="binding-hint">当前宿主或任务没有可用的 Codex 会话，仅提供人工审核。</div>`;
+        body = `${contextBar}<div class="svn-workbench-grid"><section class="svn-pane"><div class="svn-pane-head"><div><strong>本次提交文件</strong><small>已选 ${svnSelectedPaths.size} / 可选 ${changes.filter(svnSelectable).length}</small></div><div class="svn-pane-actions"><button type="button" id="select-recommended">恢复推荐</button><button type="button" id="clear-svn-selection">清空</button></div></div><div class="svn-categories" aria-label="文件分类">${svnCategoryHtml(changes)}</div><div class="svn-files" data-svn-scroll="files">${changes.length ? files : '<div class="empty">当前项目没有 SVN 本地改动</div>'}</div></section><section class="svn-pane">${svnPreviewHtml(preview)}</section><aside class="svn-workbench-side"><div class="svn-review-stack"><section class="svn-card svn-side-primary"><strong>审核方式</strong><div class="svn-review-mode-options" role="radiogroup" aria-label="审核方式"><label class="svn-review-mode ${svnDraftCodexReview ? "" : "active"}"><input id="svn-manual-review" name="svn-review-mode" type="radio" value="manual" ${svnDraftCodexReview ? "" : "checked"}><span><strong>人工审核（默认）</strong><small>立即生成机械检查快照，由你查看差异、风险和提交信息。</small></span></label>${codexReviewOption}</div></section><section class="svn-card svn-commit-message-card"><div class="svn-message-label"><strong>提交信息</strong><span class="pill">实时预览</span></div><div class="svn-controls"><label class="svn-field" for="svn-summary"><span>补充说明（可选）</span><input id="svn-summary" type="text" maxlength="500" placeholder="简要说明本次改动；提交时自动追加为 --说明" value="${esc(svnDraftSummary)}"></label></div>${messagePreview}<div class="binding-hint">提交正文来自当前 Jira 任务；补充说明会实时追加到末行。创建快照不会执行 svn commit。</div><div class="svn-actions"><button type="button" id="create-svn-review" class="primary" ${svnSelectedPaths.size ? "" : "disabled"}>创建审核快照</button></div></section></div></aside></div>`;
       } else {
         const statusText = svnStatusText(review);
         const canConfirm = ["manual_review", "completed", "cancelled"].includes(review.status) && ["pass", "warning"].includes(review.verdict);
@@ -907,15 +1595,81 @@
       }
       syncSvnPolling();
     }
-    function showMain(view = "board") { stopSvnPolling(); $("detail-view").hidden = true; $("svn-view").hidden = true; $("board-view").hidden = view !== "board"; $("sheets-view").hidden = view !== "sheets"; }
-    async function openIssue(key) { previousView = activeTab === "sheets" ? "sheets" : "board"; cache.attachmentPreview = null; cache.transitions = null; cache.threads = null; cache.svnContext = null; cache.svnReview = null; cache.svnConfirmation = null; stopSvnPolling(); await callTool(TOOLS.issue, { issueKey: key }); }
+    function notifyWorkspaceView(view) {
+      if (HOST_KIND === "dsh" && WORKSPACE_EMBED_MODE) notifyDesktopHost("navigation-state", { view });
+    }
+    function showMain(view = "board") {
+      attachmentLightboxOpen = false;
+      leaveSvnLayout();
+      document.body.classList.remove("detail-active");
+      document.body.classList.toggle("sheets-active", view === "sheets");
+      stopSvnPolling();
+      $("detail-view").hidden = true;
+      $("svn-view").hidden = true;
+      $("board-view").hidden = view !== "board";
+      $("sheets-view").hidden = view !== "sheets";
+      notifyWorkspaceView("board");
+    }
+    async function returnToTaskList() {
+      await selectTab(previousView === "sheets" ? "sheets" : activeTab);
+    }
+    async function openIssue(key) {
+      leaveSvnLayout();
+      previousView = activeTab === "sheets" ? "sheets" : "board";
+      associationOpen = false;
+      transitionPanelOpen = false;
+      transitionSelectedId = "";
+      attachmentLightboxOpen = false;
+      cache.workspaces = null;
+      cache.availableWorkspaces = null;
+      cache.attachmentPreview = null;
+      cache.transitions = null;
+      cache.threads = null;
+      cache.svnContext = null;
+      cache.svnReview = null;
+      cache.svnConfirmation = null;
+      stopSvnPolling();
+      clearError();
+      const issueResult = await callTool(TOOLS.issue, { issueKey: key }, { accept: false });
+      if (!issueResult) return;
+      cache.issue = issueResult;
+      const [workspaceResult, availableWorkspaceResult] = await Promise.all([
+        callTool(TOOLS.workspaceGet, { issueKey: key }, { silent: true, background: true, accept: false }),
+        callTool(TOOLS.workspaceList, {}, { silent: true, background: true, accept: false })
+      ]);
+      workspaceToolAvailable = workspaceResult !== null;
+      if (workspaceResult) cache.workspaces = workspaceResult;
+      if (availableWorkspaceResult) cache.availableWorkspaces = availableWorkspaceResult;
+      document.body.classList.remove("sheets-active");
+      document.body.classList.add("detail-active");
+      $("board-view").hidden = true;
+      $("sheets-view").hidden = true;
+      $("svn-view").hidden = true;
+      $("detail-view").hidden = false;
+      renderDetail();
+      notifyWorkspaceView("detail");
+    }
     function acceptResult(result) {
       clearError();
       if (result.view === "board") { cache.board = result; showMain("board"); renderBoard(); }
       if (result.view === "sheets") { cache.sheets = result; showMain("sheets"); renderSheets(); }
       if (result.view === "sheet") { cache.sheet = result; selectedSheet = result.sheet; renderSheets(); renderSheetIssues(); }
-      if (result.view === "issue") { cache.issue = result; $("board-view").hidden = true; $("sheets-view").hidden = true; $("svn-view").hidden = true; $("detail-view").hidden = false; renderDetail(); }
-      if (result.view === "attachmentPreview") { cache.attachmentPreview = result; renderDetail(); }
+      if (result.view === "issue") { cache.issue = result; leaveSvnLayout(); document.body.classList.remove("sheets-active"); document.body.classList.add("detail-active"); $("board-view").hidden = true; $("sheets-view").hidden = true; $("svn-view").hidden = true; $("detail-view").hidden = false; renderDetail(); notifyWorkspaceView("detail"); }
+      if (result.view === "workspaceBindings") {
+        cache.workspaces = result;
+        workspaceToolAvailable = true;
+        if (!(HOST_KIND === "dsh" && associationOpen)) renderDetail();
+      }
+      if (result.view === "availableWorkspaces") {
+        cache.availableWorkspaces = result;
+        if (HOST_KIND === "dsh") {
+          if (associationOpen) renderDetail({ modalOnly: true, animateModal: false });
+        } else renderDetail();
+      }
+      if (result.view === "attachmentPreview") {
+        cache.attachmentPreview = result;
+        renderDetail({ patchSelectors: ["#attachment-preview-slot"] });
+      }
       if (result.view === "automationStatus") { cache.automation = result; renderAutomation(); }
       if (result.view === "updateStatus") { cache.update = result; renderUpdateStatus(); }
       if (result.view === "desktopNavigation") {
@@ -927,18 +1681,34 @@
         cache.board = null;
         cache.threads = null;
         if (result.issueSnapshot) cache.issue = result.issueSnapshot;
-        renderDetail();
+        if (!(HOST_KIND === "dsh" && associationOpen)) renderDetail();
         $("meta").textContent = `${result.issueKey} 的分析会话已创建并关联`;
-        notifyDesktopHost("close");
+        if (HOST_KIND === "dsh") {
+          window.parent.postMessage({
+            source: "jira-workbench-dsh",
+            type: "open-session",
+            sessionId: result.sessionId || result.threadId
+          }, window.location.origin);
+        } else {
+          notifyDesktopHost("close");
+        }
       }
-      if (result.view === "transitions") { cache.transitions = result; renderDetail(); }
+      if (result.view === "transitions") {
+        cache.transitions = result;
+        if (HOST_KIND === "dsh" && transitionPanelOpen) renderDetail({ modalOnly: true, animateModal: false });
+        else if (HOST_KIND !== "dsh") renderDetail();
+      }
       if (result.view === "transitionConfirmation") { cache.pendingTransition = result; }
-      if (result.view === "threads") { cache.threads = result; renderDetail(); }
+      if (result.view === "threads") {
+        cache.threads = result;
+        if (HOST_KIND === "dsh" && associationOpen) renderDetail({ modalOnly: true, animateModal: false });
+        else if (HOST_KIND !== "dsh") renderDetail();
+      }
       if (result.view === "bindingResult") {
         cache.threads = null;
         cache.board = null;
         if (result.issueSnapshot) cache.issue = result.issueSnapshot;
-        renderDetail();
+        if (!(HOST_KIND === "dsh" && associationOpen)) renderDetail();
         $("meta").textContent = result.action === "cleared" ? `${result.issueKey} 已解除会话关联` : `${result.issueKey} 已保存会话关联`;
       }
       if (result.view === "svnContext") {
@@ -976,8 +1746,11 @@
         cache.pendingTransition = null;
         cache.transitions = null;
         cache.board = null;
+        transitionPanelOpen = false;
+        transitionSelectedId = "";
         if (result.issueSnapshot) cache.issue = result.issueSnapshot;
-        renderDetail();
+        if (HOST_KIND === "dsh") renderDetail({ modalOnly: true, patchSelectors: [".detail-status", ".detail-side-rail"] });
+        else renderDetail();
         $("meta").textContent = `${result.issueKey} 已流转到 ${result.targetStatus} · ${fmtTime(result.transitionedAt)}`;
       }
     }
@@ -1031,7 +1804,21 @@
         saveState();
         renderBoard();
       }
-      const task = event.target.closest("article[data-key]");
+      const sheetSortButton = event.target.closest("[data-sheet-sort]");
+      if (sheetSortButton && cache.sheet && !busy) {
+        const column = sheetSortButton.dataset.sheetSort;
+        if (sheetSort.column !== column) sheetSort = { column, direction: "asc" };
+        else if (sheetSort.direction === "asc") sheetSort = { column, direction: "desc" };
+        else sheetSort = { column: "", direction: "" };
+        renderSheetIssues();
+        return;
+      }
+      if (event.target.closest("#sheet-reset") && cache.sheet && !busy) {
+        resetSheetTableState();
+        renderSheetIssues();
+        return;
+      }
+      const task = event.target.closest("article[data-key], .sheet-row[data-key]");
       if (task && !busy) void openIssue(task.dataset.key);
       const attachment = event.target.closest("button[data-preview-attachment]");
       if (attachment && cache.issue?.issue && !busy) {
@@ -1040,15 +1827,53 @@
           attachmentId: attachment.dataset.previewAttachment
         });
       }
+      if (event.target.closest("[data-open-attachment-lightbox]") && cache.attachmentPreview?.preview && !busy) {
+        attachmentLightboxOpen = true;
+        renderDetail({ patchSelectors: ["#attachment-preview-slot"] });
+        window.requestAnimationFrame(() => $("close-attachment-lightbox")?.focus());
+        return;
+      }
+      if (event.target.closest("#close-attachment-lightbox") || event.target.matches(".attachment-lightbox")) {
+        attachmentLightboxOpen = false;
+        renderDetail({ patchSelectors: ["#attachment-preview-slot"] });
+        window.requestAnimationFrame(() => document.querySelector("[data-open-attachment-lightbox]")?.focus());
+        return;
+      }
       const sheet = event.target.closest(".sheet-item");
       if (sheet && !busy) {
         selectedSheet = cache.sheets?.sheets.find((item) => item.id === sheet.dataset.sheet && item.projectId === sheet.dataset.project) || null;
+        resetSheetTableState();
+        cache.sheet = null;
+        $("sheet-title").textContent = selectedSheet?.title || "请选择 Sheet";
+        $("sheet-visible-count").textContent = "读取中…";
+        $("sheet-table-wrap").dataset.sheetKey = "";
+        $("sheet-table-wrap").innerHTML = '<div class="empty">正在读取 Sheet 数据…</div>';
         saveState(); renderSheets();
         if (selectedSheet?.queryable) void callTool(TOOLS.sheet, { projectId: selectedSheet.projectId, sheetId: selectedSheet.id, limit: 100 });
         else showError(new Error("此 Sheet 不是 JQL 范围，请在 Jira 中打开。"));
       }
       if (event.target.closest("#load-transitions") && cache.issue?.issue && !busy) {
         void callTool(TOOLS.transitions, { issueKey: cache.issue.issue.key });
+      }
+      if (event.target.closest("#open-transition-panel") && cache.issue?.issue && !busy) {
+        associationOpen = false;
+        transitionPanelOpen = true;
+        transitionSelectedId = "";
+        renderDetail({ modalOnly: true });
+        if (!cache.transitions) void callTool(TOOLS.transitions, { issueKey: cache.issue.issue.key }, { background: true });
+      }
+      if ((event.target.closest("#close-transition-panel") || event.target.matches(".transition-modal-layer")) && !busy) {
+        transitionPanelOpen = false;
+        renderDetail({ modalOnly: true });
+        window.requestAnimationFrame(() => $("open-transition-panel")?.focus());
+      }
+      const transitionChoice = event.target.closest("[data-transition-choice]");
+      if (transitionChoice && cache.transitions && !busy) {
+        const transition = cache.transitions.transitions.find((item) => item.id === transitionChoice.dataset.transitionChoice && !item.requiresInput);
+        if (transition) {
+          transitionSelectedId = transition.id;
+          syncTransitionChoice();
+        }
       }
       if (event.target.closest("#monitor-toggle") && !busy) {
         const enabled = cache.automation?.automation?.monitorEnabled !== true;
@@ -1058,15 +1883,61 @@
         if (!window.confirm(warning)) return;
         void callTool(TOOLS.automationToggle, { enabled });
       }
-      if (event.target.closest("#settings") && !busy) {
-        void openLink("http://127.0.0.1:47823/#settings").catch((error) => showError(error));
+      // Settings is a navigation action, not a data mutation. Keeping it behind
+      // the global request flag made an enabled-looking button silently ignore
+      // clicks while the task board was still loading on slower installations.
+      if (event.target.closest("#settings")) {
+        if (HOST_KIND === "dsh" && WORKSPACE_EMBED_MODE) notifyDesktopHost("open-settings");
+        else void openLink(EFFECTIVE_SETTINGS_URL).catch((error) => showError(error));
       }
-      if (event.target.closest("#local-close") && !busy) notifyDesktopHost("close");
+      if (event.target.closest("#local-close")) notifyDesktopHost("close");
+      if (event.target.closest("#manage-association") && cache.issue?.issue && !busy) {
+        transitionPanelOpen = false;
+        const scopes = cache.workspaces?.binding?.workspace?.projectScopes || [];
+        initializeAssociationDraft(cache.issue.issue, scopes, cache.workspaces?.binding?.workspace?.defaultProjectScopeId || "");
+        renderDetail({ modalOnly: true });
+        window.requestAnimationFrame(() => $("close-association")?.focus());
+        if (!cache.availableWorkspaces) void callTool(TOOLS.workspaceList, {}, { background: true });
+        if (!cache.threads && hasTool(TOOLS.threads)) void callTool(TOOLS.threads, { limit: 100 }, { background: true });
+      }
+      if ((event.target.closest("#close-association") || event.target.closest("#cancel-association") || event.target.matches(".association-modal-layer")) && !busy) {
+        captureAssociationDraft();
+        associationOpen = false;
+        renderDetail({ modalOnly: true });
+        window.requestAnimationFrame(() => $("manage-association")?.focus());
+      }
+      if (event.target.closest("#save-association") && associationOpen && !busy) {
+        void saveDshAssociation();
+      }
+      const associationThread = event.target.closest("[data-association-thread]");
+      if (associationThread && associationOpen && !busy) {
+        associationThreadId = associationThread.dataset.associationThread || "";
+        syncAssociationThreadPicker();
+      }
+      if (event.target.closest("#association-clear-session") && cache.issue?.issue?.binding && !busy) {
+        const task = cache.issue.issue;
+        if (!window.confirm(`确认解除 ${task.key} 与“${task.binding.title}”的关联吗？DSH 会话不会被删除。`)) return;
+        void (async () => {
+          const result = await callTool(TOOLS.clearBinding, { issueKey: task.key, expectedRevision: cache.issue.bindingsRevision });
+          if (result) {
+            associationOpen = false;
+            renderDetail({ modalOnly: true, patchSelectors: [".detail-side-rail"] });
+          }
+        })();
+      }
       if (event.target.closest("#open-binding") && cache.issue?.issue && !busy) {
         void callTool(TOOLS.threads, { limit: 100 });
       }
       if (event.target.closest("#open-bound-thread") && cache.issue?.issue?.binding && !busy) {
-        void callTool(TOOLS.openBoundThread, { issueKey: cache.issue.issue.key });
+        if (HOST_KIND === "dsh") {
+          window.parent.postMessage({
+            source: "jira-workbench-dsh",
+            type: "open-session",
+            sessionId: cache.issue.issue.binding.threadId
+          }, window.location.origin);
+        } else {
+          void callTool(TOOLS.openBoundThread, { issueKey: cache.issue.issue.key });
+        }
       }
       if (event.target.closest("#create-analysis") && cache.issue?.issue && !busy) {
         cache.createAnalysisIssueKey = cache.issue.issue.key;
@@ -1078,8 +1949,15 @@
       }
       if (event.target.closest("#confirm-create-analysis") && cache.issue?.issue && !busy) {
         const supplementalDescription = $("analysis-supplement")?.value?.trim() || "";
-        if (!window.confirm(`确认在当前 Codex Desktop 窗口为 ${cache.issue.issue.key} 新建会话，并发送一条只读分析消息吗？`)) return;
-        void callTool(TOOLS.createAnalysis, { issueKey: cache.issue.issue.key, supplementalDescription });
+        const projectScopeId = $("analysis-project-scope")?.value || "";
+        if (HOST_KIND === "dsh" && !projectScopeId) return showError(new Error("请先选择用于新会话的 DSH 项目。"));
+        if (!window.confirm(`确认在 ${SESSION_HOST_NAME} 为 ${cache.issue.issue.key} 新建会话，并发送一条只读分析消息吗？`)) return;
+        void callTool(TOOLS.createAnalysis, {
+          issueKey: cache.issue.issue.key,
+          supplementalDescription,
+          expectedRevision: cache.issue.bindingsRevision,
+          ...(projectScopeId ? { projectScopeId } : {})
+        });
       }
       if (event.target.closest("#cancel-binding") && !busy) {
         cache.threads = null;
@@ -1088,7 +1966,7 @@
       if (event.target.closest("#confirm-binding") && cache.issue?.issue && cache.threads && !busy) {
         const threadId = $("binding-thread-select")?.value || "";
         const thread = cache.threads.threads.find((item) => item.id === threadId);
-        if (!thread) return showError(new Error("请先选择要关联的 Codex 会话。"));
+        if (!thread) return showError(new Error(`请先选择要关联的 ${SESSION_HOST_NAME} 会话。`));
         const conflicts = (thread.boundIssueKeys || []).filter((issueKey) => issueKey !== cache.issue.issue.key);
         const message = conflicts.length
           ? `该会话已关联 ${conflicts.join("、")}。确认解除原关联并改为关联 ${cache.issue.issue.key} 吗？不会发送消息。`
@@ -1097,10 +1975,51 @@
         void callTool(TOOLS.bindIssue, { issueKey: cache.issue.issue.key, threadId, expectedRevision: cache.threads.bindingsRevision, replaceExistingThreadBinding: conflicts.length > 0 });
       }
       if (event.target.closest("#clear-binding") && cache.issue?.issue?.binding && !busy) {
-        if (!window.confirm(`确认解除 ${cache.issue.issue.key} 与“${cache.issue.issue.binding.title}”的关联吗？Codex 会话不会被删除。`)) return;
+        if (!window.confirm(`确认解除 ${cache.issue.issue.key} 与“${cache.issue.issue.binding.title}”的关联吗？${SESSION_HOST_NAME} 会话不会被删除。`)) return;
         void callTool(TOOLS.clearBinding, { issueKey: cache.issue.issue.key, expectedRevision: cache.issue.bindingsRevision });
       }
-      if (event.target.closest("#open-svn") && cache.issue?.issue?.binding && !busy) {
+      if (event.target.closest("#refresh-workspace-catalog") && !busy) {
+        void callTool(TOOLS.workspaceList, {});
+      }
+      if (event.target.closest("#bind-workspace") && cache.issue?.issue && cache.workspaces && !busy) {
+        const selectedWorkspaceId = $("workspace-select")?.value || "";
+        const selectedWorkspace = (cache.availableWorkspaces?.workspaces || []).find((workspace) => workspace.id === selectedWorkspaceId);
+        const cwd = selectedWorkspace?.cwd || $("workspace-path")?.value?.trim() || "";
+        const projectId = selectedWorkspace?.projectId || selectedWorkspace?.id || "";
+        const projectLabel = selectedWorkspace?.projectLabel || $("workspace-label")?.value?.trim() || "";
+        if (hasTool(TOOLS.workspaceList) && !selectedWorkspace) return showError(new Error("请先从 DSH 项目列表选择一个项目。"));
+        if (!cwd) return showError(new Error("请填写本机项目绝对路径。"));
+        if (!window.confirm(`确认将“${projectLabel || cwd}”绑定到 ${cache.issue.issue.key} 吗？该项目将可用于 SVN 检查与提交。`)) return;
+        void callTool(TOOLS.workspaceBind, {
+          issueKey: cache.issue.issue.key,
+          cwd,
+          projectId,
+          projectLabel,
+          makeDefault: $("workspace-default")?.checked !== false,
+          replaceExisting: false,
+          expectedRevision: cache.workspaces.revision
+        });
+      }
+      const unbindWorkspace = event.target.closest("button[data-unbind-workspace]");
+      if (unbindWorkspace && cache.issue?.issue && cache.workspaces && !busy) {
+        if (!window.confirm("确认解除这个项目目录吗？不会删除目录或还原文件。")) return;
+        void callTool(TOOLS.workspaceUnbind, {
+          issueKey: cache.issue.issue.key,
+          projectScopeId: unbindWorkspace.dataset.unbindWorkspace,
+          expectedRevision: cache.workspaces.revision
+        });
+      }
+      if (event.target.closest("#clear-workspaces") && cache.issue?.issue && cache.workspaces && !busy) {
+        if (!window.confirm(`确认解除 ${cache.issue.issue.key} 的全部项目目录吗？不会删除任何本机文件。`)) return;
+        void callTool(TOOLS.workspaceUnbind, {
+          issueKey: cache.issue.issue.key,
+          projectScopeId: "",
+          expectedRevision: cache.workspaces.revision
+        });
+      }
+      const hasSvnWorkspace = (cache.workspaces?.binding?.workspace?.projectScopes || []).length > 0
+        || (cache.issue?.issue?.binding?.projectScopes || []).length > 0;
+      if (event.target.closest("#open-svn") && cache.issue?.issue && hasSvnWorkspace && !busy) {
         cache.svnContext = null; cache.svnPreview = null; cache.svnReview = null; cache.svnConfirmation = null; svnSelectedPaths = new Set();
         svnCategoryFilter = "all"; svnDraftSummary = ""; svnDraftCodexReview = false;
         void callTool(TOOLS.svnInspect, { issueKey: cache.issue.issue.key });
@@ -1117,7 +2036,7 @@
         svnFileInteraction.cancel();
         stopSvnPolling();
         if (svnDedicatedMode && LOCAL_TRANSPORT) notifyDesktopHost("close");
-        else { $("svn-view").hidden = true; $("detail-view").hidden = false; renderDetail(); }
+        else { leaveSvnLayout(); document.body.classList.add("detail-active"); $("svn-view").hidden = true; $("detail-view").hidden = false; renderDetail(); }
         return;
       }
       if (event.target.closest("#refresh-svn-workbench") && cache.svnContext && !busy) {
@@ -1148,7 +2067,8 @@
       if (event.target.closest("#create-svn-review") && cache.svnContext && !busy) {
         if (!svnSelectedPaths.size) return showError(new Error("请至少选择一个要审核的 SVN 文件。"));
         svnDraftSummary = $("svn-summary")?.value || svnDraftSummary;
-        svnDraftCodexReview = $("svn-codex-review")?.checked === true;
+        svnDraftCodexReview = cache.svnContext.capabilities?.codexReview === true
+          && $("svn-codex-review")?.checked === true;
         void callTool(TOOLS.svnCreateReview, {
           ...svnScopedArguments(),
           selectedPaths: Array.from(svnSelectedPaths),
@@ -1200,7 +2120,7 @@
         })();
       }
       if (event.target.closest("#execute-transition") && cache.issue?.issue && cache.transitions && !busy) {
-        const transitionId = $("transition-select")?.value || "";
+        const transitionId = HOST_KIND === "dsh" ? transitionSelectedId : $("transition-select")?.value || "";
         const transition = cache.transitions.transitions.find((item) => item.id === transitionId);
         if (!transition) return showError(new Error("请先选择目标状态。"));
         if (!window.confirm(`确认将 ${cache.issue.issue.key} 从“${cache.issue.issue.statusName}”流转到“${transition.to.name}”吗？`)) return;
@@ -1213,14 +2133,80 @@
     document.addEventListener("dblclick", (event) => {
       svnFileInteraction.doubleClick(event);
     });
-    document.addEventListener("keydown", (event) => { if ((event.key === "Enter" || event.key === " ") && event.target.matches("article[data-key]")) { event.preventDefault(); void openIssue(event.target.dataset.key); } });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && attachmentLightboxOpen) {
+        event.preventDefault();
+        attachmentLightboxOpen = false;
+        renderDetail({ patchSelectors: ["#attachment-preview-slot"] });
+        window.requestAnimationFrame(() => document.querySelector("[data-open-attachment-lightbox]")?.focus());
+        return;
+      }
+      if (event.key === "Escape" && (associationOpen || transitionPanelOpen) && !busy) {
+        event.preventDefault();
+        if (associationOpen) captureAssociationDraft();
+        const returnTarget = associationOpen ? "manage-association" : "open-transition-panel";
+        associationOpen = false;
+        transitionPanelOpen = false;
+        renderDetail({ modalOnly: true });
+        $(returnTarget)?.focus();
+        return;
+      }
+      if ((event.key === "Enter" || event.key === " ") && event.target.matches("article[data-key], .sheet-row[data-key]")) {
+        event.preventDefault();
+        void openIssue(event.target.dataset.key);
+      }
+    });
     document.addEventListener("input", (event) => {
+      if (event.target.matches("input[data-sheet-filter]") && cache.sheet && !busy) {
+        sheetFilters[event.target.dataset.sheetFilter] = event.target.value;
+        renderSheetIssues();
+        return;
+      }
       if (event.target.id === "svn-summary") {
         svnDraftSummary = event.target.value;
         syncSvnCommitMessagePreview();
       }
+      if (event.target.id === "association-supplement") associationSupplement = event.target.value;
+      if (event.target.id === "association-thread-search" && associationOpen) {
+        associationThreadSearch = event.target.value;
+        const list = $("association-thread-list");
+        if (list) {
+          list.innerHTML = associationThreadListHtml(cache.threads?.threads || [], cache.issue?.issue?.key || "");
+          syncAssociationThreadPicker();
+        }
+      }
     });
     document.addEventListener("change", (event) => {
+      if (event.target.matches("select[data-sheet-filter]") && cache.sheet && !busy) {
+        sheetFilters[event.target.dataset.sheetFilter] = event.target.value;
+        renderSheetIssues();
+        return;
+      }
+      const associationWorkspace = event.target.closest("input[data-association-workspace]");
+      if (associationWorkspace && associationOpen && !busy) {
+        captureAssociationDraft();
+        const identity = associationWorkspace.dataset.associationWorkspace;
+        if (associationWorkspace.checked) associationSelectedWorkspaceIds.add(identity);
+        else associationSelectedWorkspaceIds.delete(identity);
+        if (!associationDefaultWorkspaceId || !associationSelectedWorkspaceIds.has(associationDefaultWorkspaceId)) {
+          associationDefaultWorkspaceId = Array.from(associationSelectedWorkspaceIds)[0] || "";
+        }
+        syncAssociationWorkspacePicker();
+        return;
+      }
+      if (event.target.name === "association-default-workspace" && associationOpen && !busy) {
+        captureAssociationDraft();
+        associationDefaultWorkspaceId = event.target.value;
+        syncAssociationWorkspacePicker();
+        return;
+      }
+      if (event.target.name === "association-conversation-mode" && associationOpen && !busy) {
+        captureAssociationDraft();
+        associationConversationMode = event.target.value;
+        renderDetail({ modalOnly: true, animateModal: false });
+        if (associationConversationMode === "existing" && !cache.threads) void callTool(TOOLS.threads, { limit: 100 }, { background: true });
+        return;
+      }
       if (event.target.id === "svn-project-scope" && cache.svnContext && !cache.svnReview && !busy) {
         svnFileInteraction.cancel();
         cache.svnPreview = null;
@@ -1235,17 +2221,21 @@
         return;
       }
       if (event.target.name === "svn-review-mode") {
-        svnDraftCodexReview = event.target.value === "codex";
+        svnDraftCodexReview = cache.svnContext?.capabilities?.codexReview === true
+          && event.target.value === "codex";
         document.querySelectorAll(".svn-review-mode").forEach((label) => label.classList.toggle("active", label.contains(event.target)));
       }
     });
     $("sheet-search").addEventListener("input", renderSheetIssues);
-    $("sheet-sort").addEventListener("change", renderSheetIssues);
     $("refresh").addEventListener("click", () => { if (activeTab === "sheets") return callTool(selectedSheet ? TOOLS.sheet : TOOLS.sheets, selectedSheet ? { projectId: selectedSheet.projectId, sheetId: selectedSheet.id, limit: 100 } : {}); return callTool(TOOLS.board, { includeCompleted: true, limitPerType: 100 }); });
 
     window.addEventListener("message", (event) => {
       if (event.source !== window.parent) return;
       const message = event.data;
+      if (event.origin === window.location.origin && message?.source === "jira-workbench-dsh-host" && message.type === "navigate-back") {
+        void returnToTaskList();
+        return;
+      }
       if (!message || message.jsonrpc !== "2.0") return;
       if (message.id !== undefined && pending.has(message.id)) { const entry = pending.get(message.id); pending.delete(message.id); message.error ? entry.reject(message.error) : entry.resolve(message.result); return; }
       if (message.method === "ui/notifications/tool-result") acceptResult(message.params?.structuredContent);
@@ -1258,13 +2248,21 @@
         else {
           try { stored = JSON.parse(window.localStorage.getItem(LOCAL_STATE_KEY) || "{}"); } catch { stored = {}; }
         }
+        const requestedIssueKey = String(LAUNCH_PARAMS.get("issue") || "").trim().toUpperCase();
+        if (/^[A-Z][A-Z0-9_]*-\d+$/.test(requestedIssueKey)) {
+          stored = {
+            ...stored,
+            openIssueKey: requestedIssueKey,
+            openSvn: LAUNCH_PARAMS.get("svn") === "1"
+          };
+        }
         $("local-close").hidden = false;
       }
+      if (EMBED_DETAIL_MODE) document.body.classList.add("detail-embed");
+      if (WORKSPACE_EMBED_MODE) document.body.classList.add("workspace-embed");
       if (stored.openSvn) {
         svnDedicatedMode = true;
-        document.body.classList.add("svn-mode");
-        document.querySelector("body > header")?.setAttribute("hidden", "");
-        document.querySelector("body > nav")?.setAttribute("hidden", "");
+        enterSvnLayout();
       }
       activeTab = ["active", "sheets", "history"].includes(stored.activeTab) ? stored.activeTab : "active";
       selectedSheet = stored.selectedSheet && typeof stored.selectedSheet === "object"
@@ -1275,19 +2273,25 @@
         : {};
       try {
         if (LOCAL_TRANSPORT) {
+          await loadCapabilities();
           if (stored.openIssueKey) {
             await openIssue(String(stored.openIssueKey));
-            if (stored.openSvn && cache.issue?.issue?.binding) {
+            const hasSvnWorkspace = (cache.workspaces?.binding?.workspace?.projectScopes || []).length > 0
+              || (cache.issue?.issue?.binding?.projectScopes || []).length > 0;
+            if (stored.openSvn && hasSvnWorkspace) {
               await callTool(TOOLS.svnInspect, { issueKey: String(stored.openIssueKey) });
             }
-          } else {
-            await callTool(TOOLS.board, { includeCompleted: true, limitPerType: 100 });
+          } else await selectTab(activeTab);
+          if (!stored.openSvn) {
+            // automation 与 update 是宿主可选能力（DSH 侧不提供）：工具未注册
+            // 时静默隐藏对应 UI，不打断核心看板。
+            if (await callTool(TOOLS.automationStatus, {}, { silent: true }) === null) $("monitor").hidden = true;
+            void callTool(TOOLS.updateStatus, {}, { background: true });
           }
-          if (!stored.openSvn) await callTool(TOOLS.automationStatus);
-          if (!stored.openSvn) void callTool(TOOLS.updateStatus, {}, { background: true });
         } else {
           await request("ui/initialize", { protocolVersion: "2025-11-21", appInfo: { name: "jira-workbench", title: "Jira 任务工作台", version: APP_VERSION }, appCapabilities: {} });
           notify("ui/notifications/initialized", {});
+          await loadCapabilities();
           void callTool(TOOLS.automationStatus);
           void callTool(TOOLS.updateStatus, {}, { background: true });
         }
@@ -1295,6 +2299,8 @@
         if (window.openai?.toolOutput) acceptResult(window.openai.toolOutput);
         else showError(error);
       }
+      // 宿主未提供设置入口（SETTINGS_URL 被替换为空）时保持隐藏；否则显示。
+      if (EFFECTIVE_SETTINGS_URL || HOST_KIND === "dsh" && WORKSPACE_EMBED_MODE) $("settings").hidden = false;
       document.querySelectorAll("nav button").forEach((button) => button.classList.toggle("active", button.dataset.tab === activeTab));
     }
     void initialize();

@@ -37,7 +37,7 @@ function fixture({ parentFailure = false } = {}) {
           filename: "evidence.png",
           contentType: "image/png",
           contentLength: 4,
-          thumbnail: true,
+          thumbnail: options?.thumbnail === true,
           body: new Response(Uint8Array.from([1, 2, 3, 4])).body
         };
       },
@@ -76,9 +76,9 @@ test("官方工作台只按需读取属于当前任务的图片附件", async ()
   const preview = await service.getAttachmentPreview("ct-1", "9");
   assert.equal(preview.issueKey, "CT-1");
   assert.equal(preview.filename, "evidence.png");
-  assert.equal(preview.thumbnail, true);
+  assert.equal(preview.thumbnail, false);
   assert.equal(preview.dataUrl, "data:image/png;base64,AQIDBA==");
-  assert.deepEqual(calls.find((call) => call[0] === "attachment").slice(2), ["9", { thumbnail: true }]);
+  assert.deepEqual(calls.find((call) => call[0] === "attachment").slice(2), ["9", { thumbnail: false }]);
   const parentPreview = await service.getAttachmentPreview("CT-1", "10");
   assert.equal(parentPreview.sourceIssueKey, "CT-ROOT");
   await assert.rejects(

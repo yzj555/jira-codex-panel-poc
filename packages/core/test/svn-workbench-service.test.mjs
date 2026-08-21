@@ -68,6 +68,7 @@ test("SVN workbench resolves the project from the service-owned issue binding", 
   assert.equal(calls[0][1].issue.key, "CT-1");
   assert.equal(calls[0][1].workspaceContext.cwd, "F:\\repo");
   assert.equal(calls[0][1].workspaceContext.source, "service-binding");
+  assert.equal(result.capabilities.codexReview, true);
 });
 
 test("SVN workbench rejects a stale caller thread instead of inspecting outside the current binding", async () => {
@@ -102,6 +103,33 @@ test("App Server dispatch failure degrades to a cancellable review instead of lo
   assert.equal(result.review.status, "dispatch_failed");
   assert.match(result.review.error, /人工审核/);
   assert.equal(result.dispatch.started, false);
+});
+
+test("SVN workbench refuses Codex review when no real conversation is bound", async () => {
+  const workspaceOnly = createSvnWorkbenchService({
+    loadConfig: async () => ({ configured: true, token: "secret" }),
+    jira: { fetchIssue: async (_config, key) => ({ key, title: "Issue", description: "", fixVersions: [] }) },
+    issueBindings: { snapshot: async () => ({ revision: 0, bindings: {} }) },
+    issueWorkspaces: { snapshot: async () => ({
+      revision: 1,
+      workspaces: { "CT-1": { workspace: { cwd: "F:\\repo", workspaceRoots: ["F:\\repo"] } } }
+    }) },
+    reviews: {
+      inspect: async (input) => ({ threadId: input.threadId, changes: [], workingCopy: { root: "F:\\repo" } }),
+      listCommitHistory: () => [],
+      findLatestReview: () => null,
+      createReview: async () => { throw new Error("must not create a stuck review"); }
+    },
+    runtime: { startReadOnlyTurn: async () => ({ threadId: "unexpected", turnId: "unexpected" }) },
+    buildCommitMessage: (issue) => issue.key
+  });
+
+  const context = await workspaceOnly.context({ issueKey: "CT-1" });
+  assert.equal(context.capabilities.codexReview, false);
+  await assert.rejects(
+    workspaceOnly.createReview({ issueKey: "CT-1", selectedPaths: ["src/a.go"], codexReviewEnabled: true }),
+    (error) => error.code === "SVN_CODEX_REVIEW_UNAVAILABLE" && error.statusCode === 409
+  );
 });
 
 test("SVN review operations reject a review id from another Jira issue", async () => {
