@@ -241,7 +241,9 @@ export function createDshConfigOptionsHandler({
         payload = resource === "projects"
           ? await jira.fetchProjects(config)
           : await jira.fetchFilters(config, {
-              projectKey: String(requestUrl.searchParams.get("projectKey") || "").trim()
+              projectKey: String(requestUrl.searchParams.get("projectKey") || "").trim(),
+              projectId: String(requestUrl.searchParams.get("projectId") || "").trim(),
+              projectName: String(requestUrl.searchParams.get("projectName") || "").trim()
             });
       } else if (resource === "skills") {
         const catalog = workspaceCatalog && typeof workspaceCatalog.list === "function"
@@ -622,7 +624,7 @@ export async function apply(ctx, config = {}) {
   const core = createCoreService({
     dataRoot: dshDataRoot(),
     configFile: dshConfigFile(),
-    version: config.version || "0.33.3",
+    version: config.version || "0.33.4",
     workspaceCatalog,
     ...(secretStore ? { secretStore } : {})
   });

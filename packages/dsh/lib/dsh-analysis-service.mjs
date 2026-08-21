@@ -26,6 +26,10 @@ function normalizeIssueKey(value) {
   return issueKey;
 }
 
+function bindingThreadId(state, issueKey) {
+  return String(state?.bindings?.[issueKey]?.threadId || "").trim();
+}
+
 function rpcRequest(prefix, payload) {
   return {
     rpcId: `jira-workbench-${prefix}-${randomUUID()}`,
@@ -167,6 +171,7 @@ export function createDshAnalysisService({
 
   async function createIssueAnalysis(issueKey, supplementalDescription = "", {
     expectedRevision,
+    expectedThreadId,
     projectScopeId = ""
   } = {}) {
     const key = normalizeIssueKey(issueKey);
@@ -178,19 +183,30 @@ export function createDshAnalysisService({
       });
     }
     const bindingState = await issueBindings.snapshot();
-    const baselineRevision = expectedRevision == null ? Number(bindingState.revision || 0) : Number(expectedRevision);
+    const currentRevision = Number(bindingState.revision || 0);
+    let baselineRevision = expectedRevision == null ? currentRevision : Number(expectedRevision);
+    const hasExpectedThreadId = expectedThreadId !== undefined && expectedThreadId !== null;
+    const expectedTargetThreadId = hasExpectedThreadId
+      ? String(expectedThreadId || "").trim()
+      : bindingThreadId(bindingState, key);
     if (!Number.isInteger(baselineRevision) || baselineRevision < 0) {
       throw new DshAnalysisServiceError("会话绑定 revision 无效，请刷新后重试。", {
         code: "ISSUE_BINDINGS_REVISION_INVALID",
         statusCode: 400
       });
     }
-    if (baselineRevision !== Number(bindingState.revision || 0)) {
-      throw new DshAnalysisServiceError("会话关联已在其他位置更新，请刷新后重新确认。", {
-        code: "ISSUE_BINDINGS_REVISION_CONFLICT",
-        statusCode: 409,
-        details: { stage: "before_create", expectedRevision: baselineRevision, currentRevision: bindingState.revision }
-      });
+    if (baselineRevision !== currentRevision) {
+      // issue-bindings.json uses one global revision. A different Jira being
+      // bound must not block this issue as long as this issue's own binding is
+      // still exactly what the UI reviewed.
+      if (!hasExpectedThreadId || bindingThreadId(bindingState, key) !== expectedTargetThreadId) {
+        throw new DshAnalysisServiceError("会话关联已在其他位置更新，请刷新后重新确认。", {
+          code: "ISSUE_BINDINGS_REVISION_CONFLICT",
+          statusCode: 409,
+          details: { stage: "before_create", expectedRevision: baselineRevision, currentRevision: bindingState.revision }
+        });
+      }
+      baselineRevision = currentRevision;
     }
 
     const [workspaceState, issueResult, config] = await Promise.all([
@@ -262,31 +278,44 @@ export function createDshAnalysisService({
       boundAt,
       updatedAt: boundAt
     };
+    const mutate = typeof issueBindings.compareAndSwap === "function"
+      ? issueBindings.compareAndSwap.bind(issueBindings)
+      : issueBindings.applyMutations.bind(issueBindings);
     let next;
-    try {
-      const mutate = typeof issueBindings.compareAndSwap === "function"
-        ? issueBindings.compareAndSwap.bind(issueBindings)
-        : issueBindings.applyMutations.bind(issueBindings);
-      next = await mutate({ expectedRevision: baselineRevision, upserts: { [key]: binding } });
-    } catch (error) {
-      if (error?.code !== "ISSUE_BINDINGS_REVISION_CONFLICT") throw error;
-      const current = await issueBindings.snapshot();
-      throw new DshAnalysisServiceError(
-        "DSH 分析会话已经创建并收到首条消息，但关联关系同时发生了变化，因此没有覆盖现有绑定。请在“绑定已有会话”中选择该新会话。",
-        {
-          code: "ISSUE_ANALYSIS_CREATED_UNBOUND",
-          statusCode: 409,
-          details: {
-            stage: "created_unbound",
-            issueKey: key,
-            sessionId,
-            threadId: sessionId,
-            expectedRevision: baselineRevision,
-            currentRevision: current.revision
-          }
+    let attemptedRevision = baselineRevision;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        next = await mutate({ expectedRevision: attemptedRevision, upserts: { [key]: binding } });
+        break;
+      } catch (error) {
+        if (error?.code !== "ISSUE_BINDINGS_REVISION_CONFLICT") throw error;
+        const current = await issueBindings.snapshot();
+        if (bindingThreadId(current, key) === expectedTargetThreadId && attempt < 2) {
+          attemptedRevision = Number(current.revision || 0);
+          continue;
         }
-      );
+        throw new DshAnalysisServiceError(
+          "DSH 分析会话已经创建并收到首条消息，但关联关系同时发生了变化，因此没有覆盖现有绑定。请在“绑定已有会话”中选择该新会话。",
+          {
+            code: "ISSUE_ANALYSIS_CREATED_UNBOUND",
+            statusCode: 409,
+            details: {
+              stage: "created_unbound",
+              issueKey: key,
+              sessionId,
+              threadId: sessionId,
+              expectedRevision: attemptedRevision,
+              currentRevision: current.revision
+            }
+          }
+        );
+      }
     }
+    if (!next) throw new DshAnalysisServiceError("DSH 会话已创建，但保存 Jira 关联时没有得到结果。", {
+      code: "ISSUE_ANALYSIS_CREATED_UNBOUND",
+      statusCode: 409,
+      details: { stage: "created_unbound", issueKey: key, sessionId, threadId: sessionId }
+    });
 
     const storedBinding = next.bindings?.[key] || binding;
     return {

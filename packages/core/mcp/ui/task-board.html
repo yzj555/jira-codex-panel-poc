@@ -751,6 +751,21 @@
       }
       return request("ui/open-link", { url });
     }
+    function toolResultText(result) {
+      return (Array.isArray(result?.content) ? result.content : [])
+        .filter((block) => block?.type === "text" && typeof block.text === "string")
+        .map((block) => block.text.trim())
+        .filter(Boolean)
+        .join("\n");
+    }
+    function toolResultError(result) {
+      const structuredError = result?.structuredContent?.error;
+      const message = String(structuredError?.message || toolResultText(result) || "工具执行失败，请重试。").trim();
+      const error = new Error(message.replace(/^Error:\s*/i, ""));
+      error.code = String(structuredError?.code || "LOCAL_MCP_TOOL_ERROR");
+      error.data = structuredError || null;
+      return error;
+    }
     async function callTool(name, args = {}, options = {}) {
       if (!hasTool(name)) return null;
       const busyText = name === TOOLS.issue ? "正在读取任务详情…"
@@ -793,14 +808,16 @@
       try {
         const result = await request("tools/call", { name, arguments: args });
         const output = result?.structuredContent;
+        const resultText = toolResultText(result);
+        const notFound = result?.isError === true && /-32602|not found/i.test(resultText);
+        if (result?.isError === true) {
+          if (notFound) return null;
+          throw toolResultError(result);
+        }
         if (!output) {
           // 工具未注册（宿主未提供该可选能力）与结构化结果缺失要区分：前者
           // 静默降级（返回 null，不报错），后者才是真正的错误。
-          const notFound = result?.isError === true
-            && Array.isArray(result?.content)
-            && result.content.some((block) => typeof block?.text === "string" && /-32602|not found/i.test(block.text));
-          if (!notFound) throw new Error("工具没有返回结构化结果。");
-          return null;
+          throw new Error("工具没有返回结构化结果。");
         }
         if (options.accept !== false) acceptResult(output);
         return output;
@@ -1234,6 +1251,7 @@
           issueKey: task.key,
           supplementalDescription: associationSupplement.trim(),
           expectedRevision: cache.issue.bindingsRevision,
+          expectedThreadId: task.binding?.threadId || "",
           projectScopeId: defaultScope.id
         });
         if (result) {
@@ -1956,6 +1974,7 @@
           issueKey: cache.issue.issue.key,
           supplementalDescription,
           expectedRevision: cache.issue.bindingsRevision,
+          expectedThreadId: cache.issue.issue.binding?.threadId || "",
           ...(projectScopeId ? { projectScopeId } : {})
         });
       }

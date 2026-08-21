@@ -437,7 +437,18 @@ function SourceEditor(props: {
                     />
                     <span>
                       <strong>{filter.name}</strong>
-                      <small>#{filter.id}{filter.owner ? ` · ${filter.owner}` : ''}{filter.favourite ? ' · 收藏' : ''}</small>
+                      <small>
+                        #{filter.id}
+                        {filter.owner ? ` · ${filter.owner}` : ''}
+                        {filter.favourite ? ' · 收藏' : ''}
+                        {filter.projectMatch === 'match'
+                          ? ' · 当前项目'
+                          : filter.projectMatch === 'other'
+                            ? ' · 其他项目'
+                            : filter.projectMatch === 'unknown'
+                              ? ' · 范围待确认'
+                              : ''}
+                      </small>
                     </span>
                   </label>
                 ))

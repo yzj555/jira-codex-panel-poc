@@ -240,54 +240,83 @@ function filterProjectKeys(filter) {
     const project = permission?.project || permission?.projectId || permission?.projectKey;
     if (!project) return [];
     if (typeof project === "string" || typeof project === "number") return [String(project).toUpperCase()];
-    return [project.key, project.id].filter(Boolean).map((value) => String(value).toUpperCase());
+    return [project.key, project.id, project.name].filter(Boolean).map((value) => String(value).toUpperCase());
   });
 }
 
-function filterMatchesProject(filter, projectKey) {
-  const target = String(projectKey || "").trim().toUpperCase();
-  if (!target) return true;
-  if (filterProjectKeys(filter).includes(target)) return true;
-  const jql = String(filter?.jql || "");
-  const referenced = [];
-  for (const match of jql.matchAll(/\bproject\s*=\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))/ig)) {
-    referenced.push(match[1] || match[2] || match[3]);
-  }
-  for (const match of jql.matchAll(/\bproject\s+in\s*\(([^)]*)\)/ig)) {
-    referenced.push(...match[1].split(",").map((value) => value.trim().replace(/^['"]|['"]$/g, "")));
-  }
-  return referenced.length === 0 || referenced.some((value) => String(value).toUpperCase() === target);
+function projectAliases({ projectKey = "", projectId = "", projectName = "", projectAliases: aliases = [] } = {}) {
+  return new Set([projectKey, projectId, projectName, ...(Array.isArray(aliases) ? aliases : [])]
+    .map((value) => String(value || "").trim().toUpperCase())
+    .filter(Boolean));
 }
 
-function filterProjectMatch(filter, projectKey) {
-  const target = String(projectKey || "").trim().toUpperCase();
-  if (!target) return "all";
-  if (!filterMatchesRequestedProject(filter, target)) return "other";
-  const shared = filterProjectKeys(filter);
-  if (shared.includes(target)) return "match";
-  const jql = String(filter?.jql || "");
-  const hasProjectClause = /\bproject\s+(?:=|in|!=|not\s+in|is|is\s+not)\b/i.test(jql);
-  return hasProjectClause ? "match" : "unknown";
-}
-
-function filterMatchesRequestedProject(filter, projectKey) {
-  const target = String(projectKey || "").trim().toUpperCase();
-  if (!target) return true;
-  if (filterProjectKeys(filter).includes(target)) return true;
-  const jql = String(filter?.jql || "");
+function parseProjectReferences(jql) {
   const positive = [];
   const negative = [];
-  for (const match of jql.matchAll(/\bproject\s*(=|!=)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))/ig)) {
+  const source = String(jql || "");
+  const hasProjectClause = /\bproject\s*(?:=|!=|\bin\b|\bnot\s+in\b|\bis\b)/i.test(source);
+  let uncertain = false;
+  for (const match of source.matchAll(/\bproject\s*(=|!=)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+)\b)(?!\s*\()/ig)) {
     const value = match[2] || match[3] || match[4];
     (match[1] === "!=" ? negative : positive).push(value);
   }
-  for (const match of jql.matchAll(/\bproject\s+(in|not\s+in)\s*\(([^)]*)\)/ig)) {
-    const values = match[2].split(",").map((value) => value.trim().replace(/^[\'"]|[\'"]$/g, ""));
+  for (const match of source.matchAll(/\bproject\s+(in|not\s+in)\s*\(([^)]*)\)/ig)) {
+    const rawValues = match[2].split(",").map((value) => value.trim()).filter(Boolean);
+    const values = [];
+    for (const rawValue of rawValues) {
+      const quoted = rawValue.match(/^(?:"([^"]+)"|'([^']+)')$/);
+      if (quoted) {
+        values.push(quoted[1] || quoted[2]);
+      } else if (/^[A-Za-z0-9_-]+$/.test(rawValue)) {
+        values.push(rawValue);
+      } else {
+        uncertain = true;
+      }
+    }
     (match[1].toLowerCase() === "not in" ? negative : positive).push(...values);
   }
-  if (positive.length) return positive.some((value) => String(value).toUpperCase() === target);
-  if (negative.length) return !negative.some((value) => String(value).toUpperCase() === target);
-  return true;
+  if (hasProjectClause && !positive.length && !negative.length) uncertain = true;
+  return { positive, negative, hasProjectClause, uncertain };
+}
+
+function filterProjectMatch(filter, project = {}) {
+  const aliases = projectAliases(project);
+  if (!aliases.size) return "all";
+  const references = parseProjectReferences(filter?.jql);
+  const matchesAlias = (value) => aliases.has(String(value || "").trim().toUpperCase());
+  if (references.uncertain) return "unknown";
+  if (references.positive.length) {
+    return references.positive.some(matchesAlias) ? "match" : "other";
+  }
+  if (references.negative.length) {
+    return references.negative.some(matchesAlias) ? "other" : "match";
+  }
+  if (references.hasProjectClause) return "unknown";
+  return filterProjectKeys(filter).some(matchesAlias) ? "match" : "unknown";
+}
+
+function filterOwnerName(filter) {
+  if (typeof filter?.owner === "string") return filter.owner.trim();
+  return String(filter?.owner?.displayName || filter?.owner?.name || filter?.owner?.key || "").trim();
+}
+
+function mergeFilterRecord(current, candidate) {
+  if (!current) return candidate;
+  const currentPermissions = Array.isArray(current.sharePermissions) ? current.sharePermissions : [];
+  const candidatePermissions = Array.isArray(candidate?.sharePermissions) ? candidate.sharePermissions : [];
+  const currentKeys = Array.isArray(current.projectKeys) ? current.projectKeys : [];
+  const candidateKeys = Array.isArray(candidate?.projectKeys) ? candidate.projectKeys : [];
+  return {
+    ...current,
+    ...candidate,
+    id: String(current.id || candidate?.id || "").trim(),
+    name: String(current.name || candidate?.name || "").trim(),
+    jql: String(current.jql || candidate?.jql || "").trim(),
+    owner: current.owner || candidate?.owner,
+    favourite: Boolean(current.favourite || candidate?.favourite),
+    sharePermissions: [...currentPermissions, ...candidatePermissions],
+    projectKeys: [...new Set([...currentKeys, ...candidateKeys].map(String).filter(Boolean))]
+  };
 }
 
 function decodeHtmlEntities(value) {
@@ -684,7 +713,12 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
     };
   }
 
-  async function fetchFilters(config, { projectKey = "" } = {}) {
+  async function fetchFilters(config, {
+    projectKey = "",
+    projectId = "",
+    projectName = "",
+    projectAliases: requestedProjectAliases = []
+  } = {}) {
     const version = config.deployment === "data_center" ? "2" : "3";
     const endpoints = [
       `${config.baseUrl}/rest/api/${version}/filter/search?maxResults=1000`,
@@ -804,31 +838,46 @@ export function createJiraClient({ fetchImpl = globalThis.fetch, timeoutMs = 15_
         throw lastFailure;
       }
     }
-    const seen = new Set();
-    const filters = results
+    const project = { projectKey, projectId, projectName, projectAliases: requestedProjectAliases };
+    const merged = new Map();
+    for (const filter of results) {
+      const id = String(filter?.id || "").trim();
+      if (!id) continue;
+      merged.set(id, mergeFilterRecord(merged.get(id), filter));
+    }
+    const projectRank = { match: 0, unknown: 1, all: 1, other: 2 };
+    const filters = [...merged.values()]
       .map((filter) => {
         const id = String(filter?.id || "").trim();
-        if (!id || seen.has(id)) return null;
-        seen.add(id);
         return {
           id,
           name: String(filter?.name || `Filter ${id}`).trim(),
           jql: String(filter?.jql || "").trim(),
-          owner: filter?.owner?.displayName || filter?.owner?.name || filter?.owner?.key || "",
+          owner: filterOwnerName(filter),
           favourite: Boolean(filter?.favourite),
-          projectKeys: filterProjectKeys(filter),
-          projectMatch: filterProjectMatch(filter, projectKey)
+          projectKeys: [...new Set(filterProjectKeys(filter))],
+          projectMatch: filterProjectMatch(filter, project)
         };
       })
-      .filter(Boolean)
-      .filter((filter) => filter.projectMatch !== "other")
-      .sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { sensitivity: "base" }));
+      // Jira Filter is not owned by a project. Project matching is therefore
+      // relevance metadata, not an access rule: complex/nested JQL and filters
+      // written with a project name or id must remain selectable.
+      .sort((left, right) => (
+        (projectRank[left.projectMatch] ?? 1) - (projectRank[right.projectMatch] ?? 1)
+        || Number(right.favourite) - Number(left.favourite)
+        || left.name.localeCompare(right.name, "zh-CN", { sensitivity: "base" })
+      ));
     return {
       filters,
       total: filters.length,
       fetchedAt: new Date().toISOString(),
       site: config.baseUrl,
-      projectKey: String(projectKey || "").trim()
+      projectKey: String(projectKey || "").trim(),
+      project: {
+        key: String(projectKey || "").trim(),
+        id: String(projectId || "").trim(),
+        name: String(projectName || "").trim()
+      }
     };
   }
 

@@ -336,6 +336,9 @@ test("MCP 将只读工具和需确认的写工具关联到同一标准 UI Resour
   assert.match(resource.contents[0].text, /处理历史/);
   assert.match(resource.contents[0].text, /ui\/initialize/);
   assert.match(resource.contents[0].text, /tools\/call/);
+  assert.match(resource.contents[0].text, /function toolResultError\(result\)/);
+  assert.match(resource.contents[0].text, /throw toolResultError\(result\)/);
+  assert.match(resource.contents[0].text, /expectedThreadId: task\.binding\?\.threadId \|\| ""/);
   assert.match(resource.contents[0].text, /setWidgetState/);
   assert.match(resource.contents[0].text, /SVN 审核与提交/);
   assert.match(resource.contents[0].text, /v0\.31\.1/);

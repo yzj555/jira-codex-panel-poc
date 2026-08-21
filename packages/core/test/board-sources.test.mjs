@@ -38,15 +38,18 @@ test("旧版单一 JQL 会自动迁移为两个自定义面板来源", () => {
   assert.equal(sources.bug.jql, "project = REAL");
 });
 
-test("Jira Filter 列表合并我的、收藏和搜索结果，并按项目 JQL 过滤", async () => {
+test("Jira Filter 合并当前用户可访问来源，并以项目相关性排序而不误删", async () => {
   const calls = [];
   const jira = createJiraClient({
     fetchImpl: async (url) => {
       calls.push(String(url));
       if (String(url).includes("/filter/search")) {
         return new Response(JSON.stringify({ values: [
-          { id: "1", name: "当前项目需求", jql: "project = REAL", owner: { displayName: "我" } },
-          { id: "2", name: "其他项目", jql: "project = OTHER" }
+          { id: "1", name: "当前项目需求", owner: { displayName: "我" } },
+          { id: "2", name: "其他项目", jql: "project = OTHER" },
+          { id: "4", name: "按项目名称", jql: "project = \"Real Project\"" },
+          { id: "5", name: "按项目 ID", jql: "project in (10101)" },
+          { id: "6", name: "动态项目范围", jql: "project in projectsWhereUserHasPermission()" }
         ] }), { status: 200 });
       }
       if (String(url).endsWith("/filter/my")) {
@@ -60,11 +63,17 @@ test("Jira Filter 列表合并我的、收藏和搜索结果，并按项目 JQL 
     deployment: "data_center",
     baseUrl: "https://jira.example.com",
     token: "pat"
-  }, { projectKey: "REAL" });
+  }, { projectKey: "REAL", projectId: "10101", projectName: "Real Project" });
 
   assert.equal(calls.length, 3);
-  assert.deepEqual(new Set(result.filters.map((filter) => filter.id)), new Set(["1", "3"]));
+  assert.deepEqual(new Set(result.filters.map((filter) => filter.id)), new Set(["1", "2", "3", "4", "5", "6"]));
   assert.equal(result.filters.find((filter) => filter.id === "1").owner, "我");
+  assert.equal(result.filters.find((filter) => filter.id === "1").jql, "project = REAL");
+  assert.equal(result.filters.find((filter) => filter.id === "2").projectMatch, "other");
+  assert.equal(result.filters.find((filter) => filter.id === "4").projectMatch, "match");
+  assert.equal(result.filters.find((filter) => filter.id === "5").projectMatch, "match");
+  assert.equal(result.filters.find((filter) => filter.id === "6").projectMatch, "unknown");
+  assert.ok(result.filters.findIndex((filter) => filter.id === "2") > result.filters.findIndex((filter) => filter.id === "3"));
 });
 
 test("内置 JQL 使用稳定的协同字段 ID，并可读取可访问项目", async () => {

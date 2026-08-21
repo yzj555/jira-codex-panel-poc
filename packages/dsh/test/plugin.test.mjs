@@ -435,6 +435,7 @@ test("DSH 配置路由把任务来源和模板 Skill 一并写入 Core", async (
 });
 
 test("DSH 配置选项路由从 Jira 和 DSH Skill 注册表读取候选项", async () => {
+  let requestedFilterProject;
   const handler = createDshConfigOptionsHandler({
     configStore: {
       async load() {
@@ -445,7 +446,9 @@ test("DSH 配置选项路由从 Jira 和 DSH Skill 注册表读取候选项", as
       async fetchProjects() {
         return { projects: [{ id: "1", key: "GAME", name: "Game" }] };
       },
-      async fetchFilters(_config, { projectKey }) {
+      async fetchFilters(_config, project) {
+        requestedFilterProject = project;
+        const { projectKey } = project;
         return { filters: [{ id: "42", name: `${projectKey} Bug`, owner: "我" }] };
       }
     },
@@ -479,8 +482,9 @@ test("DSH 配置选项路由从 Jira 和 DSH Skill 注册表读取候选项", as
   const projects = await invoke("/jira-workbench/config-options?resource=projects");
   assert.equal(projects.statusCode, 200);
   assert.equal(projects.json.projects[0].key, "GAME");
-  const filters = await invoke("/jira-workbench/config-options?resource=filters&projectKey=GAME");
+  const filters = await invoke("/jira-workbench/config-options?resource=filters&projectKey=GAME&projectId=1&projectName=Game");
   assert.equal(filters.json.filters[0].id, "42");
+  assert.deepEqual(requestedFilterProject, { projectKey: "GAME", projectId: "1", projectName: "Game" });
   const skills = await invoke("/jira-workbench/config-options?resource=skills");
   assert.deepEqual(skills.json.skills.map((skill) => skill.name), ["global-skill", "project-skill"]);
   assert.deepEqual(skills.json.skills.find((skill) => skill.name === "project-skill").scopes, ["repo"]);

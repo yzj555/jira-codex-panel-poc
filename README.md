@@ -1,6 +1,6 @@
 # Jira 工作台
 
-> 当前版本：`0.33.3`<br>
+> 当前版本：`0.33.4`<br>
 > 运行环境：Windows Codex Desktop 或 DeepSeek Harness + Jira Data Center<br>
 > 使用方式：个人本地运行，每位用户配置自己的 Jira PAT，数据和会话绑定彼此独立
 

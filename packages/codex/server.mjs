@@ -52,7 +52,7 @@ import { buildIssueDetailSnapshot, createJiraTaskBoardMcpHttpHandler } from "@ji
 import { buildIssuePrompt, isBugIssue } from "@jira-workbench/core/public/prompt-builder.js";
 import { attachmentCanOpenLocally } from "@jira-workbench/core/public/issue-views.js";
 
-const VERSION = "0.33.3";
+const VERSION = "0.33.4";
 const host = process.env.JIRA_WORKBENCH_HOST || "127.0.0.1";
 const port = Number(process.env.JIRA_WORKBENCH_PORT || 47823);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -1011,7 +1011,9 @@ async function handleApi(request, response, url) {
       });
     }
     return json(response, 200, await jira.fetchFilters(config, {
-      projectKey: url.searchParams.get("projectKey") || ""
+      projectKey: url.searchParams.get("projectKey") || "",
+      projectId: url.searchParams.get("projectId") || "",
+      projectName: url.searchParams.get("projectName") || ""
     }));
   }
 

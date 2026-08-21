@@ -1,6 +1,6 @@
 {
   "name": "@jira-workbench/dsh-client",
-  "version": "0.33.3",
+  "version": "0.33.4",
   "type": "module",
   "description": "Jira Workbench browser UI for DeepSeek Harness: settings, task workspace, sidebar entry, and session context.",
   "license": "MIT",

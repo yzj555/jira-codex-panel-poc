@@ -61,6 +61,7 @@ export interface JiraFilterOption {
   owner: string
   favourite: boolean
   projectKeys: string[]
+  projectMatch?: 'all' | 'match' | 'unknown' | 'other'
 }
 
 export interface DshSkillOption {
@@ -265,6 +266,8 @@ export class JiraConfigCardController {
   private loading = true
   private optionsLoading = false
   private optionsMessage = ''
+  private optionsRequestVersion = 0
+  private filterRequestVersion = 0
   private saving = false
   private failed = false
   private failureMessage = ''
@@ -374,10 +377,18 @@ export class JiraConfigCardController {
   }
 
   private async loadFilters(projectKey: string): Promise<void> {
+    const requestVersion = ++this.filterRequestVersion
+    const selectedProject = this.projects.find(project => project.key === projectKey)
     try {
-      const payload = await this.fetchOptions<{ filters?: JiraFilterOption[] }>('filters', { projectKey })
+      const payload = await this.fetchOptions<{ filters?: JiraFilterOption[] }>('filters', {
+        projectKey,
+        ...(selectedProject?.id ? { projectId: selectedProject.id } : {}),
+        ...(selectedProject?.name ? { projectName: selectedProject.name } : {}),
+      })
+      if (requestVersion !== this.filterRequestVersion) return
       this.filters = Array.isArray(payload.filters) ? payload.filters : []
     } catch (error) {
+      if (requestVersion !== this.filterRequestVersion) return
       this.filters = []
       this.optionsMessage = error instanceof Error ? error.message : String(error)
     }
@@ -385,14 +396,15 @@ export class JiraConfigCardController {
 
   private async loadOptions(): Promise<void> {
     if (!this.configuration?.configured) return
+    const requestVersion = ++this.optionsRequestVersion
     this.optionsLoading = true
     this.optionsMessage = ''
     this.publish()
-    const projectKey = this.effectiveBoardSources().projectKey
     const [projectsResult, skillsResult] = await Promise.allSettled([
       this.fetchOptions<{ projects?: JiraProjectOption[] }>('projects'),
       this.fetchOptions<{ skills?: DshSkillOption[], message?: string }>('skills'),
     ])
+    if (requestVersion !== this.optionsRequestVersion) return
     if (projectsResult.status === 'fulfilled') {
       this.projects = Array.isArray(projectsResult.value.projects) ? projectsResult.value.projects : []
     } else {
@@ -408,7 +420,8 @@ export class JiraConfigCardController {
         ? skillsResult.reason.message
         : String(skillsResult.reason)
     }
-    await this.loadFilters(projectKey)
+    await this.loadFilters(this.effectiveBoardSources().projectKey)
+    if (requestVersion !== this.optionsRequestVersion) return
     this.optionsLoading = false
     this.publish()
   }

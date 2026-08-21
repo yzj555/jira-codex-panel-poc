@@ -13,11 +13,11 @@ function ok(value) {
   return Promise.resolve({ result: { ok: true, value } });
 }
 
-function issue() {
+function issue(key = "CT-300") {
   return {
-    key: "CT-300",
+    key,
     title: "新建分析会话",
-    url: "http://jira.example/browse/CT-300",
+    url: `http://jira.example/browse/${key}`,
     type: "requirement",
     typeName: "需求",
     statusName: "待处理",
@@ -28,7 +28,7 @@ function issue() {
   };
 }
 
-async function fixture({ promptResult, beforePrompt } = {}) {
+async function fixture({ promptResult, beforePrompt, sessionIds = ["session-created"] } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "jira-workbench-dsh-analysis-"));
   const issueBindings = createIssueBindingStore({ file: join(directory, "bindings.json") });
   const calls = { create: [], skills: [], prompt: [], rename: [] };
@@ -36,7 +36,7 @@ async function fixture({ promptResult, beforePrompt } = {}) {
     sessions: {
       create(request) {
         calls.create.push(request.payload);
-        return ok({ sessionId: "session-created" });
+        return ok({ sessionId: sessionIds[calls.create.length - 1] || `session-created-${calls.create.length}` });
       },
       async prompt(request) {
         calls.prompt.push(request.payload);
@@ -70,7 +70,7 @@ async function fixture({ promptResult, beforePrompt } = {}) {
         return undefined;
       }
     },
-    workbench: { async getIssue() { return { issue: issue() }; } },
+    workbench: { async getIssue(issueKey) { return { issue: issue(issueKey) }; } },
     configStore: {
       async load() {
         return {
@@ -85,9 +85,9 @@ async function fixture({ promptResult, beforePrompt } = {}) {
     taskBoardLoader: { async materializeBugMonitorAttachments() { return []; } },
     issueBindings,
     workspaceBindings: {
-      async get() {
+      async get(issueKey) {
         return {
-          issueKey: "CT-300",
+          issueKey,
           revision: 1,
           binding: {
             workspace: {
@@ -154,7 +154,7 @@ test("DSH 会话创建后若 revision 冲突则保留会话但不覆盖新绑定
       await store.applyMutations({
         expectedRevision: 0,
         upserts: {
-          "CT-999": {
+          "CT-300": {
             threadId: "other-session",
             threadTitle: "并发会话",
             runtimeOwner: "dsh",
@@ -173,6 +173,102 @@ test("DSH 会话创建后若 revision 冲突则保留会话但不覆盖新绑定
       && error.details.sessionId === "session-created"
   );
   const stored = await issueBindings.snapshot();
-  assert.equal(stored.bindings["CT-300"], undefined);
-  assert.equal(stored.bindings["CT-999"].threadId, "other-session");
+  assert.equal(stored.bindings["CT-300"].threadId, "other-session");
+});
+
+test("DSH ignores unrelated binding revisions before and during analysis creation", async (t) => {
+  const { directory, issueBindings, service } = await fixture({
+    beforePrompt: async (store) => {
+      const snapshot = await store.snapshot();
+      await store.applyMutations({
+        expectedRevision: snapshot.revision,
+        upserts: {
+          "CT-998": {
+            threadId: "concurrent-session",
+            threadTitle: "Concurrent session",
+            runtimeOwner: "dsh",
+            hostReference: "dsh-session"
+          }
+        }
+      });
+    }
+  });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  await issueBindings.applyMutations({
+    expectedRevision: 0,
+    upserts: {
+      "CT-999": {
+        threadId: "previous-session",
+        threadTitle: "Previous session",
+        runtimeOwner: "dsh",
+        hostReference: "dsh-session"
+      }
+    }
+  });
+  const result = await service.createIssueAnalysis("CT-300", "", {
+    expectedRevision: 0,
+    expectedThreadId: "",
+    projectScopeId: "scope-alpha"
+  });
+
+  assert.equal(result.sessionId, "session-created");
+  const stored = await issueBindings.snapshot();
+  assert.equal(stored.bindings["CT-300"].threadId, "session-created");
+  assert.equal(stored.bindings["CT-998"].threadId, "concurrent-session");
+  assert.equal(stored.bindings["CT-999"].threadId, "previous-session");
+});
+
+test("DSH still blocks creation when the target Jira binding itself changed", async (t) => {
+  const { directory, issueBindings, service, calls } = await fixture();
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  await issueBindings.applyMutations({
+    expectedRevision: 0,
+    upserts: {
+      "CT-300": {
+        threadId: "newer-session",
+        threadTitle: "Newer session",
+        runtimeOwner: "dsh",
+        hostReference: "dsh-session"
+      }
+    }
+  });
+
+  await assert.rejects(
+    service.createIssueAnalysis("CT-300", "", {
+      expectedRevision: 0,
+      expectedThreadId: "",
+      projectScopeId: "scope-alpha"
+    }),
+    (error) => error instanceof DshAnalysisServiceError
+      && error.code === "ISSUE_BINDINGS_REVISION_CONFLICT"
+      && error.details.stage === "before_create"
+  );
+  assert.equal(calls.create.length, 0);
+});
+
+test("DSH supports creating and binding analysis sessions for two Jira issues in sequence", async (t) => {
+  const { directory, issueBindings, service, calls } = await fixture({
+    sessionIds: ["session-for-ct-300", "session-for-ct-301"]
+  });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  const first = await service.createIssueAnalysis("CT-300", "", {
+    expectedRevision: 0,
+    projectScopeId: "scope-alpha"
+  });
+  const second = await service.createIssueAnalysis("CT-301", "", {
+    expectedRevision: first.bindingsRevision,
+    projectScopeId: "scope-alpha"
+  });
+
+  assert.equal(first.sessionId, "session-for-ct-300");
+  assert.equal(second.sessionId, "session-for-ct-301");
+  assert.equal(second.bindingsRevision, 2);
+  assert.equal(calls.create.length, 2);
+  assert.equal(calls.prompt.length, 2);
+  const stored = await issueBindings.snapshot();
+  assert.equal(stored.bindings["CT-300"].threadId, "session-for-ct-300");
+  assert.equal(stored.bindings["CT-301"].threadId, "session-for-ct-301");
 });

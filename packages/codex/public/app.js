@@ -2844,7 +2844,13 @@ function renderBoardFilterOptions() {
     for (const filter of [...missing, ...filters]) {
       const option = document.createElement("option");
       option.value = String(filter.id);
-      const scopeLabel = filter.projectMatch === "unknown" ? "（范围待确认）" : "";
+      const scopeLabel = filter.projectMatch === "match"
+        ? "（当前项目）"
+        : filter.projectMatch === "other"
+          ? "（其他项目）"
+          : filter.projectMatch === "unknown"
+            ? "（范围待确认）"
+            : "";
       option.textContent = `${filter.name || `Filter ${filter.id}`} (#${filter.id})${scopeLabel}`;
       option.title = filter.jql || "";
       option.selected = selected.has(option.value);
@@ -2883,7 +2889,12 @@ async function loadBoardFilters({ quiet = false, force = false } = {}) {
   state.boardFiltersLoading = true;
   state.boardFiltersError = "";
   const projectKey = document.querySelector("#board-project-key")?.value.trim() || "";
-  const request = boardDataRequest("/api/filters", { projectKey });
+  const selectedProject = state.boardProjects.find((project) => project.key === projectKey);
+  const request = boardDataRequest("/api/filters", {
+    projectKey,
+    ...(selectedProject?.id ? { projectId: selectedProject.id } : {}),
+    ...(selectedProject?.name ? { projectName: selectedProject.name } : {})
+  });
   setBoardFiltersStatus(
     request.usingDraftConnection
       ? "正在使用当前表单中的新 Token 读取 Jira Filter…"

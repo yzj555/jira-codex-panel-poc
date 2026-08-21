@@ -491,7 +491,8 @@ function SourceEditor(props) {
             "#",
             filter.id,
             filter.owner ? ` \xB7 ${filter.owner}` : "",
-            filter.favourite ? " \xB7 \u6536\u85CF" : ""
+            filter.favourite ? " \xB7 \u6536\u85CF" : "",
+            filter.projectMatch === "match" ? " \xB7 \u5F53\u524D\u9879\u76EE" : filter.projectMatch === "other" ? " \xB7 \u5176\u4ED6\u9879\u76EE" : filter.projectMatch === "unknown" ? " \xB7 \u8303\u56F4\u5F85\u786E\u8BA4" : ""
           ] })
         ] })
       ] }, filter.id)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: JiraConfigCard_default.emptyList, children: "\u6CA1\u6709\u53EF\u7528 Filter" }) })
@@ -1428,6 +1429,8 @@ var JiraConfigCardController = class {
     this.loading = true;
     this.optionsLoading = false;
     this.optionsMessage = "";
+    this.optionsRequestVersion = 0;
+    this.filterRequestVersion = 0;
     this.saving = false;
     this.failed = false;
     this.failureMessage = "";
@@ -1512,24 +1515,33 @@ var JiraConfigCardController = class {
     return jsonRequest(`/jira-workbench/config-options?${query.toString()}`);
   }
   async loadFilters(projectKey) {
+    const requestVersion = ++this.filterRequestVersion;
+    const selectedProject = this.projects.find((project) => project.key === projectKey);
     try {
-      const payload = await this.fetchOptions("filters", { projectKey });
+      const payload = await this.fetchOptions("filters", {
+        projectKey,
+        ...selectedProject?.id ? { projectId: selectedProject.id } : {},
+        ...selectedProject?.name ? { projectName: selectedProject.name } : {}
+      });
+      if (requestVersion !== this.filterRequestVersion) return;
       this.filters = Array.isArray(payload.filters) ? payload.filters : [];
     } catch (error) {
+      if (requestVersion !== this.filterRequestVersion) return;
       this.filters = [];
       this.optionsMessage = error instanceof Error ? error.message : String(error);
     }
   }
   async loadOptions() {
     if (!this.configuration?.configured) return;
+    const requestVersion = ++this.optionsRequestVersion;
     this.optionsLoading = true;
     this.optionsMessage = "";
     this.publish();
-    const projectKey = this.effectiveBoardSources().projectKey;
     const [projectsResult, skillsResult] = await Promise.allSettled([
       this.fetchOptions("projects"),
       this.fetchOptions("skills")
     ]);
+    if (requestVersion !== this.optionsRequestVersion) return;
     if (projectsResult.status === "fulfilled") {
       this.projects = Array.isArray(projectsResult.value.projects) ? projectsResult.value.projects : [];
     } else {
@@ -1541,7 +1553,8 @@ var JiraConfigCardController = class {
     } else if (!this.optionsMessage) {
       this.optionsMessage = skillsResult.reason instanceof Error ? skillsResult.reason.message : String(skillsResult.reason);
     }
-    await this.loadFilters(projectKey);
+    await this.loadFilters(this.effectiveBoardSources().projectKey);
+    if (requestVersion !== this.optionsRequestVersion) return;
     this.optionsLoading = false;
     this.publish();
   }

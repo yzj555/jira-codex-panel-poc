@@ -843,14 +843,16 @@ export function buildToolDefinitions({
           issueKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*-\d+$/),
           supplementalDescription: z.string().max(4_000).optional().default(""),
           expectedRevision: z.number().int().nonnegative().optional(),
+          expectedThreadId: z.string().max(1_000).optional(),
           projectScopeId: z.string().max(1_000).optional().default("")
         },
         annotations: externalMutationAnnotations(),
         _meta: uiMeta(`正在新建 ${desktopHostName} 分析会话…`, `${desktopHostName} 分析会话已创建并关联`)
       },
-      async ({ issueKey, supplementalDescription, expectedRevision, projectScopeId }) => {
+      async ({ issueKey, supplementalDescription, expectedRevision, expectedThreadId, projectScopeId }) => {
         const result = await desktop.createIssueAnalysis(issueKey, supplementalDescription, {
           expectedRevision,
+          expectedThreadId,
           projectScopeId
         });
         return {
